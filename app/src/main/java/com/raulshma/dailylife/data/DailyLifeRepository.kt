@@ -43,4 +43,6 @@ interface DailyLifeRepository {
     fun updateNotificationSettings(settings: NotificationSettings)
 
     fun updateItemNotifications(itemId: Long, settings: ItemNotificationSettings)
+
+    fun clearStorageError()
 }

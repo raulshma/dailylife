@@ -1,16 +1,21 @@
 package com.raulshma.dailylife.data
 
+import com.raulshma.dailylife.domain.CompletionRecord
 import com.raulshma.dailylife.domain.ItemNotificationSettings
 import com.raulshma.dailylife.domain.LifeItem
 import com.raulshma.dailylife.domain.LifeItemDraft
 import com.raulshma.dailylife.domain.LifeItemType
 import com.raulshma.dailylife.domain.NotificationSettings
+import com.raulshma.dailylife.domain.RecurrenceFrequency
+import com.raulshma.dailylife.domain.RecurrenceRule
+import com.raulshma.dailylife.domain.StorageOperation
 import com.raulshma.dailylife.domain.TaskStatus
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -121,6 +126,51 @@ class InMemoryDailyLifeRepositoryTest {
     }
 
     @Test
+    fun occurrenceStatsCountPastMissesAndCurrentStreak() {
+        val item = LifeItem(
+            id = 1L,
+            type = LifeItemType.Task,
+            title = "Stretch",
+            body = "",
+            createdAt = LocalDateTime.of(2026, 4, 20, 8, 0),
+            recurrenceRule = RecurrenceRule(RecurrenceFrequency.Daily),
+            completionHistory = listOf(
+                completionRecord(itemId = 1L, date = LocalDate.of(2026, 4, 22)),
+                completionRecord(itemId = 1L, date = LocalDate.of(2026, 4, 23)),
+                completionRecord(itemId = 1L, date = LocalDate.of(2026, 4, 25)),
+            ),
+        )
+
+        val stats = item.occurrenceStats(referenceDate = LocalDate.of(2026, 4, 25))
+
+        assertEquals(3, stats.completedCount)
+        assertEquals(3, stats.missedCount)
+        assertEquals(1, stats.currentStreak)
+    }
+
+    @Test
+    fun occurrenceStatsDoesNotBreakStreakForIncompleteToday() {
+        val item = LifeItem(
+            id = 1L,
+            type = LifeItemType.Task,
+            title = "Stretch",
+            body = "",
+            createdAt = LocalDateTime.of(2026, 4, 22, 8, 0),
+            recurrenceRule = RecurrenceRule(RecurrenceFrequency.Daily),
+            completionHistory = listOf(
+                completionRecord(itemId = 1L, date = LocalDate.of(2026, 4, 23)),
+                completionRecord(itemId = 1L, date = LocalDate.of(2026, 4, 24)),
+            ),
+        )
+
+        val stats = item.occurrenceStats(referenceDate = LocalDate.of(2026, 4, 25))
+
+        assertEquals(2, stats.completedCount)
+        assertEquals(1, stats.missedCount)
+        assertEquals(2, stats.currentStreak)
+    }
+
+    @Test
     fun notificationPreferencesCanBeUpdatedGloballyAndPerItem() {
         val repository = InMemoryDailyLifeRepository(seedItems = emptyList())
         val item = repository.addItem(LifeItemDraft(title = "Water plants"))
@@ -217,4 +267,84 @@ class InMemoryDailyLifeRepositoryTest {
 
         assertEquals(item.id + 1L, nextItem.id)
     }
+
+    @Test
+    fun loadErrorsAreSurfacedAndCanBeDismissed() {
+        val repository = InMemoryDailyLifeRepository(
+            seedItems = emptyList(),
+            store = ThrowingLoadStore,
+        )
+
+        val storageError = repository.state.value.storageError
+
+        assertEquals(StorageOperation.Load, storageError?.operation)
+        assertTrue(storageError?.message.orEmpty().contains("couldn't load"))
+        assertTrue(storageError?.message.orEmpty().contains("disk unavailable"))
+
+        repository.clearStorageError()
+
+        assertNull(repository.state.value.storageError)
+    }
+
+    @Test
+    fun saveErrorsAreSurfacedWithoutDroppingVisibleChanges() {
+        val store = ToggleSaveStore(failSaves = true)
+        val repository = InMemoryDailyLifeRepository(
+            seedItems = emptyList(),
+            store = store,
+        )
+
+        repository.addItem(LifeItemDraft(title = "Plan dinner"))
+
+        val storageError = repository.state.value.storageError
+        assertEquals(StorageOperation.Save, storageError?.operation)
+        assertTrue(storageError?.message.orEmpty().contains("couldn't save"))
+        assertTrue(storageError?.message.orEmpty().contains("disk full"))
+        assertEquals("Plan dinner", repository.state.value.items.single().title)
+    }
+
+    @Test
+    fun successfulSaveClearsPreviousSaveError() {
+        val store = ToggleSaveStore(failSaves = true)
+        val repository = InMemoryDailyLifeRepository(
+            seedItems = emptyList(),
+            store = store,
+        )
+        repository.addItem(LifeItemDraft(title = "Plan dinner"))
+
+        store.failSaves = false
+        repository.addItem(LifeItemDraft(title = "Buy basil"))
+
+        assertNull(repository.state.value.storageError)
+        assertEquals(2, repository.state.value.items.size)
+    }
 }
+
+private object ThrowingLoadStore : DailyLifeStore {
+    override fun load(): PersistedDailyLifeState? {
+        error("disk unavailable")
+    }
+
+    override fun save(snapshot: PersistedDailyLifeState) = Unit
+}
+
+private class ToggleSaveStore(
+    var failSaves: Boolean,
+) : DailyLifeStore {
+    override fun load(): PersistedDailyLifeState? = null
+
+    override fun save(snapshot: PersistedDailyLifeState) {
+        if (failSaves) error("disk full")
+    }
+}
+
+private fun completionRecord(
+    itemId: Long,
+    date: LocalDate,
+    missed: Boolean = false,
+): CompletionRecord = CompletionRecord(
+    itemId = itemId,
+    occurrenceDate = date,
+    completedAt = date.atTime(8, 0),
+    missed = missed,
+)

@@ -56,6 +56,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -100,8 +101,10 @@ import com.raulshma.dailylife.domain.LifeItem
 import com.raulshma.dailylife.domain.LifeItemDraft
 import com.raulshma.dailylife.domain.LifeItemType
 import com.raulshma.dailylife.domain.NotificationSettings
+import com.raulshma.dailylife.domain.OccurrenceStats
 import com.raulshma.dailylife.domain.RecurrenceFrequency
 import com.raulshma.dailylife.domain.RecurrenceRule
+import com.raulshma.dailylife.domain.StorageError
 import com.raulshma.dailylife.domain.TaskStatus
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -173,6 +176,7 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
             onPinnedToggled = viewModel::togglePinned,
             onTaskStatusChanged = viewModel::updateTaskStatus,
             onCompleted = viewModel::markOccurrenceCompleted,
+            onStorageErrorDismissed = viewModel::clearStorageError,
         )
     }
 
@@ -229,6 +233,7 @@ private fun TimelineScreen(
     onPinnedToggled: (Long) -> Unit,
     onTaskStatusChanged: (Long, TaskStatus) -> Unit,
     onCompleted: (Long) -> Unit,
+    onStorageErrorDismissed: () -> Unit,
 ) {
     val groupedItems = remember(state.visibleItems) {
         state.visibleItems.groupBy { it.createdAt.toLocalDate() }
@@ -246,6 +251,14 @@ private fun TimelineScreen(
     ) {
         item {
             SnapshotRow(state = state)
+        }
+        state.storageError?.let { storageError ->
+            item(key = "storage-error") {
+                StorageWarningCard(
+                    error = storageError,
+                    onDismiss = onStorageErrorDismissed,
+                )
+            }
         }
         item {
             TimelineFilters(
@@ -283,8 +296,53 @@ private fun TimelineScreen(
 }
 
 @Composable
+private fun StorageWarningCard(
+    error: StorageError,
+    onDismiss: () -> Unit,
+) {
+    ElevatedCard(
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer,
+            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Warning,
+                contentDescription = null,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = "Local storage needs attention",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = error.message,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Filled.Close, contentDescription = "Dismiss storage warning")
+            }
+        }
+    }
+}
+
+@Composable
 private fun SnapshotRow(state: DailyLifeState) {
-    val completionCount = state.items.sumOf { it.completionHistory.size }
+    val today = LocalDate.now()
+    val completionCount = state.items.sumOf { it.occurrenceStats(today).completedCount }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -532,6 +590,8 @@ private fun LifeItemCard(
     onTaskStatusChanged: (TaskStatus) -> Unit,
     onCompleted: () -> Unit,
 ) {
+    val occurrenceStats = item.occurrenceStats()
+
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -663,6 +723,10 @@ private fun LifeItemCard(
                 }
             }
 
+            if (item.isRecurring || occurrenceStats.completedCount > 0 || occurrenceStats.missedCount > 0) {
+                OccurrenceStatsRow(stats = occurrenceStats)
+            }
+
             if (item.type == LifeItemType.Task) {
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -689,6 +753,58 @@ private fun LifeItemCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun OccurrenceStatsRow(stats: OccurrenceStats) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        OccurrenceMetric(
+            label = "Done",
+            value = stats.completedCount.toString(),
+            modifier = Modifier.weight(1f),
+        )
+        OccurrenceMetric(
+            label = "Missed",
+            value = stats.missedCount.toString(),
+            modifier = Modifier.weight(1f),
+        )
+        OccurrenceMetric(
+            label = "Streak",
+            value = stats.currentStreak.toString(),
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun OccurrenceMetric(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -1092,6 +1208,8 @@ private fun ItemDetailDialog(
     onCompleted: () -> Unit,
     onNotificationsChanged: (ItemNotificationSettings) -> Unit,
 ) {
+    val occurrenceStats = item.occurrenceStats()
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -1151,7 +1269,11 @@ private fun ItemDetailDialog(
                 if (item.isRecurring) {
                     DetailLine("Recurrence", item.recurrenceRule.frequency.label)
                 }
-                DetailLine("Completions", item.completionHistory.size.toString())
+                DetailLine("Completions", occurrenceStats.completedCount.toString())
+                if (item.isRecurring || occurrenceStats.missedCount > 0) {
+                    DetailLine("Missed", occurrenceStats.missedCount.toString())
+                    DetailLine("Current streak", occurrenceStats.currentStreak.toString())
+                }
 
                 val effectiveTime = item.notificationSettings.timeOverride
                     ?: globalSettings.preferredTime

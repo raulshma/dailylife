@@ -38,18 +38,16 @@ class FileDailyLifeStore(
     override fun load(): PersistedDailyLifeState? {
         if (!file.exists()) return null
 
-        return runCatching {
-            val properties = Properties()
-            FileInputStream(file).use { input -> properties.load(input) }
-            val items = properties.readItems()
-            val fallbackNextId = (items.maxOfOrNull { it.id } ?: 0L) + 1L
+        val properties = Properties()
+        FileInputStream(file).use { input -> properties.load(input) }
+        val items = properties.readItems()
+        val fallbackNextId = (items.maxOfOrNull { it.id } ?: 0L) + 1L
 
-            PersistedDailyLifeState(
-                items = items,
-                notificationSettings = properties.readNotificationSettings(),
-                nextId = properties.long("nextId", fallbackNextId).coerceAtLeast(fallbackNextId),
-            )
-        }.getOrNull()
+        return PersistedDailyLifeState(
+            items = items,
+            notificationSettings = properties.readNotificationSettings(),
+            nextId = properties.long("nextId", fallbackNextId).coerceAtLeast(fallbackNextId),
+        )
     }
 
     override fun save(snapshot: PersistedDailyLifeState) {

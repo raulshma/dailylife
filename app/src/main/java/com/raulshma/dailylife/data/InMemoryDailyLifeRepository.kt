@@ -10,6 +10,8 @@ import com.raulshma.dailylife.domain.LifeItemType
 import com.raulshma.dailylife.domain.NotificationSettings
 import com.raulshma.dailylife.domain.RecurrenceFrequency
 import com.raulshma.dailylife.domain.RecurrenceRule
+import com.raulshma.dailylife.domain.StorageError
+import com.raulshma.dailylife.domain.StorageOperation
 import com.raulshma.dailylife.domain.TaskStatus
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -23,11 +25,13 @@ class InMemoryDailyLifeRepository(
     seedItems: List<LifeItem> = SampleLifeItems.create(),
     private val store: DailyLifeStore? = null,
 ) : DailyLifeRepository {
-    private val persistedState = store?.load()
+    private val loadResult = runCatching { store?.load() }
+    private val persistedState = loadResult.getOrNull()
     private val _state = MutableStateFlow(
         DailyLifeState(
             items = persistedState?.items ?: seedItems,
             notificationSettings = persistedState?.notificationSettings ?: NotificationSettings(),
+            storageError = loadResult.exceptionOrNull()?.toStorageError(StorageOperation.Load),
         ),
     )
     override val state: StateFlow<DailyLifeState> = _state.asStateFlow()
@@ -134,6 +138,10 @@ class InMemoryDailyLifeRepository(
         updateItem(itemId) { it.copy(notificationSettings = settings) }
     }
 
+    override fun clearStorageError() {
+        _state.update { current -> current.copy(storageError = null) }
+    }
+
     private fun updateFilters(block: (DailyLifeFilters) -> DailyLifeFilters) {
         _state.update { current -> current.copy(filters = block(current.filters)) }
     }
@@ -157,14 +165,24 @@ class InMemoryDailyLifeRepository(
     }
 
     private fun persist(state: DailyLifeState) {
+        val writableStore = store ?: return
+
         runCatching {
-            store?.save(
+            writableStore.save(
                 PersistedDailyLifeState(
                     items = state.items,
                     notificationSettings = state.notificationSettings,
                     nextId = nextId,
                 ),
             )
+        }.onSuccess {
+            if (state.storageError?.operation == StorageOperation.Save) {
+                clearStorageError()
+            }
+        }.onFailure { error ->
+            _state.update { current ->
+                current.copy(storageError = error.toStorageError(StorageOperation.Save))
+            }
         }
     }
 
@@ -175,6 +193,18 @@ class InMemoryDailyLifeRepository(
         tags.map { it.trim().removePrefix("#").lowercase() }
             .filter { it.isNotEmpty() }
             .toSet()
+
+    private fun Throwable.toStorageError(operation: StorageOperation): StorageError {
+        val reason = localizedMessage?.takeIf { it.isNotBlank() }
+            ?: this::class.java.simpleName
+        val message = when (operation) {
+            StorageOperation.Load ->
+                "DailyLife couldn't load local data. Starter data is shown for now. Reason: $reason"
+            StorageOperation.Save ->
+                "DailyLife couldn't save local changes. The latest edit is visible, but may not survive app restart. Reason: $reason"
+        }
+        return StorageError(operation = operation, message = message)
+    }
 }
 
 private object SampleLifeItems {

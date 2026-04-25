@@ -71,6 +71,10 @@ class DailyLifeViewModel(
         repository.updateItemNotifications(itemId, settings)
     }
 
+    fun clearStorageError() {
+        repository.clearStorageError()
+    }
+
     class Factory(context: Context) : ViewModelProvider.Factory {
         private val appContext = context.applicationContext
 

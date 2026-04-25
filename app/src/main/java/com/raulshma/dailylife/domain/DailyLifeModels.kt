@@ -57,6 +57,12 @@ data class CompletionRecord(
     val missed: Boolean = false,
 )
 
+data class OccurrenceStats(
+    val completedCount: Int,
+    val missedCount: Int,
+    val currentStreak: Int,
+)
+
 data class LifeItem(
     val id: Long,
     val type: LifeItemType,
@@ -74,6 +80,76 @@ data class LifeItem(
 ) {
     val isRecurring: Boolean
         get() = recurrenceRule.frequency != RecurrenceFrequency.None
+
+    fun occurrenceStats(referenceDate: LocalDate = LocalDate.now()): OccurrenceStats {
+        val completedDates = completionHistory
+            .filterNot { it.missed }
+            .map { it.occurrenceDate }
+            .toSet()
+        val recordedMissedDates = completionHistory
+            .filter { it.missed }
+            .map { it.occurrenceDate }
+            .toSet()
+        val expectedDates = expectedOccurrenceDates(referenceDate)
+        val computedMissedDates = expectedDates
+            .filter { occurrenceDate ->
+                occurrenceDate.isBefore(referenceDate) && occurrenceDate !in completedDates
+            }
+            .toSet()
+        val missedDates = (recordedMissedDates + computedMissedDates) - completedDates
+
+        return OccurrenceStats(
+            completedCount = completedDates.size,
+            missedCount = missedDates.size,
+            currentStreak = expectedDates.currentStreak(
+                referenceDate = referenceDate,
+                completedDates = completedDates,
+            ),
+        )
+    }
+
+    private fun expectedOccurrenceDates(referenceDate: LocalDate): List<LocalDate> {
+        if (!isRecurring) return emptyList()
+
+        val startDate = reminderAt?.toLocalDate() ?: createdAt.toLocalDate()
+        if (startDate.isAfter(referenceDate)) return emptyList()
+
+        val stepDays = recurrenceRule.stepDays()
+        val dates = mutableListOf<LocalDate>()
+        var occurrenceDate = startDate
+        while (!occurrenceDate.isAfter(referenceDate)) {
+            dates += occurrenceDate
+            occurrenceDate = occurrenceDate.plusDays(stepDays)
+        }
+        return dates
+    }
+
+    private fun RecurrenceRule.stepDays(): Long {
+        val safeInterval = interval.coerceAtLeast(1).toLong()
+        return when (frequency) {
+            RecurrenceFrequency.None -> Long.MAX_VALUE
+            RecurrenceFrequency.Daily -> safeInterval
+            RecurrenceFrequency.Weekly -> safeInterval * 7L
+            RecurrenceFrequency.Custom -> safeInterval
+        }
+    }
+
+    private fun List<LocalDate>.currentStreak(
+        referenceDate: LocalDate,
+        completedDates: Set<LocalDate>,
+    ): Int {
+        val streakStartIndex = indexOfLast { occurrenceDate ->
+            occurrenceDate.isBefore(referenceDate) || occurrenceDate in completedDates
+        }
+        if (streakStartIndex == -1) return 0
+
+        var streak = 0
+        for (index in streakStartIndex downTo 0) {
+            if (this[index] !in completedDates) break
+            streak += 1
+        }
+        return streak
+    }
 }
 
 data class LifeItemDraft(
@@ -89,6 +165,16 @@ data class LifeItemDraft(
     val notificationSettings: ItemNotificationSettings = ItemNotificationSettings(),
 )
 
+enum class StorageOperation {
+    Load,
+    Save,
+}
+
+data class StorageError(
+    val operation: StorageOperation,
+    val message: String,
+)
+
 data class DailyLifeFilters(
     val query: String = "",
     val selectedType: LifeItemType? = null,
@@ -102,6 +188,7 @@ data class DailyLifeState(
     val items: List<LifeItem> = emptyList(),
     val filters: DailyLifeFilters = DailyLifeFilters(),
     val notificationSettings: NotificationSettings = NotificationSettings(),
+    val storageError: StorageError? = null,
 ) {
     val allTags: List<String>
         get() = items.flatMap { it.tags }.distinct().sorted()
