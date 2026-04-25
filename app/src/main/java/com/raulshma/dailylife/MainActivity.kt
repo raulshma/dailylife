@@ -7,22 +7,23 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.raulshma.dailylife.ui.DailyLifeApp
 import com.raulshma.dailylife.ui.DailyLifeViewModel
 import com.raulshma.dailylife.ui.theme.DailyLifeTheme
+import dagger.hilt.android.AndroidEntryPoint
 import org.osmdroid.config.Configuration
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().userAgentValue = packageName
         enableEdgeToEdge()
         requestNotificationPermissionIfNeeded()
-        val viewModelFactory = DailyLifeViewModel.Factory(applicationContext)
         setContent {
             DailyLifeTheme {
-                val viewModel: DailyLifeViewModel = viewModel(factory = viewModelFactory)
+                val viewModel: DailyLifeViewModel = hiltViewModel()
                 DailyLifeApp(viewModel = viewModel)
             }
         }
