@@ -8,9 +8,16 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +45,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.AccessTime
@@ -90,12 +100,15 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -354,6 +367,7 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                     quickAddLocationCallback = onLocationSelected
                     showLocationPicker = true
                 },
+                allTags = state.allTags,
             )
         }
     }
@@ -1606,6 +1620,7 @@ private fun QuickAddSheet(
     onDismiss: () -> Unit,
     mediaLauncher: com.raulshma.dailylife.ui.capture.MediaCaptureLauncher,
     onShowLocationPicker: ((Double, Double) -> Unit) -> Unit,
+    allTags: List<String> = emptyList(),
 ) {
     val context = LocalContext.current
     var selectedType by rememberSaveable { mutableStateOf(LifeItemType.Thought) }
@@ -1619,11 +1634,20 @@ private fun QuickAddSheet(
     var notificationsEnabled by rememberSaveable { mutableStateOf(true) }
     var overrideTime by rememberSaveable { mutableStateOf("") }
     var recurring by rememberSaveable { mutableStateOf(false) }
+    var showAdvanced by rememberSaveable { mutableStateOf(false) }
     var isRecordingAudio by remember { mutableStateOf(false) }
     val audioRecorder = remember { AudioRecorder(context) }
+    val titleFocusRequester = remember { FocusRequester() }
 
     if (initialBody.isNotBlank() && body != initialBody) {
         body = initialBody
+    }
+
+    // Smart type detection from body content
+    val inferredType = remember(body) { inferTypeFromBody(body) }
+
+    LaunchedEffect(Unit) {
+        titleFocusRequester.requestFocus()
     }
 
     DisposableEffect(Unit) {
@@ -1640,169 +1664,257 @@ private fun QuickAddSheet(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
             .padding(bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(
-            text = "Quick add",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+        // Header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            LifeItemType.entries.forEach { type ->
-                FilterChip(
-                    selected = selectedType == type,
-                    onClick = { selectedType = type },
-                    label = { Text(type.label) },
-                    leadingIcon = {
-                        Icon(type.icon(), contentDescription = null, modifier = Modifier.size(18.dp))
-                    },
+            Text(
+                text = "Quick add",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            IconButton(onClick = onDismiss) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Close",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
 
+        // Type selector
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                LifeItemType.entries.forEach { type ->
+                    val isSelected = selectedType == type
+                    val containerColor = if (isSelected) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surface
+                    }
+                    val contentColor = if (isSelected) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(containerColor)
+                            .clickable { selectedType = type }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = type.icon(),
+                                contentDescription = type.label,
+                                tint = contentColor,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = type.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = contentColor,
+                            )
+                        }
+                    }
+                }
+            }
+
+            AnimatedVisibility(
+                visible = inferredType != null && inferredType != selectedType,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Detected ${inferredType?.label ?: ""}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    TextButton(
+                        onClick = { inferredType?.let { selectedType = it } },
+                    ) {
+                        Text("Switch")
+                    }
+                }
+            }
+        }
+
+        // Title
         OutlinedTextField(
             value = title,
-            onValueChange = { title = it },
-            modifier = Modifier.fillMaxWidth(),
+            onValueChange = { if (it.length <= 120) title = it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(titleFocusRequester),
             singleLine = true,
             label = { Text("Title") },
+            supportingText = {
+                Text(
+                    text = "${title.length}/120",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (title.length >= 100) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            },
         )
+
+        // Body
         OutlinedTextField(
             value = body,
             onValueChange = {
-                body = it
-                onBodyChanged(it)
+                if (it.length <= 2000) {
+                    body = it
+                    onBodyChanged(it)
+                }
             },
             modifier = Modifier.fillMaxWidth(),
             minLines = 3,
+            maxLines = 6,
             label = { Text("Details") },
             placeholder = {
                 Text("Tip: add image/video URL, or geo:lat,lon for map previews")
             },
+            supportingText = {
+                Text(
+                    text = "${body.length}/2000",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (body.length >= 1800) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            },
         )
 
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            AssistChip(
-                onClick = {
-                    if (hasCameraPermission(context)) {
-                        mediaLauncher.launchCamera()
-                    } else {
-                        mediaLauncher.requestCameraPermissionIfNeeded()
+        // Attachments toolbar
+        QuickAddAttachmentToolbar(
+            isRecordingAudio = isRecordingAudio,
+            onCamera = {
+                if (hasCameraPermission(context)) {
+                    mediaLauncher.launchCamera()
+                } else {
+                    mediaLauncher.requestCameraPermissionIfNeeded()
+                }
+            },
+            onPhotos = { mediaLauncher.launchPhotoPicker() },
+            onVideo = {
+                if (hasCameraPermission(context)) {
+                    mediaLauncher.launchVideoCamera()
+                } else {
+                    mediaLauncher.requestCameraPermissionIfNeeded()
+                }
+            },
+            onPickVideo = { mediaLauncher.launchVideoPicker() },
+            onAudio = {
+                if (isRecordingAudio) {
+                    audioRecorder.stopRecording()?.let { uri ->
+                        body = uri.toString()
+                        onBodyChanged(uri.toString())
                     }
-                },
-                label = { Text("Camera") },
-                leadingIcon = {
-                    Icon(
-                        Icons.Filled.PhotoCamera,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                },
-            )
-            AssistChip(
-                onClick = { mediaLauncher.launchPhotoPicker() },
-                label = { Text("Photos") },
-                leadingIcon = {
-                    Icon(
-                        Icons.Filled.PhotoLibrary,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                },
-            )
-            AssistChip(
-                onClick = {
-                    if (hasCameraPermission(context)) {
-                        mediaLauncher.launchVideoCamera()
-                    } else {
-                        mediaLauncher.requestCameraPermissionIfNeeded()
-                    }
-                },
-                label = { Text("Video") },
-                leadingIcon = {
-                    Icon(
-                        Icons.Filled.Videocam,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                },
-            )
-            AssistChip(
-                onClick = { mediaLauncher.launchVideoPicker() },
-                label = { Text("Pick video") },
-                leadingIcon = {
-                    Icon(
-                        Icons.Filled.PlayArrow,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                },
-            )
-            AssistChip(
-                onClick = {
-                    if (isRecordingAudio) {
-                        audioRecorder.stopRecording()?.let { uri ->
+                    isRecordingAudio = false
+                } else {
+                    if (hasAudioPermission(context)) {
+                        audioRecorder.startRecording()?.let { uri ->
                             body = uri.toString()
                             onBodyChanged(uri.toString())
                         }
-                        isRecordingAudio = false
+                        isRecordingAudio = true
                     } else {
-                        if (hasAudioPermission(context)) {
-                            audioRecorder.startRecording()?.let { uri ->
-                                body = uri.toString()
-                                onBodyChanged(uri.toString())
-                            }
-                            isRecordingAudio = true
-                        } else {
-                            mediaLauncher.requestAudioPermissionIfNeeded()
-                        }
+                        mediaLauncher.requestAudioPermissionIfNeeded()
                     }
-                },
-                label = { Text(if (isRecordingAudio) "Stop recording" else "Audio") },
-                leadingIcon = {
+                }
+            },
+            onFile = { mediaLauncher.launchFilePicker() },
+            onLocation = {
+                onShowLocationPicker { lat, lon ->
+                    body = "geo:$lat,$lon"
+                    onBodyChanged("geo:$lat,$lon")
+                }
+            },
+        )
+
+        // Attached content preview
+        val attachedUri = remember(body) {
+            body.takeIf {
+                it.startsWith("content://") ||
+                    it.startsWith("file://") ||
+                    it.startsWith("geo:") ||
+                    it.startsWith("http")
+            }
+        }
+        AnimatedVisibility(
+            visible = attachedUri != null,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
+        ) {
+            ElevatedCard(
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                ),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Icon(
-                        if (isRecordingAudio) Icons.Filled.Done else Icons.Filled.Mic,
+                        imageVector = when {
+                            body.startsWith("geo:") -> Icons.Filled.LocationOn
+                            body.startsWith("http") -> Icons.Filled.CloudUpload
+                            else -> Icons.Filled.EditNote
+                        },
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
                     )
-                },
-            )
-            AssistChip(
-                onClick = { mediaLauncher.launchFilePicker() },
-                label = { Text("File") },
-                leadingIcon = {
-                    Icon(
-                        Icons.Filled.EditNote,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
+                    Text(
+                        text = attachedUri?.take(60) ?: "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
                     )
-                },
-            )
-            AssistChip(
-                onClick = {
-                    onShowLocationPicker { lat, lon ->
-                        body = "geo:$lat,$lon"
-                        onBodyChanged("geo:$lat,$lon")
+                    IconButton(
+                        onClick = {
+                            body = ""
+                            onBodyChanged("")
+                        },
+                        modifier = Modifier.size(24.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Clear attachment",
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(16.dp),
+                        )
                     }
-                },
-                label = { Text("Location") },
-                leadingIcon = {
-                    Icon(
-                        Icons.Filled.LocationOn,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                },
-            )
+                }
+            }
         }
 
+        // Tags
         OutlinedTextField(
             value = tags,
             onValueChange = { tags = it },
@@ -1812,115 +1924,373 @@ private fun QuickAddSheet(
             leadingIcon = { Icon(Icons.AutoMirrored.Filled.Label, contentDescription = null) },
         )
 
-        ToggleRow(
-            icon = if (favorite) Icons.Filled.Star else Icons.Filled.StarBorder,
-            label = "Favorite",
-            checked = favorite,
-            onCheckedChange = { favorite = it },
-        )
-        ToggleRow(
-            icon = Icons.Filled.PushPin,
-            label = "Pinned",
-            checked = pinned,
-            onCheckedChange = { pinned = it },
-        )
-        ReminderDateTimeRow(
-            reminderDate = parseDateOrNull(reminderDate),
-            reminderTime = parseTimeOrNull(reminderTime),
-            onDateClick = {
-                showDatePicker(
-                    context = context,
-                    initialDate = parseDateOrNull(reminderDate) ?: LocalDate.now(),
-                    onDateSelected = { selected ->
-                        reminderDate = selected.toString()
+        // Tag suggestions
+        val currentTagSet = parseTags(tags)
+        val suggestions = remember(allTags, currentTagSet) {
+            allTags.filter { it !in currentTagSet }.take(8)
+        }
+        AnimatedVisibility(
+            visible = suggestions.isNotEmpty(),
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
+        ) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                suggestions.forEach { tag ->
+                    InputChip(
+                        selected = false,
+                        onClick = {
+                            tags = if (tags.isBlank()) tag else "$tags, $tag"
+                        },
+                        label = { Text("+$tag") },
+                        modifier = Modifier.height(28.dp),
+                    )
+                }
+            }
+        }
+
+        // Quick properties row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FilledTonalIconButton(
+                onClick = { favorite = !favorite },
+                modifier = Modifier.size(40.dp),
+            ) {
+                Icon(
+                    imageVector = if (favorite) Icons.Filled.Star else Icons.Filled.StarBorder,
+                    contentDescription = if (favorite) "Favorited" else "Favorite",
+                    tint = if (favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            FilledTonalIconButton(
+                onClick = { pinned = !pinned },
+                modifier = Modifier.size(40.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.PushPin,
+                    contentDescription = if (pinned) "Pinned" else "Pin",
+                    tint = if (pinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            Spacer(modifier = Modifier.weight(1f))
+            TextButton(onClick = { showAdvanced = !showAdvanced }) {
+                Text(if (showAdvanced) "Less options" else "More options")
+            }
+        }
+
+        // Reminder card
+        ElevatedCard(
+            colors = CardDefaults.elevatedCardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            ),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                QuickAddSectionTitle(
+                    icon = Icons.Filled.Alarm,
+                    title = "Reminder",
+                )
+                ReminderDateTimeRow(
+                    reminderDate = parseDateOrNull(reminderDate),
+                    reminderTime = parseTimeOrNull(reminderTime),
+                    onDateClick = {
+                        showDatePicker(
+                            context = context,
+                            initialDate = parseDateOrNull(reminderDate) ?: LocalDate.now(),
+                            onDateSelected = { selected ->
+                                reminderDate = selected.toString()
+                                if (reminderTime.isBlank()) {
+                                    reminderTime = DefaultReminderTime.format(TimeFormatter)
+                                }
+                            },
+                        )
+                    },
+                    onTimeClick = {
+                        showTimePicker(
+                            context = context,
+                            initialTime = parseTimeOrNull(reminderTime)
+                                ?: parseTimeOrNull(overrideTime)
+                                ?: DefaultReminderTime,
+                            onTimeSelected = { selected ->
+                                if (reminderDate.isBlank()) {
+                                    reminderDate = LocalDate.now().toString()
+                                }
+                                reminderTime = selected.format(TimeFormatter)
+                            },
+                        )
+                    },
+                    onClear = {
+                        reminderDate = ""
+                        reminderTime = ""
+                    },
+                )
+                QuickReminderPresets(
+                    onToday = {
+                        reminderDate = LocalDate.now().toString()
+                        if (reminderTime.isBlank()) {
+                            reminderTime = DefaultReminderTime.format(TimeFormatter)
+                        }
+                    },
+                    onTomorrow = {
+                        reminderDate = LocalDate.now().plusDays(1).toString()
+                        if (reminderTime.isBlank()) {
+                            reminderTime = DefaultReminderTime.format(TimeFormatter)
+                        }
+                    },
+                    onNextWeek = {
+                        reminderDate = LocalDate.now().plusWeeks(1).toString()
                         if (reminderTime.isBlank()) {
                             reminderTime = DefaultReminderTime.format(TimeFormatter)
                         }
                     },
                 )
-            },
-            onTimeClick = {
-                showTimePicker(
-                    context = context,
-                    initialTime = parseTimeOrNull(reminderTime)
-                        ?: parseTimeOrNull(overrideTime)
-                        ?: DefaultReminderTime,
-                    onTimeSelected = { selected ->
-                        if (reminderDate.isBlank()) {
-                            reminderDate = LocalDate.now().toString()
-                        }
-                        reminderTime = selected.format(TimeFormatter)
-                    },
+            }
+        }
+
+        // Advanced options
+        AnimatedVisibility(
+            visible = showAdvanced,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
+        ) {
+            ElevatedCard(
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                ),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    QuickAddSectionTitle(
+                        icon = Icons.Filled.Tune,
+                        title = "Advanced",
+                    )
+                    ToggleRow(
+                        icon = if (notificationsEnabled) {
+                            Icons.Filled.Notifications
+                        } else {
+                            Icons.Filled.NotificationsOff
+                        },
+                        label = "Notifications",
+                        checked = notificationsEnabled,
+                        onCheckedChange = { notificationsEnabled = it },
+                    )
+                    AnimatedVisibility(
+                        visible = notificationsEnabled,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically(),
+                    ) {
+                        OutlinedTextField(
+                            value = overrideTime,
+                            onValueChange = { overrideTime = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("Time override, HH:mm") },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.AccessTime,
+                                    contentDescription = null,
+                                )
+                            },
+                        )
+                    }
+                    ToggleRow(
+                        icon = Icons.Filled.EventRepeat,
+                        label = "Daily recurrence",
+                        checked = recurring,
+                        onCheckedChange = { recurring = it },
+                    )
+                }
+            }
+        }
+
+        // Save button
+        Button(
+            onClick = {
+                onAdd(
+                    LifeItemDraft(
+                        type = selectedType,
+                        title = title,
+                        body = body,
+                        tags = parseTags(tags),
+                        isFavorite = favorite,
+                        isPinned = pinned,
+                        taskStatus = if (selectedType == LifeItemType.Task) {
+                            TaskStatus.Open
+                        } else {
+                            null
+                        },
+                        reminderAt = parseReminderDateTime(reminderDate, reminderTime),
+                        recurrenceRule = if (recurring) {
+                            RecurrenceRule(RecurrenceFrequency.Daily)
+                        } else {
+                            RecurrenceRule()
+                        },
+                        notificationSettings = ItemNotificationSettings(
+                            enabled = notificationsEnabled,
+                            timeOverride = parseTimeOrNull(overrideTime),
+                        ),
+                    ),
                 )
             },
-            onClear = {
-                reminderDate = ""
-                reminderTime = ""
+            enabled = title.isNotBlank() || body.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Filled.Done, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Save")
+        }
+    }
+}
+
+@Composable
+private fun QuickAddSectionTitle(
+    icon: ImageVector,
+    title: String,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(18.dp),
+        )
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+}
+
+@Composable
+private fun QuickAddAttachmentToolbar(
+    isRecordingAudio: Boolean,
+    onCamera: () -> Unit,
+    onPhotos: () -> Unit,
+    onVideo: () -> Unit,
+    onPickVideo: () -> Unit,
+    onAudio: () -> Unit,
+    onFile: () -> Unit,
+    onLocation: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        listOf(
+            Triple(Icons.Filled.PhotoCamera, "Camera", onCamera),
+            Triple(Icons.Filled.PhotoLibrary, "Photos", onPhotos),
+            Triple(Icons.Filled.Videocam, "Video", onVideo),
+            Triple(Icons.Filled.PlayArrow, "Pick video", onPickVideo),
+            Triple(
+                if (isRecordingAudio) Icons.Filled.Done else Icons.Filled.Mic,
+                if (isRecordingAudio) "Stop" else "Audio",
+                onAudio,
+            ),
+            Triple(Icons.Filled.EditNote, "File", onFile),
+            Triple(Icons.Filled.LocationOn, "Location", onLocation),
+        ).forEach { (icon, desc, action) ->
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                FilledTonalIconButton(
+                    onClick = action,
+                    modifier = Modifier.size(44.dp),
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = desc,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+                Text(
+                    text = desc,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun QuickReminderPresets(
+    onToday: () -> Unit,
+    onTomorrow: () -> Unit,
+    onNextWeek: () -> Unit,
+) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        AssistChip(
+            onClick = onToday,
+            label = { Text("Today") },
+            leadingIcon = {
+                Icon(
+                    Icons.Filled.CalendarMonth,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
             },
         )
-        ToggleRow(
-            icon = if (notificationsEnabled) Icons.Filled.Notifications else Icons.Filled.NotificationsOff,
-            label = "Notifications",
-            checked = notificationsEnabled,
-            onCheckedChange = { notificationsEnabled = it },
+        AssistChip(
+            onClick = onTomorrow,
+            label = { Text("Tomorrow") },
+            leadingIcon = {
+                Icon(
+                    Icons.Filled.CalendarMonth,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+            },
         )
-        if (notificationsEnabled) {
-            OutlinedTextField(
-                value = overrideTime,
-                onValueChange = { overrideTime = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                label = { Text("Time override, HH:mm") },
-                leadingIcon = { Icon(Icons.Filled.AccessTime, contentDescription = null) },
-            )
-        }
-        ToggleRow(
-            icon = Icons.Filled.EventRepeat,
-            label = "Daily recurrence",
-            checked = recurring,
-            onCheckedChange = { recurring = it },
+        AssistChip(
+            onClick = onNextWeek,
+            label = { Text("Next week") },
+            leadingIcon = {
+                Icon(
+                    Icons.Filled.CalendarMonth,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+            },
         )
+    }
+}
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
-        ) {
-            OutlinedButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-            Button(
-                onClick = {
-                    onAdd(
-                        LifeItemDraft(
-                            type = selectedType,
-                            title = title,
-                            body = body,
-                            tags = parseTags(tags),
-                            isFavorite = favorite,
-                            isPinned = pinned,
-                            taskStatus = if (selectedType == LifeItemType.Task) {
-                                TaskStatus.Open
-                            } else {
-                                null
-                            },
-                            reminderAt = parseReminderDateTime(reminderDate, reminderTime),
-                            recurrenceRule = if (recurring) {
-                                RecurrenceRule(RecurrenceFrequency.Daily)
-                            } else {
-                                RecurrenceRule()
-                            },
-                            notificationSettings = ItemNotificationSettings(
-                                enabled = notificationsEnabled,
-                                timeOverride = parseTimeOrNull(overrideTime),
-                            ),
-                        ),
-                    )
-                },
-                enabled = title.isNotBlank() || body.isNotBlank(),
-            ) {
-                Text("Save")
+private fun inferTypeFromBody(body: String): LifeItemType? {
+    val trimmed = body.trim().lowercase()
+    return when {
+        trimmed.startsWith("geo:") -> LifeItemType.Location
+        trimmed.startsWith("http") && Regex("\\.(png|jpe?g|webp|gif|bmp|avif)(\\?\\S*)?$", RegexOption.IGNORE_CASE).containsMatchIn(trimmed) -> LifeItemType.Photo
+        trimmed.startsWith("http") && Regex("\\.(mp4|m4v|webm|mkv|mov|m3u8)(\\?\\S*)?$", RegexOption.IGNORE_CASE).containsMatchIn(trimmed) -> LifeItemType.Video
+        trimmed.startsWith("content://") || trimmed.startsWith("file://") -> {
+            when {
+                Regex("\\.(png|jpe?g|webp|gif|bmp|avif)(\\.enc)?$", RegexOption.IGNORE_CASE).containsMatchIn(trimmed) -> LifeItemType.Photo
+                Regex("\\.(mp4|m4v|webm|mkv|mov)(\\.enc)?$", RegexOption.IGNORE_CASE).containsMatchIn(trimmed) -> LifeItemType.Video
+                Regex("\\.(mp3|aac|wav|ogg|m4a|flac)(\\.enc)?$", RegexOption.IGNORE_CASE).containsMatchIn(trimmed) -> LifeItemType.Audio
+                else -> LifeItemType.Mixed
             }
         }
+        else -> null
     }
 }
 
