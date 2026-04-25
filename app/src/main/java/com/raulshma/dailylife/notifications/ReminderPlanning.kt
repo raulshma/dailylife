@@ -19,6 +19,7 @@ data class ReminderScheduleRequest(
     val windowMinutes: Int,
     val snoozeMinutes: Int,
     val batchNotifications: Boolean,
+    val respectDoNotDisturb: Boolean,
 )
 
 fun LifeItem.nextReminderRequest(
@@ -47,6 +48,7 @@ fun LifeItem.nextReminderRequest(
         snoozeMinutes = (notificationSettings.snoozeMinutes ?: globalSettings.defaultSnoozeMinutes)
             .coerceAtLeast(1),
         batchNotifications = globalSettings.batchNotifications,
+        respectDoNotDisturb = globalSettings.respectDoNotDisturb,
     )
 }
 

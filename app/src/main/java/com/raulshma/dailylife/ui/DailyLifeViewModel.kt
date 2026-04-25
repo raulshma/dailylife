@@ -1,31 +1,60 @@
 package com.raulshma.dailylife.ui
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.raulshma.dailylife.data.DailyLifeRepository
+import com.raulshma.dailylife.data.backup.S3BackupRepository
+import com.raulshma.dailylife.data.RoomDailyLifeStore
+import com.raulshma.dailylife.data.security.MediaEncryptionManager
+import com.raulshma.dailylife.domain.BackupResult
+import com.raulshma.dailylife.domain.BackupSnapshot
 import com.raulshma.dailylife.domain.ItemNotificationSettings
 import com.raulshma.dailylife.domain.LifeItemDraft
 import com.raulshma.dailylife.domain.LifeItemType
 import com.raulshma.dailylife.domain.NotificationSettings
+import com.raulshma.dailylife.domain.S3BackupSettings
 import com.raulshma.dailylife.domain.TaskStatus
+import com.raulshma.dailylife.domain.inferImagePreviewUrl
+import com.raulshma.dailylife.domain.inferVideoPlaybackUrl
 import com.raulshma.dailylife.notifications.ReminderScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.LocalDate
+import java.time.Instant
 import javax.inject.Inject
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 @HiltViewModel
 class DailyLifeViewModel @Inject constructor(
     private val repository: DailyLifeRepository,
     private val reminderScheduler: ReminderScheduler,
+    private val mediaEncryptionManager: MediaEncryptionManager,
+    private val s3BackupRepository: S3BackupRepository,
+    private val roomStore: RoomDailyLifeStore,
+    @ApplicationContext private val context: Context,
 ) : ViewModel() {
     val state = repository.state
+
+    private val _s3BackupSettings = MutableStateFlow(S3BackupSettings())
+    val s3BackupSettings: StateFlow<S3BackupSettings> = _s3BackupSettings.asStateFlow()
+
+    private val _lastBackupResult = MutableStateFlow<BackupResult?>(null)
+    val lastBackupResult: StateFlow<BackupResult?> = _lastBackupResult.asStateFlow()
 
     init {
         repository.rolloverMissedOccurrences()
         syncReminderSchedule()
+        _s3BackupSettings.value = roomStore.loadS3BackupSettings()
     }
 
     fun addItem(draft: LifeItemDraft) {
-        repository.addItem(draft)
+        val encryptedBody = mediaEncryptionManager.encryptMediaInText(draft.body, context)
+        val encryptedDraft = draft.copy(body = encryptedBody)
+        repository.addItem(encryptedDraft)
         syncReminderSchedule()
     }
 
@@ -82,6 +111,33 @@ class DailyLifeViewModel @Inject constructor(
 
     fun clearStorageError() {
         repository.clearStorageError()
+    }
+
+    fun updateS3BackupSettings(settings: S3BackupSettings) {
+        _s3BackupSettings.value = settings
+        roomStore.saveS3BackupSettings(settings)
+    }
+
+    fun performS3Backup() {
+        viewModelScope.launch {
+            val currentState = repository.state.value
+            val settings = _s3BackupSettings.value
+            val snapshot = BackupSnapshot(
+                items = currentState.items,
+                notificationSettings = currentState.notificationSettings,
+                exportedAt = Instant.now(),
+            )
+            val mediaPaths: List<String> = currentState.items
+                .flatMap { item ->
+                    listOfNotNull(item.inferImagePreviewUrl(), item.inferVideoPlaybackUrl())
+                        .filter { it.startsWith("file://") || it.startsWith("content://") }
+                }
+            _lastBackupResult.value = s3BackupRepository.performBackup(snapshot, mediaPaths, settings)
+        }
+    }
+
+    fun clearBackupResult() {
+        _lastBackupResult.value = null
     }
 
     private fun syncReminderSchedule() {

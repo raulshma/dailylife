@@ -9,8 +9,9 @@ import androidx.room.TypeConverters
         LifeItemEntity::class,
         CompletionRecordEntity::class,
         NotificationSettingsEntity::class,
+        S3BackupSettingsEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)

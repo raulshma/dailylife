@@ -175,6 +175,32 @@ data class StorageError(
     val message: String,
 )
 
+private val ImageUrlPattern =
+    Regex("""https?://\S+\.(?:png|jpe?g|webp|gif|bmp|avif)(?:\?\S*)?""", RegexOption.IGNORE_CASE)
+private val ContentImagePattern =
+    Regex("""(?:content|file)://\S+\.(?:png|jpe?g|webp|gif|bmp|avif)(?:\.enc)?""", RegexOption.IGNORE_CASE)
+private val VideoUrlPattern =
+    Regex("""https?://\S+\.(?:mp4|m4v|webm|mkv|mov|m3u8)(?:\?\S*)?""", RegexOption.IGNORE_CASE)
+private val ContentVideoPattern =
+    Regex("""(?:content|file)://\S+\.(?:mp4|m4v|webm|mkv|mov)(?:\.enc)?""", RegexOption.IGNORE_CASE)
+
+fun LifeItem.inferImagePreviewUrl(): String? {
+    val source = listOf(title, body).joinToString(" ")
+    return ImageUrlPattern.find(source)?.value
+        ?: ContentImagePattern.find(source)?.value
+        ?: Regex("""https?://\S+""").find(source)?.value?.takeIf { url ->
+            url.contains("picsum", ignoreCase = true) ||
+                url.contains("unsplash", ignoreCase = true) ||
+                url.contains("images", ignoreCase = true)
+        }
+}
+
+fun LifeItem.inferVideoPlaybackUrl(): String? {
+    val source = listOf(title, body).joinToString(" ")
+    return VideoUrlPattern.find(source)?.value
+        ?: ContentVideoPattern.find(source)?.value
+}
+
 data class DailyLifeFilters(
     val query: String = "",
     val selectedType: LifeItemType? = null,

@@ -5,6 +5,7 @@ import com.raulshma.dailylife.data.db.DailyLifeDao
 import com.raulshma.dailylife.data.db.DailyLifeDatabase
 import com.raulshma.dailylife.data.db.LifeItemEntity
 import com.raulshma.dailylife.data.db.NotificationSettingsEntity
+import com.raulshma.dailylife.data.db.S3BackupSettingsEntity
 import com.raulshma.dailylife.domain.CompletionRecord
 import com.raulshma.dailylife.domain.ItemNotificationSettings
 import com.raulshma.dailylife.domain.LifeItem
@@ -12,6 +13,7 @@ import com.raulshma.dailylife.domain.LifeItemType
 import com.raulshma.dailylife.domain.NotificationSettings
 import com.raulshma.dailylife.domain.RecurrenceFrequency
 import com.raulshma.dailylife.domain.RecurrenceRule
+import com.raulshma.dailylife.domain.S3BackupSettings
 import com.raulshma.dailylife.domain.TaskStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -142,4 +144,39 @@ class RoomDailyLifeStore(
             batchNotifications = batchNotifications,
             respectDoNotDisturb = respectDoNotDisturb,
         )
+
+    fun loadS3BackupSettings(): S3BackupSettings = runBlocking(Dispatchers.IO) {
+        dao.getS3BackupSettings()?.toS3BackupSettings() ?: S3BackupSettings()
+    }
+
+    fun saveS3BackupSettings(settings: S3BackupSettings) = runBlocking(Dispatchers.IO) {
+        dao.insertS3BackupSettings(settings.toEntity())
+    }
+
+    private fun S3BackupSettings.toEntity(): S3BackupSettingsEntity = S3BackupSettingsEntity(
+        id = 0,
+        enabled = enabled,
+        endpoint = endpoint,
+        bucketName = bucketName,
+        region = region,
+        accessKeyId = accessKeyId,
+        secretAccessKey = secretAccessKey,
+        pathPrefix = pathPrefix,
+        autoBackup = autoBackup,
+        backupFrequencyHours = backupFrequencyHours.coerceAtLeast(1),
+        encryptBackups = encryptBackups,
+    )
+
+    private fun S3BackupSettingsEntity.toS3BackupSettings(): S3BackupSettings = S3BackupSettings(
+        enabled = enabled,
+        endpoint = endpoint,
+        bucketName = bucketName,
+        region = region,
+        accessKeyId = accessKeyId,
+        secretAccessKey = secretAccessKey,
+        pathPrefix = pathPrefix,
+        autoBackup = autoBackup,
+        backupFrequencyHours = backupFrequencyHours.coerceAtLeast(1),
+        encryptBackups = encryptBackups,
+    )
 }

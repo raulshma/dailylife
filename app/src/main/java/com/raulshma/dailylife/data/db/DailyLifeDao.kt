@@ -17,6 +17,9 @@ interface DailyLifeDao {
     @Query("SELECT * FROM notification_settings WHERE id = 0")
     suspend fun getNotificationSettings(): NotificationSettingsEntity?
 
+    @Query("SELECT * FROM s3_backup_settings WHERE id = 0")
+    suspend fun getS3BackupSettings(): S3BackupSettingsEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertItem(item: LifeItemEntity)
 
@@ -29,6 +32,9 @@ interface DailyLifeDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNotificationSettings(settings: NotificationSettingsEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertS3BackupSettings(settings: S3BackupSettingsEntity)
+
     @Query("DELETE FROM life_items")
     suspend fun deleteAllItems()
 
@@ -37,6 +43,9 @@ interface DailyLifeDao {
 
     @Query("DELETE FROM notification_settings")
     suspend fun deleteAllNotificationSettings()
+
+    @Query("DELETE FROM s3_backup_settings")
+    suspend fun deleteAllS3BackupSettings()
 
     @Transaction
     suspend fun replaceAll(

@@ -138,6 +138,26 @@ class DailyLifeReminderReceiver : BroadcastReceiver() {
             ?: LocalDateTime.now()
         createReminderChannel(context)
 
+        val respectDoNotDisturb = intent.getBooleanExtra(ExtraRespectDoNotDisturb, true)
+        if (respectDoNotDisturb && isDoNotDisturbActive(context)) {
+            // Skip posting and reschedule for later when DND ends
+            AndroidReminderScheduler(context).schedule(
+                ReminderScheduleRequest(
+                    itemId = itemId,
+                    title = intent.getStringExtra(ExtraTitle).orEmpty().ifBlank { "DailyLife reminder" },
+                    body = intent.getStringExtra(ExtraBody).orEmpty(),
+                    triggerAt = dueAt.plusMinutes(15),
+                    dueAt = dueAt.plusMinutes(15),
+                    windowMinutes = 0,
+                    snoozeMinutes = intent.getIntExtra(ExtraSnoozeMinutes, DefaultSnoozeMinutes)
+                        .coerceAtLeast(1),
+                    batchNotifications = intent.getBooleanExtra(ExtraBatchNotifications, false),
+                    respectDoNotDisturb = respectDoNotDisturb,
+                ),
+            )
+            return
+        }
+
         if (canPostNotifications(context)) {
             val title = intent.getStringExtra(ExtraTitle).orEmpty().ifBlank { "DailyLife reminder" }
             val body = intent.getStringExtra(ExtraBody).orEmpty()
@@ -159,6 +179,7 @@ class DailyLifeReminderReceiver : BroadcastReceiver() {
                 putExtra(ExtraBody, body)
                 putExtra(ExtraSnoozeMinutes, snoozeMinutes)
                 putExtra(ExtraBatchNotifications, batchNotifications)
+                putExtra(ExtraRespectDoNotDisturb, respectDoNotDisturb)
             }
             val snoozePendingIntent = PendingIntent.getBroadcast(
                 context,
@@ -188,9 +209,44 @@ class DailyLifeReminderReceiver : BroadcastReceiver() {
                 .build()
 
             NotificationManagerCompat.from(context).notify(itemId.toNotificationId(), notification)
+
+            if (batchNotifications) {
+                postBatchSummary(context, contentIntent)
+            }
         }
 
         rescheduleStoredReminders(context, dueAt.plusSeconds(1))
+    }
+
+    private fun postBatchSummary(context: Context, contentIntent: PendingIntent) {
+        val notificationManager = context.getSystemService(NotificationManager::class.java)
+        val activeNotifications = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            notificationManager.activeNotifications.filter { it.groupKey.contains(ReminderGroupKey) }
+        } else {
+            emptyList()
+        }
+        val count = activeNotifications.size.coerceAtLeast(1)
+        val titles = activeNotifications.take(5).map { it.notification.extras.getString(NotificationCompat.EXTRA_TITLE).orEmpty() }
+        val inboxStyle = NotificationCompat.InboxStyle()
+            .setBigContentTitle("$count DailyLife reminders")
+        titles.forEach { inboxStyle.addLine(it) }
+        if (activeNotifications.size > 5) {
+            inboxStyle.addLine("+${activeNotifications.size - 5} more")
+        }
+
+        val summary = NotificationCompat.Builder(context, ReminderChannelId)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle("DailyLife reminders")
+            .setContentText("$count reminders")
+            .setStyle(inboxStyle)
+            .setContentIntent(contentIntent)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setGroup(ReminderGroupKey)
+            .setGroupSummary(true)
+            .build()
+
+        NotificationManagerCompat.from(context).notify(ReminderSummaryId, summary)
     }
 
     private fun snoozeReminder(context: Context, intent: Intent) {
@@ -212,6 +268,7 @@ class DailyLifeReminderReceiver : BroadcastReceiver() {
                 windowMinutes = 0,
                 snoozeMinutes = snoozeMinutes,
                 batchNotifications = intent.getBooleanExtra(ExtraBatchNotifications, false),
+                respectDoNotDisturb = intent.getBooleanExtra(ExtraRespectDoNotDisturb, true),
             ),
         )
     }
@@ -226,6 +283,7 @@ private fun ReminderScheduleRequest.toIntent(context: Context): Intent =
         putExtra(ExtraDueAt, dueAt.toString())
         putExtra(ExtraSnoozeMinutes, snoozeMinutes)
         putExtra(ExtraBatchNotifications, batchNotifications)
+        putExtra(ExtraRespectDoNotDisturb, respectDoNotDisturb)
     }
 
 private fun rescheduleStoredReminders(
@@ -262,6 +320,12 @@ private fun createReminderChannel(context: Context) {
     notificationManager.createNotificationChannel(channel)
 }
 
+private fun isDoNotDisturbActive(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return false
+    val notificationManager = context.getSystemService(NotificationManager::class.java)
+    return notificationManager.currentInterruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL
+}
+
 private fun canPostNotifications(context: Context): Boolean {
     val permissionGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
         ContextCompat.checkSelfPermission(
@@ -295,8 +359,10 @@ private const val ExtraBody = "extra_body"
 private const val ExtraDueAt = "extra_due_at"
 private const val ExtraSnoozeMinutes = "extra_snooze_minutes"
 private const val ExtraBatchNotifications = "extra_batch_notifications"
+private const val ExtraRespectDoNotDisturb = "extra_respect_dnd"
 private const val ReminderChannelId = "daily_life_reminders"
 private const val ReminderGroupKey = "daily_life_reminders"
+private const val ReminderSummaryId = 0
 private const val DefaultSnoozeMinutes = 10
 private const val MinimumWindowMillis = 10 * 60_000L
 private const val SnoozeRequestMask = 0x40000000

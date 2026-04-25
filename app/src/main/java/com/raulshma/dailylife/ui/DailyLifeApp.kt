@@ -44,10 +44,12 @@ import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.EventRepeat
@@ -116,7 +118,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.runtime.remember
 import coil.compose.AsyncImage
+import com.raulshma.dailylife.data.media.AudioWaveformGenerator
+import com.raulshma.dailylife.data.media.MediaThumbnailGenerator
+import com.raulshma.dailylife.data.security.MediaEncryptionManager
 import com.raulshma.dailylife.domain.DailyLifeFilters
 import com.raulshma.dailylife.domain.DailyLifeState
 import com.raulshma.dailylife.domain.ItemNotificationSettings
@@ -127,8 +133,11 @@ import com.raulshma.dailylife.domain.NotificationSettings
 import com.raulshma.dailylife.domain.OccurrenceStats
 import com.raulshma.dailylife.domain.RecurrenceFrequency
 import com.raulshma.dailylife.domain.RecurrenceRule
+import com.raulshma.dailylife.domain.S3BackupSettings
 import com.raulshma.dailylife.domain.StorageError
 import com.raulshma.dailylife.domain.TaskStatus
+import com.raulshma.dailylife.domain.inferImagePreviewUrl
+import com.raulshma.dailylife.domain.inferVideoPlaybackUrl
 import com.raulshma.dailylife.ui.capture.AudioRecorder
 import com.raulshma.dailylife.ui.capture.LocationPickerSheet
 import com.raulshma.dailylife.ui.capture.hasAudioPermission
@@ -156,6 +165,7 @@ private enum class HomeTab(
     Photos(label = "Photos", icon = Icons.Filled.PhotoLibrary),
     Search(label = "Search", icon = Icons.Filled.Search),
     Collections(label = "Collections", icon = Icons.Filled.Category),
+    Graph(label = "Graph", icon = Icons.Filled.AccountTree),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -165,13 +175,22 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showQuickAdd by rememberSaveable { mutableStateOf(false) }
     var showPreferences by rememberSaveable { mutableStateOf(false) }
+    var showS3BackupSettings by rememberSaveable { mutableStateOf(false) }
     var showLocationPicker by rememberSaveable { mutableStateOf(false) }
     var selectedItemId by rememberSaveable { mutableStateOf<Long?>(null) }
     var selectedTabName by rememberSaveable { mutableStateOf(HomeTab.Photos.name) }
     val selectedTab = HomeTab.entries.firstOrNull { it.name == selectedTabName } ?: HomeTab.Photos
     val selectedItem = state.items.firstOrNull { it.id == selectedItemId }
+    val s3Settings by viewModel.s3BackupSettings.collectAsStateWithLifecycle()
+    val lastBackupResult by viewModel.lastBackupResult.collectAsStateWithLifecycle()
     var quickAddBody by rememberSaveable { mutableStateOf("") }
     var quickAddLocationCallback by remember { mutableStateOf<((Double, Double) -> Unit)?>(null) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            MediaEncryptionManager(context).clearDecryptedCache()
+        }
+    }
 
     val mediaLauncher = rememberMediaCaptureLauncher(
         context = context,
@@ -220,6 +239,12 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                         Icon(
                             imageVector = Icons.Filled.Search,
                             contentDescription = "Open search",
+                        )
+                    }
+                    IconButton(onClick = { showS3BackupSettings = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.CloudUpload,
+                            contentDescription = "Cloud backup settings",
                         )
                     }
                     IconButton(onClick = { showPreferences = true }) {
@@ -296,6 +321,14 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                     },
                 )
             }
+
+            HomeTab.Graph -> {
+                GraphViewScreen(
+                    items = state.visibleItems,
+                    contentPadding = paddingValues,
+                    onItemSelected = { selectedItemId = it },
+                )
+            }
         }
     }
 
@@ -348,6 +381,21 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                     showPreferences = false
                 },
                 onDismiss = { showPreferences = false },
+            )
+        }
+    }
+
+    if (showS3BackupSettings) {
+        ModalBottomSheet(onDismissRequest = { showS3BackupSettings = false }) {
+            S3BackupSettingsSheet(
+                settings = s3Settings,
+                lastResult = lastBackupResult,
+                onSave = {
+                    viewModel.updateS3BackupSettings(it)
+                },
+                onBackup = { viewModel.performS3Backup() },
+                onClearResult = { viewModel.clearBackupResult() },
+                onDismiss = { showS3BackupSettings = false },
             )
         }
     }
@@ -531,7 +579,7 @@ private fun CollectionCard(
             ) {
                 Icon(
                     imageVector = icon,
-                    contentDescription = null,
+                    contentDescription = title,
                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
                 )
             }
@@ -653,7 +701,7 @@ private fun TextPreview(item: LifeItem) {
 
 @Composable
 private fun ImagePreview(item: LifeItem) {
-    val imageUrl = item.inferImagePreviewUrl()
+    val imageUrl = rememberDecryptedMediaUri(item.inferImagePreviewUrl())
     if (imageUrl != null) {
         AsyncImage(
             model = imageUrl,
@@ -670,7 +718,7 @@ private fun ImagePreview(item: LifeItem) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(
                     imageVector = Icons.Filled.PhotoCamera,
-                    contentDescription = null,
+                    contentDescription = "Photo placeholder",
                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
                 )
                 Spacer(modifier = Modifier.height(6.dp))
@@ -686,11 +734,13 @@ private fun ImagePreview(item: LifeItem) {
 
 @Composable
 private fun VideoPreview(item: LifeItem) {
-    val imageUrl = item.inferImagePreviewUrl()
+    val imageUrl = rememberDecryptedMediaUri(item.inferImagePreviewUrl())
+    val thumbUrl = rememberVideoThumbnail(item)
+    val displayUrl = imageUrl ?: thumbUrl
     Box(modifier = Modifier.fillMaxSize()) {
-        if (imageUrl != null) {
+        if (displayUrl != null) {
             AsyncImage(
-                model = imageUrl,
+                model = displayUrl,
                 contentDescription = "Video preview",
                 modifier = Modifier.fillMaxSize(),
             )
@@ -711,7 +761,7 @@ private fun VideoPreview(item: LifeItem) {
         ) {
             Icon(
                 imageVector = Icons.Filled.PlayArrow,
-                contentDescription = null,
+                contentDescription = "Play video",
                 tint = Color.White,
                 modifier = Modifier.size(20.dp),
             )
@@ -726,8 +776,13 @@ private fun VideoPreview(item: LifeItem) {
 
 @Composable
 private fun AudioPreview(item: LifeItem) {
-    val barHeights = remember(item.id) {
-        listOf(8.dp, 16.dp, 10.dp, 22.dp, 14.dp, 20.dp, 12.dp, 18.dp)
+    val waveform = rememberAudioWaveform(item)
+    val barHeights = if (waveform.isNotEmpty()) {
+        waveform.map { (16.dp + (it * 24).dp).coerceAtLeast(4.dp) }
+    } else {
+        remember(item.id) {
+            listOf(8.dp, 16.dp, 10.dp, 22.dp, 14.dp, 20.dp, 12.dp, 18.dp)
+        }
     }
     Column(
         modifier = Modifier
@@ -742,7 +797,7 @@ private fun AudioPreview(item: LifeItem) {
         ) {
             Icon(
                 imageVector = Icons.Filled.Mic,
-                contentDescription = null,
+                contentDescription = "Audio recording",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
@@ -1454,7 +1509,7 @@ private fun TypeBadge(type: LifeItemType) {
     ) {
         Icon(
             imageVector = type.icon(),
-            contentDescription = null,
+            contentDescription = type.label,
             tint = MaterialTheme.colorScheme.onPrimaryContainer,
         )
     }
@@ -2210,7 +2265,7 @@ private fun EmptyTimeline() {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(
                 imageVector = Icons.Filled.Search,
-                contentDescription = null,
+                contentDescription = "No results",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(42.dp),
             )
@@ -2243,21 +2298,48 @@ private fun LifeItemType.isMediaLike(): Boolean =
         this == LifeItemType.Location ||
         this == LifeItemType.Mixed
 
-private val ImageUrlPattern =
-    Regex("""https?://\S+\.(?:png|jpe?g|webp|gif|bmp|avif)(?:\?\S*)?""", RegexOption.IGNORE_CASE)
-private val ContentImagePattern =
-    Regex("""(?:content|file)://\S+\.(?:png|jpe?g|webp|gif|bmp|avif)""", RegexOption.IGNORE_CASE)
-private val GenericUrlPattern = Regex("""https?://\S+""")
-private val VideoUrlPattern =
-    Regex("""https?://\S+\.(?:mp4|m4v|webm|mkv|mov|m3u8)(?:\?\S*)?""", RegexOption.IGNORE_CASE)
-private val ContentVideoPattern =
-    Regex("""(?:content|file)://\S+\.(?:mp4|m4v|webm|mkv|mov)""", RegexOption.IGNORE_CASE)
 private val GeoPattern =
     Regex("""geo:\s*([-+]?\d{1,2}(?:\.\d+)?),\s*([-+]?\d{1,3}(?:\.\d+)?)""", RegexOption.IGNORE_CASE)
 private val LatLonPattern =
     Regex("""([-+]?\d{1,2}(?:\.\d+)?)\s*[, ]\s*([-+]?\d{1,3}(?:\.\d+)?)""")
 private val OsmMlatPattern =
     Regex("""[?&]mlat=([-+]?\d{1,2}(?:\.\d+)?).*?[?&]mlon=([-+]?\d{1,3}(?:\.\d+)?)""", RegexOption.IGNORE_CASE)
+
+@Composable
+private fun rememberDecryptedMediaUri(uriString: String?): String? {
+    val context = LocalContext.current
+    return remember(uriString) {
+        if (uriString == null) return@remember null
+        if (uriString.endsWith(".enc")) {
+            val manager = MediaEncryptionManager(context)
+            manager.decryptToCache(android.net.Uri.parse(uriString), context)?.toString()
+        } else {
+            uriString
+        }
+    }
+}
+
+@Composable
+private fun rememberVideoThumbnail(item: LifeItem): String? {
+    val context = LocalContext.current
+    return remember(item.id, item.body) {
+        val videoUrl = item.inferVideoPlaybackUrl()
+        if (videoUrl == null) return@remember null
+        val generator = MediaThumbnailGenerator(context)
+        generator.generateVideoThumbnail(android.net.Uri.parse(videoUrl), context)?.toString()
+    }
+}
+
+@Composable
+private fun rememberAudioWaveform(item: LifeItem): List<Float> {
+    return remember(item.id, item.body) {
+        val audioUrl = item.inferVideoPlaybackUrl()
+            ?: item.body.split(" ").firstOrNull { it.startsWith("content://") || it.startsWith("file://") }
+        if (audioUrl == null) return@remember emptyList()
+        val generator = AudioWaveformGenerator()
+        generator.generateWaveform(android.net.Uri.parse(audioUrl), barCount = 8) ?: emptyList()
+    }
+}
 
 private fun LifeItem.inferMosaicHeight(): Dp {
     val bucket = ((id % 7L) + 7L) % 7L
@@ -2269,23 +2351,6 @@ private fun LifeItem.inferMosaicHeight(): Dp {
         LifeItemType.Mixed -> if (bucket % 2L == 0L) 228.dp else 172.dp
         else -> if (body.length > 120) 198.dp else 152.dp
     }
-}
-
-private fun LifeItem.inferImagePreviewUrl(): String? {
-    val source = listOf(title, body).joinToString(" ")
-    return ImageUrlPattern.find(source)?.value
-        ?: ContentImagePattern.find(source)?.value
-        ?: GenericUrlPattern.find(source)?.value?.takeIf { url ->
-            url.contains("picsum", ignoreCase = true) ||
-                url.contains("unsplash", ignoreCase = true) ||
-                url.contains("images", ignoreCase = true)
-        }
-}
-
-private fun LifeItem.inferVideoPlaybackUrl(): String? {
-    val source = listOf(title, body).joinToString(" ")
-    return VideoUrlPattern.find(source)?.value
-        ?: ContentVideoPattern.find(source)?.value
 }
 
 private fun LifeItem.inferLocationPreview(): Pair<Double, Double>? {
@@ -2334,6 +2399,204 @@ private fun parseReminderDateTime(dateInput: String, timeInput: String): LocalDa
     val date = parseDateOrNull(dateInput) ?: return null
     val time = parseTimeOrNull(timeInput) ?: DefaultReminderTime
     return LocalDateTime.of(date, time)
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun S3BackupSettingsSheet(
+    settings: S3BackupSettings,
+    lastResult: com.raulshma.dailylife.domain.BackupResult?,
+    onSave: (S3BackupSettings) -> Unit,
+    onBackup: () -> Unit,
+    onClearResult: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var enabled by rememberSaveable(settings) { mutableStateOf(settings.enabled) }
+    var endpoint by rememberSaveable(settings) { mutableStateOf(settings.endpoint) }
+    var bucketName by rememberSaveable(settings) { mutableStateOf(settings.bucketName) }
+    var region by rememberSaveable(settings) { mutableStateOf(settings.region) }
+    var accessKeyId by rememberSaveable(settings) { mutableStateOf(settings.accessKeyId) }
+    var secretAccessKey by rememberSaveable(settings) { mutableStateOf(settings.secretAccessKey) }
+    var pathPrefix by rememberSaveable(settings) { mutableStateOf(settings.pathPrefix) }
+    var autoBackup by rememberSaveable(settings) { mutableStateOf(settings.autoBackup) }
+    var backupFrequencyHours by rememberSaveable(settings) {
+        mutableStateOf(settings.backupFrequencyHours.toString())
+    }
+    var encryptBackups by rememberSaveable(settings) { mutableStateOf(settings.encryptBackups) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Text(
+            text = "Cloud backup (BYOK S3)",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+
+        ToggleRow(
+            icon = Icons.Filled.CloudUpload,
+            label = "Enable S3 backup",
+            checked = enabled,
+            onCheckedChange = { enabled = it },
+        )
+
+        OutlinedTextField(
+            value = endpoint,
+            onValueChange = { endpoint = it },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("S3 endpoint URL") },
+            placeholder = { Text("https://s3.amazonaws.com") },
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedTextField(
+                value = bucketName,
+                onValueChange = { bucketName = it },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                label = { Text("Bucket") },
+            )
+            OutlinedTextField(
+                value = region,
+                onValueChange = { region = it },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                label = { Text("Region") },
+            )
+        }
+
+        OutlinedTextField(
+            value = accessKeyId,
+            onValueChange = { accessKeyId = it },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("Access key ID") },
+        )
+
+        OutlinedTextField(
+            value = secretAccessKey,
+            onValueChange = { secretAccessKey = it },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("Secret access key") },
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+        )
+
+        OutlinedTextField(
+            value = pathPrefix,
+            onValueChange = { pathPrefix = it },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("Path prefix") },
+        )
+
+        ToggleRow(
+            icon = Icons.Filled.EventRepeat,
+            label = "Auto-backup",
+            checked = autoBackup,
+            onCheckedChange = { autoBackup = it },
+        )
+
+        if (autoBackup) {
+            OutlinedTextField(
+                value = backupFrequencyHours,
+                onValueChange = { backupFrequencyHours = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text("Frequency (hours)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
+        }
+
+        ToggleRow(
+            icon = Icons.Filled.CheckCircle,
+            label = "Encrypt backups",
+            checked = encryptBackups,
+            onCheckedChange = { encryptBackups = it },
+        )
+
+        lastResult?.let { result ->
+            ElevatedCard(
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = when (result) {
+                        is com.raulshma.dailylife.domain.BackupResult.Success ->
+                            MaterialTheme.colorScheme.primaryContainer
+                        is com.raulshma.dailylife.domain.BackupResult.Failure ->
+                            MaterialTheme.colorScheme.errorContainer
+                    },
+                ),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = when (result) {
+                            is com.raulshma.dailylife.domain.BackupResult.Success -> "Backup started"
+                            is com.raulshma.dailylife.domain.BackupResult.Failure -> "Backup failed"
+                        },
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = when (result) {
+                            is com.raulshma.dailylife.domain.BackupResult.Success ->
+                                "${result.itemsBackedUp} items, ${result.mediaFilesBackedUp} media files queued."
+                            is com.raulshma.dailylife.domain.BackupResult.Failure -> result.reason
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    TextButton(onClick = onClearResult) {
+                        Text("Dismiss")
+                    }
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
+        ) {
+            OutlinedButton(onClick = onDismiss) {
+                Text("Close")
+            }
+            Button(
+                onClick = {
+                    onSave(
+                        S3BackupSettings(
+                            enabled = enabled,
+                            endpoint = endpoint,
+                            bucketName = bucketName,
+                            region = region,
+                            accessKeyId = accessKeyId,
+                            secretAccessKey = secretAccessKey,
+                            pathPrefix = pathPrefix.ifBlank { "dailylife" },
+                            autoBackup = autoBackup,
+                            backupFrequencyHours = backupFrequencyHours.toIntOrNull()?.coerceAtLeast(1)
+                                ?: settings.backupFrequencyHours,
+                            encryptBackups = encryptBackups,
+                        ),
+                    )
+                },
+            ) {
+                Text("Save")
+            }
+            Button(
+                onClick = onBackup,
+                enabled = enabled && endpoint.isNotBlank() && bucketName.isNotBlank() &&
+                    accessKeyId.isNotBlank() && secretAccessKey.isNotBlank(),
+            ) {
+                Text("Backup now")
+            }
+        }
+    }
 }
 
 private fun showDatePicker(
