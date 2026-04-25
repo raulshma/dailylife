@@ -68,6 +68,15 @@ class InMemoryDailyLifeRepository(
         updateFilters { it.copy(selectedTag = tag) }
     }
 
+    override fun updateDateRange(start: LocalDate?, end: LocalDate?) {
+        updateFilters {
+            it.copy(
+                dateRangeStart = start,
+                dateRangeEnd = end,
+            )
+        }
+    }
+
     override fun toggleFavoritesOnly() {
         updateFilters { it.copy(favoritesOnly = !it.favoritesOnly) }
     }

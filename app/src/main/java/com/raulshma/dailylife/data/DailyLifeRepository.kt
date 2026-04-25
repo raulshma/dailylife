@@ -22,6 +22,8 @@ interface DailyLifeRepository {
 
     fun selectTag(tag: String?)
 
+    fun updateDateRange(start: LocalDate?, end: LocalDate?)
+
     fun toggleFavoritesOnly()
 
     fun clearFilters()

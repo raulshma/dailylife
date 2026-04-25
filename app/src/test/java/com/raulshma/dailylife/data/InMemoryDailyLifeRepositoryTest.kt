@@ -1,6 +1,7 @@
 package com.raulshma.dailylife.data
 
 import com.raulshma.dailylife.domain.ItemNotificationSettings
+import com.raulshma.dailylife.domain.LifeItem
 import com.raulshma.dailylife.domain.LifeItemDraft
 import com.raulshma.dailylife.domain.LifeItemType
 import com.raulshma.dailylife.domain.NotificationSettings
@@ -66,6 +67,45 @@ class InMemoryDailyLifeRepositoryTest {
     }
 
     @Test
+    fun filtersByInclusiveDateRange() {
+        val repository = InMemoryDailyLifeRepository(
+            seedItems = listOf(
+                LifeItem(
+                    id = 1L,
+                    type = LifeItemType.Note,
+                    title = "Outside range",
+                    body = "",
+                    createdAt = LocalDateTime.of(2026, 4, 23, 10, 0),
+                ),
+                LifeItem(
+                    id = 2L,
+                    type = LifeItemType.Note,
+                    title = "Range start",
+                    body = "",
+                    createdAt = LocalDateTime.of(2026, 4, 24, 10, 0),
+                ),
+                LifeItem(
+                    id = 3L,
+                    type = LifeItemType.Note,
+                    title = "Range end",
+                    body = "",
+                    createdAt = LocalDateTime.of(2026, 4, 25, 10, 0),
+                ),
+            ),
+        )
+
+        repository.updateDateRange(
+            start = LocalDate.of(2026, 4, 24),
+            end = LocalDate.of(2026, 4, 25),
+        )
+
+        assertEquals(
+            listOf("Range end", "Range start"),
+            repository.state.value.visibleItems.map { it.title },
+        )
+    }
+
+    @Test
     fun markOccurrenceCompletedStoresHistoryAndCompletesTask() {
         val repository = InMemoryDailyLifeRepository(seedItems = emptyList())
         val item = repository.addItem(
@@ -113,6 +153,7 @@ class InMemoryDailyLifeRepositoryTest {
                 title = "Stretch",
                 body = "Ten minutes after coffee.",
                 tags = setOf(" Health ", "#Morning"),
+                reminderAt = LocalDateTime.of(2026, 4, 26, 9, 30),
             ),
         )
 
@@ -157,6 +198,7 @@ class InMemoryDailyLifeRepositoryTest {
         assertTrue(restoredItem.isFavorite)
         assertTrue(restoredItem.isPinned)
         assertEquals(TaskStatus.Done, restoredItem.taskStatus)
+        assertEquals(LocalDateTime.of(2026, 4, 26, 9, 30), restoredItem.reminderAt)
         assertEquals(LocalTime.of(7, 45), restoredItem.notificationSettings.timeOverride)
         assertFalse(restoredItem.notificationSettings.enabled)
         assertEquals(15, restoredItem.notificationSettings.flexibleWindowMinutes)

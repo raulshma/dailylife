@@ -1,5 +1,8 @@
 package com.raulshma.dailylife.ui
 
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -30,6 +33,7 @@ import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Checklist
@@ -83,11 +87,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.raulshma.dailylife.domain.DailyLifeFilters
 import com.raulshma.dailylife.domain.DailyLifeState
 import com.raulshma.dailylife.domain.ItemNotificationSettings
 import com.raulshma.dailylife.domain.LifeItem
@@ -98,12 +104,15 @@ import com.raulshma.dailylife.domain.RecurrenceFrequency
 import com.raulshma.dailylife.domain.RecurrenceRule
 import com.raulshma.dailylife.domain.TaskStatus
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
 private val TimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val DateFormatter = DateTimeFormatter.ofPattern("EEE, MMM d")
+private val FilterDateFormatter = DateTimeFormatter.ofPattern("MMM d")
 private val TimestampFormatter = DateTimeFormatter.ofPattern("MMM d, HH:mm")
+private val DefaultReminderTime = LocalTime.of(9, 0)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -156,6 +165,7 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
             onSearchChanged = viewModel::updateSearchQuery,
             onTypeSelected = viewModel::selectType,
             onTagSelected = viewModel::selectTag,
+            onDateRangeChanged = viewModel::updateDateRange,
             onFavoritesOnlyToggled = viewModel::toggleFavoritesOnly,
             onClearFilters = viewModel::clearFilters,
             onItemSelected = { selectedItemId = it },
@@ -211,6 +221,7 @@ private fun TimelineScreen(
     onSearchChanged: (String) -> Unit,
     onTypeSelected: (LifeItemType?) -> Unit,
     onTagSelected: (String?) -> Unit,
+    onDateRangeChanged: (LocalDate?, LocalDate?) -> Unit,
     onFavoritesOnlyToggled: () -> Unit,
     onClearFilters: () -> Unit,
     onItemSelected: (Long) -> Unit,
@@ -242,6 +253,7 @@ private fun TimelineScreen(
                 onSearchChanged = onSearchChanged,
                 onTypeSelected = onTypeSelected,
                 onTagSelected = onTagSelected,
+                onDateRangeChanged = onDateRangeChanged,
                 onFavoritesOnlyToggled = onFavoritesOnlyToggled,
                 onClearFilters = onClearFilters,
             )
@@ -329,18 +341,22 @@ private fun TimelineFilters(
     onSearchChanged: (String) -> Unit,
     onTypeSelected: (LifeItemType?) -> Unit,
     onTagSelected: (String?) -> Unit,
+    onDateRangeChanged: (LocalDate?, LocalDate?) -> Unit,
     onFavoritesOnlyToggled: () -> Unit,
     onClearFilters: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val filters = state.filters
+
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         OutlinedTextField(
-            value = state.filters.query,
+            value = filters.query,
             onValueChange = onSearchChanged,
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
             trailingIcon = {
-                if (state.filters.query.isNotBlank()) {
+                if (filters.query.isNotBlank()) {
                     IconButton(onClick = { onSearchChanged("") }) {
                         Icon(Icons.Filled.Close, contentDescription = "Clear search")
                     }
@@ -354,12 +370,12 @@ private fun TimelineFilters(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             FilterChip(
-                selected = state.filters.favoritesOnly,
+                selected = filters.favoritesOnly,
                 onClick = onFavoritesOnlyToggled,
                 label = { Text("Favorites") },
                 leadingIcon = {
                     Icon(
-                        imageVector = if (state.filters.favoritesOnly) {
+                        imageVector = if (filters.favoritesOnly) {
                             Icons.Filled.Favorite
                         } else {
                             Icons.Filled.FavoriteBorder
@@ -371,9 +387,9 @@ private fun TimelineFilters(
             )
             LifeItemType.entries.forEach { type ->
                 FilterChip(
-                    selected = state.filters.selectedType == type,
+                    selected = filters.selectedType == type,
                     onClick = {
-                        onTypeSelected(if (state.filters.selectedType == type) null else type)
+                        onTypeSelected(if (filters.selectedType == type) null else type)
                     },
                     label = { Text(type.label) },
                     leadingIcon = {
@@ -387,6 +403,46 @@ private fun TimelineFilters(
             }
         }
 
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            DateRangeButton(
+                label = filters.dateRangeStart?.format(FilterDateFormatter) ?: "From",
+                contentDescription = "Select start date",
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    showDatePicker(
+                        context = context,
+                        initialDate = filters.dateRangeStart ?: filters.dateRangeEnd ?: LocalDate.now(),
+                        onDateSelected = { selected ->
+                            onDateRangeChanged(selected, filters.dateRangeEnd)
+                        },
+                    )
+                },
+            )
+            DateRangeButton(
+                label = filters.dateRangeEnd?.format(FilterDateFormatter) ?: "To",
+                contentDescription = "Select end date",
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    showDatePicker(
+                        context = context,
+                        initialDate = filters.dateRangeEnd ?: filters.dateRangeStart ?: LocalDate.now(),
+                        onDateSelected = { selected ->
+                            onDateRangeChanged(filters.dateRangeStart, selected)
+                        },
+                    )
+                },
+            )
+            if (filters.dateRangeStart != null || filters.dateRangeEnd != null) {
+                IconButton(onClick = { onDateRangeChanged(null, null) }) {
+                    Icon(Icons.Filled.Close, contentDescription = "Clear date range")
+                }
+            }
+        }
+
         if (state.allTags.isNotEmpty()) {
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -394,9 +450,9 @@ private fun TimelineFilters(
             ) {
                 state.allTags.forEach { tag ->
                     FilterChip(
-                        selected = state.filters.selectedTag == tag,
+                        selected = filters.selectedTag == tag,
                         onClick = {
-                            onTagSelected(if (state.filters.selectedTag == tag) null else tag)
+                            onTagSelected(if (filters.selectedTag == tag) null else tag)
                         },
                         label = { Text("#$tag") },
                         leadingIcon = {
@@ -411,13 +467,39 @@ private fun TimelineFilters(
             }
         }
 
-        if (state.filters != com.raulshma.dailylife.domain.DailyLifeFilters()) {
+        if (filters != DailyLifeFilters()) {
             TextButton(onClick = onClearFilters) {
                 Icon(Icons.Filled.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Clear filters")
             }
         }
+    }
+}
+
+@Composable
+private fun DateRangeButton(
+    label: String,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = 12.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.CalendarMonth,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = label,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -553,6 +635,19 @@ private fun LifeItemCard(
                         },
                     )
                 }
+                item.reminderAt?.let { reminderAt ->
+                    AssistChip(
+                        onClick = onClick,
+                        label = { Text(reminderAt.format(TimestampFormatter)) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.AccessTime,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        },
+                    )
+                }
                 if (item.notificationSettings.enabled) {
                     AssistChip(
                         onClick = onClick,
@@ -641,18 +736,76 @@ private fun MediaPreview(item: LifeItem) {
     }
 }
 
+@Composable
+private fun ReminderDateTimeRow(
+    reminderDate: LocalDate?,
+    reminderTime: LocalTime?,
+    onDateClick: () -> Unit,
+    onTimeClick: () -> Unit,
+    onClear: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        OutlinedButton(
+            onClick = onDateClick,
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(horizontal = 12.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.CalendarMonth,
+                contentDescription = "Select reminder date",
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = reminderDate?.format(FilterDateFormatter) ?: "Date",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        OutlinedButton(
+            onClick = onTimeClick,
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(horizontal = 12.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.AccessTime,
+                contentDescription = "Select reminder time",
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = reminderTime?.format(TimeFormatter) ?: "Time",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (reminderDate != null || reminderTime != null) {
+            IconButton(onClick = onClear) {
+                Icon(Icons.Filled.Close, contentDescription = "Clear reminder")
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun QuickAddSheet(
     onAdd: (LifeItemDraft) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val context = LocalContext.current
     var selectedType by rememberSaveable { mutableStateOf(LifeItemType.Thought) }
     var title by rememberSaveable { mutableStateOf("") }
     var body by rememberSaveable { mutableStateOf("") }
     var tags by rememberSaveable { mutableStateOf("") }
     var favorite by rememberSaveable { mutableStateOf(false) }
     var pinned by rememberSaveable { mutableStateOf(false) }
+    var reminderDate by rememberSaveable { mutableStateOf("") }
+    var reminderTime by rememberSaveable { mutableStateOf("") }
     var notificationsEnabled by rememberSaveable { mutableStateOf(true) }
     var overrideTime by rememberSaveable { mutableStateOf("") }
     var recurring by rememberSaveable { mutableStateOf(false) }
@@ -660,6 +813,7 @@ private fun QuickAddSheet(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
             .padding(bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -721,6 +875,40 @@ private fun QuickAddSheet(
             checked = pinned,
             onCheckedChange = { pinned = it },
         )
+        ReminderDateTimeRow(
+            reminderDate = parseDateOrNull(reminderDate),
+            reminderTime = parseTimeOrNull(reminderTime),
+            onDateClick = {
+                showDatePicker(
+                    context = context,
+                    initialDate = parseDateOrNull(reminderDate) ?: LocalDate.now(),
+                    onDateSelected = { selected ->
+                        reminderDate = selected.toString()
+                        if (reminderTime.isBlank()) {
+                            reminderTime = DefaultReminderTime.format(TimeFormatter)
+                        }
+                    },
+                )
+            },
+            onTimeClick = {
+                showTimePicker(
+                    context = context,
+                    initialTime = parseTimeOrNull(reminderTime)
+                        ?: parseTimeOrNull(overrideTime)
+                        ?: DefaultReminderTime,
+                    onTimeSelected = { selected ->
+                        if (reminderDate.isBlank()) {
+                            reminderDate = LocalDate.now().toString()
+                        }
+                        reminderTime = selected.format(TimeFormatter)
+                    },
+                )
+            },
+            onClear = {
+                reminderDate = ""
+                reminderTime = ""
+            },
+        )
         ToggleRow(
             icon = if (notificationsEnabled) Icons.Filled.Notifications else Icons.Filled.NotificationsOff,
             label = "Notifications",
@@ -766,6 +954,7 @@ private fun QuickAddSheet(
                             } else {
                                 null
                             },
+                            reminderAt = parseReminderDateTime(reminderDate, reminderTime),
                             recurrenceRule = if (recurring) {
                                 RecurrenceRule(RecurrenceFrequency.Daily)
                             } else {
@@ -1108,5 +1297,46 @@ private fun parseTags(input: String): Set<String> =
         .filter { it.isNotBlank() }
         .toSet()
 
+private fun parseDateOrNull(input: String): LocalDate? =
+    runCatching { LocalDate.parse(input.trim()) }.getOrNull()
+
 private fun parseTimeOrNull(input: String): LocalTime? =
     runCatching { LocalTime.parse(input.trim(), TimeFormatter) }.getOrNull()
+
+private fun parseReminderDateTime(dateInput: String, timeInput: String): LocalDateTime? {
+    val date = parseDateOrNull(dateInput) ?: return null
+    val time = parseTimeOrNull(timeInput) ?: DefaultReminderTime
+    return LocalDateTime.of(date, time)
+}
+
+private fun showDatePicker(
+    context: Context,
+    initialDate: LocalDate,
+    onDateSelected: (LocalDate) -> Unit,
+) {
+    DatePickerDialog(
+        context,
+        { _, year, month, dayOfMonth ->
+            onDateSelected(LocalDate.of(year, month + 1, dayOfMonth))
+        },
+        initialDate.year,
+        initialDate.monthValue - 1,
+        initialDate.dayOfMonth,
+    ).show()
+}
+
+private fun showTimePicker(
+    context: Context,
+    initialTime: LocalTime,
+    onTimeSelected: (LocalTime) -> Unit,
+) {
+    TimePickerDialog(
+        context,
+        { _, hourOfDay, minute ->
+            onTimeSelected(LocalTime.of(hourOfDay, minute))
+        },
+        initialTime.hour,
+        initialTime.minute,
+        true,
+    ).show()
+}

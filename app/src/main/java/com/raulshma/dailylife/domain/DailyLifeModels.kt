@@ -93,6 +93,8 @@ data class DailyLifeFilters(
     val query: String = "",
     val selectedType: LifeItemType? = null,
     val selectedTag: String? = null,
+    val dateRangeStart: LocalDate? = null,
+    val dateRangeEnd: LocalDate? = null,
     val favoritesOnly: Boolean = false,
 )
 
@@ -115,14 +117,20 @@ data class DailyLifeState(
 
 private fun LifeItem.matches(filters: DailyLifeFilters): Boolean {
     val normalizedQuery = filters.query.trim().lowercase()
+    val createdDate = createdAt.toLocalDate()
+    val startDate = listOfNotNull(filters.dateRangeStart, filters.dateRangeEnd).minOrNull()
+    val endDate = listOfNotNull(filters.dateRangeStart, filters.dateRangeEnd).maxOrNull()
     val matchesQuery = normalizedQuery.isEmpty() ||
         title.lowercase().contains(normalizedQuery) ||
         body.lowercase().contains(normalizedQuery) ||
         type.label.lowercase().contains(normalizedQuery) ||
         tags.any { tag -> tag.lowercase().contains(normalizedQuery) }
+    val matchesDateRange = (startDate == null || !createdDate.isBefore(startDate)) &&
+        (endDate == null || !createdDate.isAfter(endDate))
 
     return matchesQuery &&
         (filters.selectedType == null || type == filters.selectedType) &&
         (filters.selectedTag == null || tags.contains(filters.selectedTag)) &&
+        matchesDateRange &&
         (!filters.favoritesOnly || isFavorite)
 }

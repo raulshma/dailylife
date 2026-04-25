@@ -35,6 +35,10 @@ class DailyLifeViewModel(
         repository.selectTag(tag)
     }
 
+    fun updateDateRange(start: LocalDate?, end: LocalDate?) {
+        repository.updateDateRange(start, end)
+    }
+
     fun toggleFavoritesOnly() {
         repository.toggleFavoritesOnly()
     }
