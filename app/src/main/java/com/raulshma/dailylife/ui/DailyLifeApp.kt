@@ -3,6 +3,7 @@ package com.raulshma.dailylife.ui
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Context
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -23,6 +24,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
+import androidx.compose.foundation.lazy.staggeredgrid.items as staggeredItems
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,6 +54,8 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -71,6 +78,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -87,13 +96,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import com.raulshma.dailylife.domain.DailyLifeFilters
 import com.raulshma.dailylife.domain.DailyLifeState
 import com.raulshma.dailylife.domain.ItemNotificationSettings
@@ -110,12 +124,25 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
 
 private val TimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val DateFormatter = DateTimeFormatter.ofPattern("EEE, MMM d")
 private val FilterDateFormatter = DateTimeFormatter.ofPattern("MMM d")
 private val TimestampFormatter = DateTimeFormatter.ofPattern("MMM d, HH:mm")
 private val DefaultReminderTime = LocalTime.of(9, 0)
+
+private enum class HomeTab(
+    val label: String,
+    val icon: ImageVector,
+) {
+    Photos(label = "Photos", icon = Icons.Filled.PhotoLibrary),
+    Search(label = "Search", icon = Icons.Filled.Search),
+    Collections(label = "Collections", icon = Icons.Filled.Category),
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -124,6 +151,8 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
     var showQuickAdd by rememberSaveable { mutableStateOf(false) }
     var showPreferences by rememberSaveable { mutableStateOf(false) }
     var selectedItemId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var selectedTabName by rememberSaveable { mutableStateOf(HomeTab.Photos.name) }
+    val selectedTab = HomeTab.entries.firstOrNull { it.name == selectedTabName } ?: HomeTab.Photos
     val selectedItem = state.items.firstOrNull { it.id == selectedItemId }
 
     Scaffold(
@@ -133,18 +162,24 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                 title = {
                     Column {
                         Text(
-                            text = "DailyLife",
+                            text = "DailyLife Photos",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            text = "${state.items.size} items saved locally",
+                            text = "${state.visibleItems.size} of ${state.items.size} items",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 },
                 actions = {
+                    IconButton(onClick = { selectedTabName = HomeTab.Search.name }) {
+                        Icon(
+                            imageVector = Icons.Filled.Search,
+                            contentDescription = "Open search",
+                        )
+                    }
                     IconButton(onClick = { showPreferences = true }) {
                         Icon(
                             imageVector = Icons.Filled.Settings,
@@ -154,6 +189,23 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                 },
             )
         },
+        bottomBar = {
+            NavigationBar {
+                HomeTab.entries.forEach { tab ->
+                    NavigationBarItem(
+                        selected = selectedTab == tab,
+                        onClick = { selectedTabName = tab.name },
+                        icon = {
+                            Icon(
+                                imageVector = tab.icon,
+                                contentDescription = null,
+                            )
+                        },
+                        label = { Text(tab.label) },
+                    )
+                }
+            }
+        },
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = { showQuickAdd = true },
@@ -162,22 +214,47 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
             )
         },
     ) { paddingValues ->
-        TimelineScreen(
-            state = state,
-            contentPadding = paddingValues,
-            onSearchChanged = viewModel::updateSearchQuery,
-            onTypeSelected = viewModel::selectType,
-            onTagSelected = viewModel::selectTag,
-            onDateRangeChanged = viewModel::updateDateRange,
-            onFavoritesOnlyToggled = viewModel::toggleFavoritesOnly,
-            onClearFilters = viewModel::clearFilters,
-            onItemSelected = { selectedItemId = it },
-            onFavoriteToggled = viewModel::toggleFavorite,
-            onPinnedToggled = viewModel::togglePinned,
-            onTaskStatusChanged = viewModel::updateTaskStatus,
-            onCompleted = viewModel::markOccurrenceCompleted,
-            onStorageErrorDismissed = viewModel::clearStorageError,
-        )
+        when (selectedTab) {
+            HomeTab.Photos -> {
+                PhotosMosaicScreen(
+                    state = state,
+                    contentPadding = paddingValues,
+                    onItemSelected = { selectedItemId = it },
+                    onStorageErrorDismissed = viewModel::clearStorageError,
+                )
+            }
+
+            HomeTab.Search -> {
+                TimelineScreen(
+                    state = state,
+                    contentPadding = paddingValues,
+                    onSearchChanged = viewModel::updateSearchQuery,
+                    onTypeSelected = viewModel::selectType,
+                    onTagSelected = viewModel::selectTag,
+                    onDateRangeChanged = viewModel::updateDateRange,
+                    onFavoritesOnlyToggled = viewModel::toggleFavoritesOnly,
+                    onClearFilters = viewModel::clearFilters,
+                    onItemSelected = { selectedItemId = it },
+                    onFavoriteToggled = viewModel::toggleFavorite,
+                    onPinnedToggled = viewModel::togglePinned,
+                    onTaskStatusChanged = viewModel::updateTaskStatus,
+                    onCompleted = viewModel::markOccurrenceCompleted,
+                    onStorageErrorDismissed = viewModel::clearStorageError,
+                )
+            }
+
+            HomeTab.Collections -> {
+                CollectionsScreen(
+                    state = state,
+                    contentPadding = paddingValues,
+                    onCollectionSelected = { items ->
+                        selectedTabName = HomeTab.Search.name
+                        val first = items.firstOrNull() ?: return@CollectionsScreen
+                        selectedItemId = first.id
+                    },
+                )
+            }
+        }
     }
 
     if (showQuickAdd) {
@@ -216,6 +293,494 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
             onNotificationsChanged = { viewModel.updateItemNotifications(item.id, it) },
         )
     }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PhotosMosaicScreen(
+    state: DailyLifeState,
+    contentPadding: PaddingValues,
+    onItemSelected: (Long) -> Unit,
+    onStorageErrorDismissed: () -> Unit,
+) {
+    val groupedItems = remember(state.visibleItems) {
+        state.visibleItems.groupBy { it.createdAt.toLocalDate() }
+    }
+
+    LazyVerticalStaggeredGrid(
+        columns = StaggeredGridCells.Adaptive(minSize = 132.dp),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            start = 10.dp,
+            top = contentPadding.calculateTopPadding() + 10.dp,
+            end = 10.dp,
+            bottom = contentPadding.calculateBottomPadding() + 92.dp,
+        ),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalItemSpacing = 8.dp,
+    ) {
+        item(key = "mosaic-header", span = StaggeredGridItemSpan.FullLine) {
+            SnapshotRow(state = state)
+        }
+        state.storageError?.let { storageError ->
+            item(key = "storage-error", span = StaggeredGridItemSpan.FullLine) {
+                StorageWarningCard(
+                    error = storageError,
+                    onDismiss = onStorageErrorDismissed,
+                )
+            }
+        }
+
+        if (groupedItems.isEmpty()) {
+            item(key = "empty-state", span = StaggeredGridItemSpan.FullLine) {
+                EmptyTimeline()
+            }
+        } else {
+            groupedItems.forEach { (date, itemsForDate) ->
+                item(key = "date-$date", span = StaggeredGridItemSpan.FullLine) {
+                    DateHeader(date = date)
+                }
+                staggeredItems(itemsForDate, key = { it.id }) { item ->
+                    MediaMosaicTile(
+                        item = item,
+                        onClick = { onItemSelected(item.id) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CollectionsScreen(
+    state: DailyLifeState,
+    contentPadding: PaddingValues,
+    onCollectionSelected: (List<LifeItem>) -> Unit,
+) {
+    val favoriteItems = remember(state.visibleItems) { state.visibleItems.filter { it.isFavorite } }
+    val videoItems = remember(state.visibleItems) {
+        state.visibleItems.filter { it.type == LifeItemType.Video }
+    }
+    val placeItems = remember(state.visibleItems) {
+        state.visibleItems.filter { it.type == LifeItemType.Location || it.inferLocationPreview() != null }
+    }
+    val notes = remember(state.visibleItems) {
+        state.visibleItems.filter {
+            it.type == LifeItemType.Note ||
+                it.type == LifeItemType.Thought ||
+                it.type == LifeItemType.Task ||
+                it.type == LifeItemType.Reminder
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            top = contentPadding.calculateTopPadding() + 12.dp,
+            end = 16.dp,
+            bottom = contentPadding.calculateBottomPadding() + 100.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Text(
+                text = "Collections",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        item {
+            CollectionCard(
+                title = "Favorites",
+                subtitle = "Pinned and loved memories",
+                count = favoriteItems.size,
+                icon = Icons.Filled.Star,
+                onClick = { onCollectionSelected(favoriteItems) },
+            )
+        }
+        item {
+            CollectionCard(
+                title = "Videos",
+                subtitle = "Tap to open playback items",
+                count = videoItems.size,
+                icon = Icons.Filled.Videocam,
+                onClick = { onCollectionSelected(videoItems) },
+            )
+        }
+        item {
+            CollectionCard(
+                title = "Places",
+                subtitle = "Items with map context",
+                count = placeItems.size,
+                icon = Icons.Filled.LocationOn,
+                onClick = { onCollectionSelected(placeItems) },
+            )
+        }
+        item {
+            CollectionCard(
+                title = "Notes & Thoughts",
+                subtitle = "Text-first memories and reminders",
+                count = notes.size,
+                icon = Icons.Filled.EditNote,
+                onClick = { onCollectionSelected(notes) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun CollectionCard(
+    title: String,
+    subtitle: String,
+    count: Int,
+    icon: ImageVector,
+    onClick: () -> Unit,
+) {
+    ElevatedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                text = count.toString(),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MediaMosaicTile(
+    item: LifeItem,
+    onClick: () -> Unit,
+) {
+    ElevatedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(item.inferMosaicHeight())
+            .clickable(onClick = onClick),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            ItemPreview(item = item)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.45f),
+                                Color.Black.copy(alpha = 0.65f),
+                            ),
+                        ),
+                    )
+                    .padding(10.dp),
+            ) {
+                Text(
+                    text = item.title,
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ItemPreview(item: LifeItem) {
+    when (item.type) {
+        LifeItemType.Photo -> ImagePreview(item = item)
+        LifeItemType.Video -> VideoPreview(item = item)
+        LifeItemType.Audio -> AudioPreview(item = item)
+        LifeItemType.Location -> LocationPreview(item = item)
+        LifeItemType.Mixed -> {
+            when {
+                item.inferImagePreviewUrl() != null -> ImagePreview(item = item)
+                item.inferLocationPreview() != null -> LocationPreview(item = item)
+                item.inferVideoPlaybackUrl() != null -> VideoPreview(item = item)
+                else -> TextPreview(item = item)
+            }
+        }
+
+        else -> TextPreview(item = item)
+    }
+}
+
+@Composable
+private fun TextPreview(item: LifeItem) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.secondaryContainer)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(
+                imageVector = item.type.icon(),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                text = item.type.label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+        }
+        Text(
+            text = item.body.ifBlank { "No notes yet" },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            maxLines = 8,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun ImagePreview(item: LifeItem) {
+    val imageUrl = item.inferImagePreviewUrl()
+    if (imageUrl != null) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = "Image preview",
+            modifier = Modifier.fillMaxSize(),
+        )
+    } else {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    imageVector = Icons.Filled.PhotoCamera,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Photo",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun VideoPreview(item: LifeItem) {
+    val imageUrl = item.inferImagePreviewUrl()
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (imageUrl != null) {
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = "Video preview",
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.tertiaryContainer),
+            )
+        }
+        Column(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .background(Color.Black.copy(alpha = 0.35f), shape = RoundedCornerShape(14.dp))
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.PlayArrow,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                text = "View playback",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AudioPreview(item: LifeItem) {
+    val barHeights = remember(item.id) {
+        listOf(8.dp, 16.dp, 10.dp, 22.dp, 14.dp, 20.dp, 12.dp, 18.dp)
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Mic,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = "Audio",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            barHeights.forEach { height ->
+                Box(
+                    modifier = Modifier
+                        .width(8.dp)
+                        .height(height)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.primary),
+                )
+            }
+        }
+        if (item.body.isNotBlank()) {
+            Text(
+                text = item.body,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun LocationPreview(item: LifeItem) {
+    val location = item.inferLocationPreview()
+    if (location != null) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            OpenStreetMapPreview(
+                latitude = location.first,
+                longitude = location.second,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+                    .background(Color.Black.copy(alpha = 0.45f), shape = RoundedCornerShape(12.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.LocationOn,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Text(
+                        text = "OpenStreetMap",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            }
+        }
+    } else {
+        TextPreview(item = item)
+    }
+}
+
+@Composable
+private fun OpenStreetMapPreview(
+    latitude: Double,
+    longitude: Double,
+    modifier: Modifier = Modifier,
+) {
+    AndroidView(
+        modifier = modifier,
+        factory = { context ->
+            MapView(context).apply {
+                setTileSource(TileSourceFactory.MAPNIK)
+                setMultiTouchControls(false)
+                isTilesScaledToDpi = true
+                minZoomLevel = 2.0
+                maxZoomLevel = 19.5
+            }
+        },
+        update = { mapView ->
+            val point = GeoPoint(latitude, longitude)
+            mapView.controller.setZoom(14.5)
+            mapView.controller.setCenter(point)
+            mapView.overlays.removeAll { overlay -> overlay is Marker }
+            mapView.overlays.add(
+                Marker(mapView).apply {
+                    position = point
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                    icon = null
+                    title = "Saved location"
+                },
+            )
+            mapView.invalidate()
+        },
+    )
 }
 
 @Composable
@@ -969,6 +1534,9 @@ private fun QuickAddSheet(
             modifier = Modifier.fillMaxWidth(),
             minLines = 3,
             label = { Text("Details") },
+            placeholder = {
+                Text("Tip: add image/video URL, or geo:lat,lon for map previews")
+            },
         )
         OutlinedTextField(
             value = tags,
@@ -1412,6 +1980,75 @@ private fun LifeItemType.isMediaLike(): Boolean =
         this == LifeItemType.Audio ||
         this == LifeItemType.Location ||
         this == LifeItemType.Mixed
+
+private val ImageUrlPattern =
+    Regex("""https?://\S+\.(?:png|jpe?g|webp|gif|bmp|avif)(?:\?\S*)?""", RegexOption.IGNORE_CASE)
+private val GenericUrlPattern = Regex("""https?://\S+""")
+private val VideoUrlPattern =
+    Regex("""https?://\S+\.(?:mp4|m4v|webm|mkv|mov|m3u8)(?:\?\S*)?""", RegexOption.IGNORE_CASE)
+private val GeoPattern =
+    Regex("""geo:\s*([-+]?\d{1,2}(?:\.\d+)?),\s*([-+]?\d{1,3}(?:\.\d+)?)""", RegexOption.IGNORE_CASE)
+private val LatLonPattern =
+    Regex("""([-+]?\d{1,2}(?:\.\d+)?)\s*[, ]\s*([-+]?\d{1,3}(?:\.\d+)?)""")
+private val OsmMlatPattern =
+    Regex("""[?&]mlat=([-+]?\d{1,2}(?:\.\d+)?).*?[?&]mlon=([-+]?\d{1,3}(?:\.\d+)?)""", RegexOption.IGNORE_CASE)
+
+private fun LifeItem.inferMosaicHeight(): Dp {
+    val bucket = ((id % 7L) + 7L) % 7L
+    return when (type) {
+        LifeItemType.Photo -> if (bucket % 3L == 0L) 222.dp else 164.dp
+        LifeItemType.Video -> if (bucket % 2L == 0L) 214.dp else 168.dp
+        LifeItemType.Location -> 198.dp
+        LifeItemType.Audio -> 156.dp
+        LifeItemType.Mixed -> if (bucket % 2L == 0L) 228.dp else 172.dp
+        else -> if (body.length > 120) 198.dp else 152.dp
+    }
+}
+
+private fun LifeItem.inferImagePreviewUrl(): String? {
+    val source = listOf(title, body).joinToString(" ")
+    return ImageUrlPattern.find(source)?.value
+        ?: GenericUrlPattern.find(source)?.value?.takeIf { url ->
+            url.contains("picsum", ignoreCase = true) ||
+                url.contains("unsplash", ignoreCase = true) ||
+                url.contains("images", ignoreCase = true)
+        }
+}
+
+private fun LifeItem.inferVideoPlaybackUrl(): String? {
+    val source = listOf(title, body).joinToString(" ")
+    return VideoUrlPattern.find(source)?.value
+}
+
+private fun LifeItem.inferLocationPreview(): Pair<Double, Double>? {
+    val source = listOf(title, body).joinToString(" ")
+
+    val geoMatch = GeoPattern.find(source)
+    if (geoMatch != null) {
+        return geoMatch.groupValues[1].toDoubleOrNull()
+            ?.let { lat ->
+                geoMatch.groupValues[2].toDoubleOrNull()?.let { lon -> lat to lon }
+            }
+            ?.takeIf { (lat, lon) -> lat in -90.0..90.0 && lon in -180.0..180.0 }
+    }
+
+    val osmMatch = OsmMlatPattern.find(source)
+    if (osmMatch != null) {
+        return osmMatch.groupValues[1].toDoubleOrNull()
+            ?.let { lat ->
+                osmMatch.groupValues[2].toDoubleOrNull()?.let { lon -> lat to lon }
+            }
+            ?.takeIf { (lat, lon) -> lat in -90.0..90.0 && lon in -180.0..180.0 }
+    }
+
+    return LatLonPattern.find(source)
+        ?.let { match ->
+            val lat = match.groupValues[1].toDoubleOrNull() ?: return@let null
+            val lon = match.groupValues[2].toDoubleOrNull() ?: return@let null
+            lat to lon
+        }
+        ?.takeIf { (lat, lon) -> lat in -90.0..90.0 && lon in -180.0..180.0 }
+}
 
 private fun parseTags(input: String): Set<String> =
     input.split(",")

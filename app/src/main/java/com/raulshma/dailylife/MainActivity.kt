@@ -11,10 +11,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.raulshma.dailylife.ui.DailyLifeApp
 import com.raulshma.dailylife.ui.DailyLifeViewModel
 import com.raulshma.dailylife.ui.theme.DailyLifeTheme
+import org.osmdroid.config.Configuration
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Configuration.getInstance().userAgentValue = packageName
         enableEdgeToEdge()
         requestNotificationPermissionIfNeeded()
         val viewModelFactory = DailyLifeViewModel.Factory(applicationContext)
