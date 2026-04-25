@@ -13,9 +13,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val viewModelFactory = DailyLifeViewModel.Factory(applicationContext)
         setContent {
             DailyLifeTheme {
-                val viewModel: DailyLifeViewModel = viewModel()
+                val viewModel: DailyLifeViewModel = viewModel(factory = viewModelFactory)
                 DailyLifeApp(viewModel = viewModel)
             }
         }

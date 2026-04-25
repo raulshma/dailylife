@@ -21,13 +21,21 @@ import kotlinx.coroutines.flow.update
 
 class InMemoryDailyLifeRepository(
     seedItems: List<LifeItem> = SampleLifeItems.create(),
-) {
-    private val _state = MutableStateFlow(DailyLifeState(items = seedItems))
-    val state: StateFlow<DailyLifeState> = _state.asStateFlow()
+    private val store: DailyLifeStore? = null,
+) : DailyLifeRepository {
+    private val persistedState = store?.load()
+    private val _state = MutableStateFlow(
+        DailyLifeState(
+            items = persistedState?.items ?: seedItems,
+            notificationSettings = persistedState?.notificationSettings ?: NotificationSettings(),
+        ),
+    )
+    override val state: StateFlow<DailyLifeState> = _state.asStateFlow()
 
-    private var nextId = (seedItems.maxOfOrNull { it.id } ?: 0L) + 1L
+    private var nextId = persistedState?.nextId
+        ?: ((seedItems.maxOfOrNull { it.id } ?: 0L) + 1L)
 
-    fun addItem(draft: LifeItemDraft): LifeItem {
+    override fun addItem(draft: LifeItemDraft): LifeItem {
         val now = LocalDateTime.now()
         val item = LifeItem(
             id = nextId++,
@@ -44,46 +52,46 @@ class InMemoryDailyLifeRepository(
             notificationSettings = draft.notificationSettings,
         )
 
-        _state.update { current -> current.copy(items = listOf(item) + current.items) }
+        updateStoredState { current -> current.copy(items = listOf(item) + current.items) }
         return item
     }
 
-    fun updateSearchQuery(query: String) {
+    override fun updateSearchQuery(query: String) {
         updateFilters { it.copy(query = query) }
     }
 
-    fun selectType(type: LifeItemType?) {
+    override fun selectType(type: LifeItemType?) {
         updateFilters { it.copy(selectedType = type) }
     }
 
-    fun selectTag(tag: String?) {
+    override fun selectTag(tag: String?) {
         updateFilters { it.copy(selectedTag = tag) }
     }
 
-    fun toggleFavoritesOnly() {
+    override fun toggleFavoritesOnly() {
         updateFilters { it.copy(favoritesOnly = !it.favoritesOnly) }
     }
 
-    fun clearFilters() {
+    override fun clearFilters() {
         _state.update { current -> current.copy(filters = DailyLifeFilters()) }
     }
 
-    fun toggleFavorite(itemId: Long) {
+    override fun toggleFavorite(itemId: Long) {
         updateItem(itemId) { it.copy(isFavorite = !it.isFavorite) }
     }
 
-    fun togglePinned(itemId: Long) {
+    override fun togglePinned(itemId: Long) {
         updateItem(itemId) { it.copy(isPinned = !it.isPinned) }
     }
 
-    fun updateTaskStatus(itemId: Long, status: TaskStatus) {
+    override fun updateTaskStatus(itemId: Long, status: TaskStatus) {
         updateItem(itemId) { it.copy(taskStatus = status) }
     }
 
-    fun markOccurrenceCompleted(
+    override fun markOccurrenceCompleted(
         itemId: Long,
-        occurrenceDate: LocalDate = LocalDate.now(),
-        completedAt: LocalDateTime = LocalDateTime.now(),
+        occurrenceDate: LocalDate,
+        completedAt: LocalDateTime,
     ) {
         updateItem(itemId) { item ->
             val record = CompletionRecord(
@@ -98,11 +106,22 @@ class InMemoryDailyLifeRepository(
         }
     }
 
-    fun updateNotificationSettings(settings: NotificationSettings) {
-        _state.update { current -> current.copy(notificationSettings = settings) }
+    fun markOccurrenceCompleted(
+        itemId: Long,
+        occurrenceDate: LocalDate = LocalDate.now(),
+    ) {
+        markOccurrenceCompleted(
+            itemId = itemId,
+            occurrenceDate = occurrenceDate,
+            completedAt = LocalDateTime.now(),
+        )
     }
 
-    fun updateItemNotifications(itemId: Long, settings: ItemNotificationSettings) {
+    override fun updateNotificationSettings(settings: NotificationSettings) {
+        updateStoredState { current -> current.copy(notificationSettings = settings) }
+    }
+
+    override fun updateItemNotifications(itemId: Long, settings: ItemNotificationSettings) {
         updateItem(itemId) { it.copy(notificationSettings = settings) }
     }
 
@@ -111,11 +130,31 @@ class InMemoryDailyLifeRepository(
     }
 
     private fun updateItem(itemId: Long, block: (LifeItem) -> LifeItem) {
-        _state.update { current ->
+        updateStoredState { current ->
             current.copy(
                 items = current.items.map { item ->
                     if (item.id == itemId) block(item) else item
                 },
+            )
+        }
+    }
+
+    private fun updateStoredState(block: (DailyLifeState) -> DailyLifeState) {
+        var updatedState: DailyLifeState? = null
+        _state.update { current ->
+            block(current).also { updatedState = it }
+        }
+        updatedState?.let { persist(it) }
+    }
+
+    private fun persist(state: DailyLifeState) {
+        runCatching {
+            store?.save(
+                PersistedDailyLifeState(
+                    items = state.items,
+                    notificationSettings = state.notificationSettings,
+                    nextId = nextId,
+                ),
             )
         }
     }

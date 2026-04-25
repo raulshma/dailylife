@@ -1,16 +1,21 @@
 package com.raulshma.dailylife.ui
 
+import android.content.Context
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModel
+import com.raulshma.dailylife.data.DailyLifeRepository
+import com.raulshma.dailylife.data.FileBackedDailyLifeRepository
 import com.raulshma.dailylife.data.InMemoryDailyLifeRepository
 import com.raulshma.dailylife.domain.ItemNotificationSettings
 import com.raulshma.dailylife.domain.LifeItemDraft
 import com.raulshma.dailylife.domain.LifeItemType
 import com.raulshma.dailylife.domain.NotificationSettings
 import com.raulshma.dailylife.domain.TaskStatus
+import java.io.File
 import java.time.LocalDate
 
 class DailyLifeViewModel(
-    private val repository: InMemoryDailyLifeRepository = InMemoryDailyLifeRepository(),
+    private val repository: DailyLifeRepository = InMemoryDailyLifeRepository(),
 ) : ViewModel() {
     val state = repository.state
 
@@ -60,5 +65,19 @@ class DailyLifeViewModel(
 
     fun updateItemNotifications(itemId: Long, settings: ItemNotificationSettings) {
         repository.updateItemNotifications(itemId, settings)
+    }
+
+    class Factory(context: Context) : ViewModelProvider.Factory {
+        private val appContext = context.applicationContext
+
+        @Suppress("UNCHECKED_CAST")
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            if (modelClass.isAssignableFrom(DailyLifeViewModel::class.java)) {
+                val storeFile = File(appContext.filesDir, "dailylife/local-store.properties")
+                return DailyLifeViewModel(FileBackedDailyLifeRepository(storeFile)) as T
+            }
+
+            throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
+        }
     }
 }
