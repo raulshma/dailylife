@@ -318,6 +318,87 @@ class InMemoryDailyLifeRepositoryTest {
         assertNull(repository.state.value.storageError)
         assertEquals(2, repository.state.value.items.size)
     }
+
+    @Test
+    fun rolloverMissedOccurrencesAddsMissedRecordsForPastDates() {
+        val repository = InMemoryDailyLifeRepository(seedItems = emptyList())
+        val item = repository.addItem(
+            LifeItemDraft(
+                type = LifeItemType.Task,
+                title = "Daily stretch",
+                recurrenceRule = RecurrenceRule(RecurrenceFrequency.Daily),
+            ),
+        )
+        val referenceDate = item.createdAt.toLocalDate().plusDays(3)
+
+        repository.rolloverMissedOccurrences(referenceDate = referenceDate)
+
+        val updated = repository.state.value.items.single()
+        val missedRecords = updated.completionHistory.filter { it.missed }
+        assertEquals(3, missedRecords.size)
+        assertTrue(missedRecords.all { it.occurrenceDate.isBefore(referenceDate) })
+    }
+
+    @Test
+    fun rolloverMissedOccurrencesDoesNotDuplicateExistingMissedRecords() {
+        val repository = InMemoryDailyLifeRepository(seedItems = emptyList())
+        val item = repository.addItem(
+            LifeItemDraft(
+                type = LifeItemType.Task,
+                title = "Daily stretch",
+                recurrenceRule = RecurrenceRule(RecurrenceFrequency.Daily),
+            ),
+        )
+        val referenceDate = item.createdAt.toLocalDate().plusDays(2)
+
+        repository.rolloverMissedOccurrences(referenceDate = referenceDate)
+        val firstRollover = repository.state.value.items.single().completionHistory.filter { it.missed }.size
+
+        repository.rolloverMissedOccurrences(referenceDate = referenceDate)
+        val secondRollover = repository.state.value.items.single().completionHistory.filter { it.missed }.size
+
+        assertEquals(firstRollover, secondRollover)
+    }
+
+    @Test
+    fun rolloverMissedOccurrencesSkipsCompletedDates() {
+        val repository = InMemoryDailyLifeRepository(seedItems = emptyList())
+        val item = repository.addItem(
+            LifeItemDraft(
+                type = LifeItemType.Task,
+                title = "Daily stretch",
+                recurrenceRule = RecurrenceRule(RecurrenceFrequency.Daily),
+            ),
+        )
+        repository.markOccurrenceCompleted(
+            itemId = item.id,
+            occurrenceDate = item.createdAt.toLocalDate(),
+        )
+
+        repository.rolloverMissedOccurrences(referenceDate = item.createdAt.toLocalDate().plusDays(2))
+
+        val updated = repository.state.value.items.single()
+        val missedOnCompletedDate = updated.completionHistory.any {
+            it.missed && it.occurrenceDate == item.createdAt.toLocalDate()
+        }
+        assertFalse(missedOnCompletedDate)
+        assertEquals(1, updated.completionHistory.filter { it.missed }.size)
+    }
+
+    @Test
+    fun rolloverMissedOccurrencesDoesNothingForNonRecurringItems() {
+        val repository = InMemoryDailyLifeRepository(seedItems = emptyList())
+        repository.addItem(
+            LifeItemDraft(
+                type = LifeItemType.Note,
+                title = "One-time note",
+            ),
+        )
+
+        repository.rolloverMissedOccurrences(referenceDate = LocalDate.now().plusDays(1))
+
+        assertEquals(0, repository.state.value.items.single().completionHistory.size)
+    }
 }
 
 private object ThrowingLoadStore : DailyLifeStore {

@@ -89,12 +89,33 @@ class AndroidReminderScheduler(
                 pendingIntent,
             )
         } else {
-            alarmManager.setAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                triggerMillis,
-                pendingIntent,
-            )
+            if (canUseExactAlarms()) {
+                runCatching {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerMillis,
+                        pendingIntent,
+                    )
+                }.getOrElse {
+                    alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerMillis,
+                        pendingIntent,
+                    )
+                }
+            } else {
+                alarmManager.setAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerMillis,
+                    pendingIntent,
+                )
+            }
         }
+    }
+
+    private fun canUseExactAlarms(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
+        return alarmManager.canScheduleExactAlarms()
     }
 }
 

@@ -34,6 +34,16 @@ data class RecurrenceRule(
     val interval: Int = 1,
 )
 
+fun RecurrenceRule.stepDays(): Long {
+    val safeInterval = interval.coerceAtLeast(1).toLong()
+    return when (frequency) {
+        RecurrenceFrequency.None -> Long.MAX_VALUE
+        RecurrenceFrequency.Daily -> safeInterval
+        RecurrenceFrequency.Weekly -> safeInterval * 7L
+        RecurrenceFrequency.Custom -> safeInterval
+    }
+}
+
 data class NotificationSettings(
     val globalEnabled: Boolean = true,
     val preferredTime: LocalTime = LocalTime.of(9, 0),
@@ -122,16 +132,6 @@ data class LifeItem(
             occurrenceDate = occurrenceDate.plusDays(stepDays)
         }
         return dates
-    }
-
-    private fun RecurrenceRule.stepDays(): Long {
-        val safeInterval = interval.coerceAtLeast(1).toLong()
-        return when (frequency) {
-            RecurrenceFrequency.None -> Long.MAX_VALUE
-            RecurrenceFrequency.Daily -> safeInterval
-            RecurrenceFrequency.Weekly -> safeInterval * 7L
-            RecurrenceFrequency.Custom -> safeInterval
-        }
     }
 
     private fun List<LocalDate>.currentStreak(

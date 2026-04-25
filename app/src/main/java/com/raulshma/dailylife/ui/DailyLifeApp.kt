@@ -2,7 +2,12 @@ package com.raulshma.dailylife.ui
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -88,6 +93,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -107,6 +113,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import coil.compose.AsyncImage
 import com.raulshma.dailylife.domain.DailyLifeFilters
 import com.raulshma.dailylife.domain.DailyLifeState
@@ -120,6 +129,11 @@ import com.raulshma.dailylife.domain.RecurrenceFrequency
 import com.raulshma.dailylife.domain.RecurrenceRule
 import com.raulshma.dailylife.domain.StorageError
 import com.raulshma.dailylife.domain.TaskStatus
+import com.raulshma.dailylife.ui.capture.AudioRecorder
+import com.raulshma.dailylife.ui.capture.LocationPickerSheet
+import com.raulshma.dailylife.ui.capture.hasAudioPermission
+import com.raulshma.dailylife.ui.capture.hasCameraPermission
+import com.raulshma.dailylife.ui.capture.rememberMediaCaptureLauncher
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -147,13 +161,41 @@ private enum class HomeTab(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DailyLifeApp(viewModel: DailyLifeViewModel) {
+    val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showQuickAdd by rememberSaveable { mutableStateOf(false) }
     var showPreferences by rememberSaveable { mutableStateOf(false) }
+    var showLocationPicker by rememberSaveable { mutableStateOf(false) }
     var selectedItemId by rememberSaveable { mutableStateOf<Long?>(null) }
     var selectedTabName by rememberSaveable { mutableStateOf(HomeTab.Photos.name) }
     val selectedTab = HomeTab.entries.firstOrNull { it.name == selectedTabName } ?: HomeTab.Photos
     val selectedItem = state.items.firstOrNull { it.id == selectedItemId }
+    var quickAddBody by rememberSaveable { mutableStateOf("") }
+    var quickAddLocationCallback by remember { mutableStateOf<((Double, Double) -> Unit)?>(null) }
+
+    val mediaLauncher = rememberMediaCaptureLauncher(
+        context = context,
+        onPhotoCaptured = { uri ->
+            quickAddBody = uri.toString()
+            showQuickAdd = true
+        },
+        onVideoCaptured = { uri ->
+            quickAddBody = uri.toString()
+            showQuickAdd = true
+        },
+        onPhotoPicked = { uri ->
+            quickAddBody = uri.toString()
+            showQuickAdd = true
+        },
+        onVideoPicked = { uri ->
+            quickAddBody = uri.toString()
+            showQuickAdd = true
+        },
+        onFilePicked = { uri ->
+            quickAddBody = uri.toString()
+            showQuickAdd = true
+        },
+    )
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -258,15 +300,43 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
     }
 
     if (showQuickAdd) {
-        ModalBottomSheet(onDismissRequest = { showQuickAdd = false }) {
+        ModalBottomSheet(onDismissRequest = {
+            showQuickAdd = false
+            quickAddBody = ""
+        }) {
             QuickAddSheet(
+                initialBody = quickAddBody,
+                onBodyChanged = { quickAddBody = it },
                 onAdd = { draft ->
                     viewModel.addItem(draft)
                     showQuickAdd = false
+                    quickAddBody = ""
                 },
-                onDismiss = { showQuickAdd = false },
+                onDismiss = {
+                    showQuickAdd = false
+                    quickAddBody = ""
+                },
+                mediaLauncher = mediaLauncher,
+                onShowLocationPicker = { onLocationSelected ->
+                    quickAddLocationCallback = onLocationSelected
+                    showLocationPicker = true
+                },
             )
         }
+    }
+
+    if (showLocationPicker) {
+        LocationPickerSheet(
+            onLocationSelected = { lat, lon ->
+                quickAddLocationCallback?.invoke(lat, lon)
+                quickAddLocationCallback = null
+                showLocationPicker = false
+            },
+            onDismiss = {
+                quickAddLocationCallback = null
+                showLocationPicker = false
+            },
+        )
     }
 
     if (showPreferences) {
@@ -1475,13 +1545,17 @@ private fun ReminderDateTimeRow(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun QuickAddSheet(
+    initialBody: String,
+    onBodyChanged: (String) -> Unit,
     onAdd: (LifeItemDraft) -> Unit,
     onDismiss: () -> Unit,
+    mediaLauncher: com.raulshma.dailylife.ui.capture.MediaCaptureLauncher,
+    onShowLocationPicker: ((Double, Double) -> Unit) -> Unit,
 ) {
     val context = LocalContext.current
     var selectedType by rememberSaveable { mutableStateOf(LifeItemType.Thought) }
     var title by rememberSaveable { mutableStateOf("") }
-    var body by rememberSaveable { mutableStateOf("") }
+    var body by rememberSaveable { mutableStateOf(initialBody) }
     var tags by rememberSaveable { mutableStateOf("") }
     var favorite by rememberSaveable { mutableStateOf(false) }
     var pinned by rememberSaveable { mutableStateOf(false) }
@@ -1490,6 +1564,20 @@ private fun QuickAddSheet(
     var notificationsEnabled by rememberSaveable { mutableStateOf(true) }
     var overrideTime by rememberSaveable { mutableStateOf("") }
     var recurring by rememberSaveable { mutableStateOf(false) }
+    var isRecordingAudio by remember { mutableStateOf(false) }
+    val audioRecorder = remember { AudioRecorder(context) }
+
+    if (initialBody.isNotBlank() && body != initialBody) {
+        body = initialBody
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            if (audioRecorder.isRecording) {
+                audioRecorder.cancelRecording()
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -1530,7 +1618,10 @@ private fun QuickAddSheet(
         )
         OutlinedTextField(
             value = body,
-            onValueChange = { body = it },
+            onValueChange = {
+                body = it
+                onBodyChanged(it)
+            },
             modifier = Modifier.fillMaxWidth(),
             minLines = 3,
             label = { Text("Details") },
@@ -1538,6 +1629,125 @@ private fun QuickAddSheet(
                 Text("Tip: add image/video URL, or geo:lat,lon for map previews")
             },
         )
+
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            AssistChip(
+                onClick = {
+                    if (hasCameraPermission(context)) {
+                        mediaLauncher.launchCamera()
+                    } else {
+                        mediaLauncher.requestCameraPermissionIfNeeded()
+                    }
+                },
+                label = { Text("Camera") },
+                leadingIcon = {
+                    Icon(
+                        Icons.Filled.PhotoCamera,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
+            )
+            AssistChip(
+                onClick = { mediaLauncher.launchPhotoPicker() },
+                label = { Text("Photos") },
+                leadingIcon = {
+                    Icon(
+                        Icons.Filled.PhotoLibrary,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
+            )
+            AssistChip(
+                onClick = {
+                    if (hasCameraPermission(context)) {
+                        mediaLauncher.launchVideoCamera()
+                    } else {
+                        mediaLauncher.requestCameraPermissionIfNeeded()
+                    }
+                },
+                label = { Text("Video") },
+                leadingIcon = {
+                    Icon(
+                        Icons.Filled.Videocam,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
+            )
+            AssistChip(
+                onClick = { mediaLauncher.launchVideoPicker() },
+                label = { Text("Pick video") },
+                leadingIcon = {
+                    Icon(
+                        Icons.Filled.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
+            )
+            AssistChip(
+                onClick = {
+                    if (isRecordingAudio) {
+                        audioRecorder.stopRecording()?.let { uri ->
+                            body = uri.toString()
+                            onBodyChanged(uri.toString())
+                        }
+                        isRecordingAudio = false
+                    } else {
+                        if (hasAudioPermission(context)) {
+                            audioRecorder.startRecording()?.let { uri ->
+                                body = uri.toString()
+                                onBodyChanged(uri.toString())
+                            }
+                            isRecordingAudio = true
+                        } else {
+                            mediaLauncher.requestAudioPermissionIfNeeded()
+                        }
+                    }
+                },
+                label = { Text(if (isRecordingAudio) "Stop recording" else "Audio") },
+                leadingIcon = {
+                    Icon(
+                        if (isRecordingAudio) Icons.Filled.Done else Icons.Filled.Mic,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
+            )
+            AssistChip(
+                onClick = { mediaLauncher.launchFilePicker() },
+                label = { Text("File") },
+                leadingIcon = {
+                    Icon(
+                        Icons.Filled.EditNote,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
+            )
+            AssistChip(
+                onClick = {
+                    onShowLocationPicker { lat, lon ->
+                        body = "geo:$lat,$lon"
+                        onBodyChanged("geo:$lat,$lon")
+                    }
+                },
+                label = { Text("Location") },
+                leadingIcon = {
+                    Icon(
+                        Icons.Filled.LocationOn,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
+            )
+        }
+
         OutlinedTextField(
             value = tags,
             onValueChange = { tags = it },
@@ -1665,6 +1875,8 @@ private fun NotificationPreferencesSheet(
     onSave: (NotificationSettings) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     var globalEnabled by rememberSaveable(settings) { mutableStateOf(settings.globalEnabled) }
     var preferredTime by rememberSaveable(settings) {
         mutableStateOf(settings.preferredTime.format(TimeFormatter))
@@ -1677,6 +1889,17 @@ private fun NotificationPreferencesSheet(
     }
     var batchNotifications by rememberSaveable(settings) { mutableStateOf(settings.batchNotifications) }
     var respectDnd by rememberSaveable(settings) { mutableStateOf(settings.respectDoNotDisturb) }
+    var canScheduleExactAlarms by remember { mutableStateOf(context.canScheduleExactAlarms()) }
+
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                canScheduleExactAlarms = context.canScheduleExactAlarms()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     Column(
         modifier = Modifier
@@ -1735,6 +1958,45 @@ private fun NotificationPreferencesSheet(
             checked = respectDnd,
             onCheckedChange = { respectDnd = it },
         )
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            ElevatedCard(
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                ),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        text = "Exact alarm access",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = if (canScheduleExactAlarms) {
+                            "Enabled. Reminders can run at exact times when no flexible window is used."
+                        } else {
+                            "Not enabled. DailyLife will still schedule reminders, but the system may delay delivery."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedButton(onClick = { context.openExactAlarmSettings() }) {
+                        Icon(
+                            imageVector = Icons.Filled.AccessTime,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Manage exact alarm access")
+                    }
+                }
+            }
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1983,9 +2245,13 @@ private fun LifeItemType.isMediaLike(): Boolean =
 
 private val ImageUrlPattern =
     Regex("""https?://\S+\.(?:png|jpe?g|webp|gif|bmp|avif)(?:\?\S*)?""", RegexOption.IGNORE_CASE)
+private val ContentImagePattern =
+    Regex("""(?:content|file)://\S+\.(?:png|jpe?g|webp|gif|bmp|avif)""", RegexOption.IGNORE_CASE)
 private val GenericUrlPattern = Regex("""https?://\S+""")
 private val VideoUrlPattern =
     Regex("""https?://\S+\.(?:mp4|m4v|webm|mkv|mov|m3u8)(?:\?\S*)?""", RegexOption.IGNORE_CASE)
+private val ContentVideoPattern =
+    Regex("""(?:content|file)://\S+\.(?:mp4|m4v|webm|mkv|mov)""", RegexOption.IGNORE_CASE)
 private val GeoPattern =
     Regex("""geo:\s*([-+]?\d{1,2}(?:\.\d+)?),\s*([-+]?\d{1,3}(?:\.\d+)?)""", RegexOption.IGNORE_CASE)
 private val LatLonPattern =
@@ -2008,6 +2274,7 @@ private fun LifeItem.inferMosaicHeight(): Dp {
 private fun LifeItem.inferImagePreviewUrl(): String? {
     val source = listOf(title, body).joinToString(" ")
     return ImageUrlPattern.find(source)?.value
+        ?: ContentImagePattern.find(source)?.value
         ?: GenericUrlPattern.find(source)?.value?.takeIf { url ->
             url.contains("picsum", ignoreCase = true) ||
                 url.contains("unsplash", ignoreCase = true) ||
@@ -2018,6 +2285,7 @@ private fun LifeItem.inferImagePreviewUrl(): String? {
 private fun LifeItem.inferVideoPlaybackUrl(): String? {
     val source = listOf(title, body).joinToString(" ")
     return VideoUrlPattern.find(source)?.value
+        ?: ContentVideoPattern.find(source)?.value
 }
 
 private fun LifeItem.inferLocationPreview(): Pair<Double, Double>? {
@@ -2098,4 +2366,28 @@ private fun showTimePicker(
         initialTime.minute,
         true,
     ).show()
+}
+
+private fun Context.canScheduleExactAlarms(): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
+    val alarmManager = getSystemService(android.app.AlarmManager::class.java)
+    return alarmManager?.canScheduleExactAlarms() ?: false
+}
+
+private fun Context.openExactAlarmSettings() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+
+    val requestIntent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+        data = Uri.parse("package:$packageName")
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    val appDetailsIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+        data = Uri.parse("package:$packageName")
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+
+    runCatching { startActivity(requestIntent) }
+        .recoverCatching {
+            if (it is ActivityNotFoundException) startActivity(appDetailsIntent) else throw it
+        }
 }

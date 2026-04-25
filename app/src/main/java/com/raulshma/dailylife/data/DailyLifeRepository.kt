@@ -44,5 +44,7 @@ interface DailyLifeRepository {
 
     fun updateItemNotifications(itemId: Long, settings: ItemNotificationSettings)
 
+    fun rolloverMissedOccurrences(referenceDate: java.time.LocalDate = java.time.LocalDate.now())
+
     fun clearStorageError()
 }

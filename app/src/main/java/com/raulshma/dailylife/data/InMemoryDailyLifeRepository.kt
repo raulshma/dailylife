@@ -13,6 +13,7 @@ import com.raulshma.dailylife.domain.RecurrenceRule
 import com.raulshma.dailylife.domain.StorageError
 import com.raulshma.dailylife.domain.StorageOperation
 import com.raulshma.dailylife.domain.TaskStatus
+import com.raulshma.dailylife.domain.stepDays
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -136,6 +137,51 @@ class InMemoryDailyLifeRepository(
 
     override fun updateItemNotifications(itemId: Long, settings: ItemNotificationSettings) {
         updateItem(itemId) { it.copy(notificationSettings = settings) }
+    }
+
+    override fun rolloverMissedOccurrences(referenceDate: LocalDate) {
+        val currentItems = _state.value.items
+        val updatedItems = currentItems.map { item ->
+            if (!item.isRecurring) return@map item
+
+            val completedDates = item.completionHistory
+                .filterNot { it.missed }
+                .map { it.occurrenceDate }
+                .toSet()
+            val missedDates = item.completionHistory
+                .filter { it.missed }
+                .map { it.occurrenceDate }
+                .toSet()
+            val startDate = item.reminderAt?.toLocalDate() ?: item.createdAt.toLocalDate()
+            val stepDays = item.recurrenceRule.stepDays()
+
+            val newMissedRecords = mutableListOf<CompletionRecord>()
+            var occurrenceDate = startDate
+            while (!occurrenceDate.isAfter(referenceDate)) {
+                if (occurrenceDate.isBefore(referenceDate) &&
+                    occurrenceDate !in completedDates &&
+                    occurrenceDate !in missedDates
+                ) {
+                    newMissedRecords += CompletionRecord(
+                        itemId = item.id,
+                        occurrenceDate = occurrenceDate,
+                        completedAt = occurrenceDate.atTime(0, 0),
+                        missed = true,
+                    )
+                }
+                occurrenceDate = occurrenceDate.plusDays(stepDays)
+            }
+
+            if (newMissedRecords.isNotEmpty()) {
+                item.copy(completionHistory = item.completionHistory + newMissedRecords)
+            } else {
+                item
+            }
+        }
+
+        if (updatedItems != currentItems) {
+            updateStoredState { current -> current.copy(items = updatedItems) }
+        }
     }
 
     override fun clearStorageError() {

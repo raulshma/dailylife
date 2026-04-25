@@ -20,6 +20,7 @@ class DailyLifeViewModel @Inject constructor(
     val state = repository.state
 
     init {
+        repository.rolloverMissedOccurrences()
         syncReminderSchedule()
     }
 
