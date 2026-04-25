@@ -21,7 +21,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import net.sqlcipher.database.SupportFactory
+import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import javax.inject.Singleton
 
 @Module
@@ -39,7 +39,7 @@ object DailyLifeModule {
         @ApplicationContext context: Context,
         passphraseManager: DatabasePassphraseManager,
     ): DailyLifeDatabase {
-        val factory = SupportFactory(passphraseManager.getPassphrase())
+        val factory = SupportOpenHelperFactory(passphraseManager.getPassphrase())
         return Room.databaseBuilder(
             context,
             DailyLifeDatabase::class.java,
