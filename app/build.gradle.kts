@@ -66,14 +66,20 @@ dependencies {
     implementation(libs.hilt.android)
     implementation(libs.material)
     implementation(libs.osmdroid.android)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
     testImplementation(libs.junit)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.room.testing)
+    testImplementation(libs.robolectric)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
 
     ksp(libs.hilt.compiler)
+    ksp(libs.androidx.room.compiler)
 }

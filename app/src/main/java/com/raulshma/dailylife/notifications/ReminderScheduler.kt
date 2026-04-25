@@ -13,12 +13,13 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.room.Room
 import com.raulshma.dailylife.MainActivity
 import com.raulshma.dailylife.R
-import com.raulshma.dailylife.data.FileDailyLifeStore
+import com.raulshma.dailylife.data.RoomDailyLifeStore
+import com.raulshma.dailylife.data.db.DailyLifeDatabase
 import com.raulshma.dailylife.domain.LifeItem
 import com.raulshma.dailylife.domain.NotificationSettings
-import java.io.File
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -232,8 +233,12 @@ private fun rescheduleStoredReminders(
     now: LocalDateTime = LocalDateTime.now(),
 ) {
     runCatching {
-        val storeFile = File(context.filesDir, "dailylife/local-store.properties")
-        val snapshot = FileDailyLifeStore(storeFile).load() ?: return
+        val database = Room.databaseBuilder(
+            context.applicationContext,
+            DailyLifeDatabase::class.java,
+            "dailylife.db",
+        ).build()
+        val snapshot = RoomDailyLifeStore(database).load() ?: return
         AndroidReminderScheduler(context).sync(
             items = snapshot.items,
             settings = snapshot.notificationSettings,
