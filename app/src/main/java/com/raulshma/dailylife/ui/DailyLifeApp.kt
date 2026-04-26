@@ -186,9 +186,9 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 
 private val TimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-private val DateFormatter = DateTimeFormatter.ofPattern("EEE, MMM d")
-private val FilterDateFormatter = DateTimeFormatter.ofPattern("MMM d")
-private val TimestampFormatter = DateTimeFormatter.ofPattern("MMM d, HH:mm")
+internal val DateFormatter = DateTimeFormatter.ofPattern("EEE, MMM d")
+internal val FilterDateFormatter = DateTimeFormatter.ofPattern("MMM d")
+internal val TimestampFormatter = DateTimeFormatter.ofPattern("MMM d, HH:mm")
 private val DefaultReminderTime = LocalTime.of(9, 0)
 
 private enum class HomeTab(
@@ -1063,84 +1063,7 @@ private fun OpenStreetMapPreview(
 }
 
 @Composable
-private fun TimelineScreen(
-    state: DailyLifeState,
-    contentPadding: PaddingValues,
-    onSearchChanged: (String) -> Unit,
-    onTypeSelected: (LifeItemType?) -> Unit,
-    onTagSelected: (String?) -> Unit,
-    onDateRangeChanged: (LocalDate?, LocalDate?) -> Unit,
-    onFavoritesOnlyToggled: () -> Unit,
-    onClearFilters: () -> Unit,
-    onItemSelected: (Long) -> Unit,
-    onFavoriteToggled: (Long) -> Unit,
-    onPinnedToggled: (Long) -> Unit,
-    onTaskStatusChanged: (Long, TaskStatus) -> Unit,
-    onCompleted: (Long) -> Unit,
-    onStorageErrorDismissed: () -> Unit,
-) {
-    val groupedItems = remember(state.visibleItems) {
-        state.visibleItems.groupBy { it.createdAt.toLocalDate() }
-    }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(
-            start = 16.dp,
-            top = contentPadding.calculateTopPadding() + 12.dp,
-            end = 16.dp,
-            bottom = contentPadding.calculateBottomPadding() + 96.dp,
-        ),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        item {
-            SnapshotRow(state = state)
-        }
-        state.storageError?.let { storageError ->
-            item(key = "storage-error") {
-                StorageWarningCard(
-                    error = storageError,
-                    onDismiss = onStorageErrorDismissed,
-                )
-            }
-        }
-        item {
-            TimelineFilters(
-                state = state,
-                onSearchChanged = onSearchChanged,
-                onTypeSelected = onTypeSelected,
-                onTagSelected = onTagSelected,
-                onDateRangeChanged = onDateRangeChanged,
-                onFavoritesOnlyToggled = onFavoritesOnlyToggled,
-                onClearFilters = onClearFilters,
-            )
-        }
-        if (groupedItems.isEmpty()) {
-            item {
-                EmptyTimeline()
-            }
-        } else {
-            groupedItems.forEach { (date, itemsForDate) ->
-                item(key = "date-$date") {
-                    DateHeader(date = date)
-                }
-                items(itemsForDate, key = { it.id }) { item ->
-                    LifeItemCard(
-                        item = item,
-                        onClick = { onItemSelected(item.id) },
-                        onFavoriteToggled = { onFavoriteToggled(item.id) },
-                        onPinnedToggled = { onPinnedToggled(item.id) },
-                        onTaskStatusChanged = { status -> onTaskStatusChanged(item.id, status) },
-                        onCompleted = { onCompleted(item.id) },
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun StorageWarningCard(
+internal fun StorageWarningCard(
     error: StorageError,
     onDismiss: () -> Unit,
 ) {
@@ -1184,7 +1107,7 @@ private fun StorageWarningCard(
 }
 
 @Composable
-private fun SnapshotRow(state: DailyLifeState) {
+internal fun SnapshotRow(state: DailyLifeState) {
     val today = LocalDate.now()
     val completionCount = state.items.sumOf { it.occurrenceStats(today).completedCount }
     Row(
@@ -1210,7 +1133,7 @@ private fun SnapshotRow(state: DailyLifeState) {
 }
 
 @Composable
-private fun SnapshotPill(
+internal fun SnapshotPill(
     label: String,
     value: String,
     modifier: Modifier = Modifier,
@@ -1236,177 +1159,8 @@ private fun SnapshotPill(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun TimelineFilters(
-    state: DailyLifeState,
-    onSearchChanged: (String) -> Unit,
-    onTypeSelected: (LifeItemType?) -> Unit,
-    onTagSelected: (String?) -> Unit,
-    onDateRangeChanged: (LocalDate?, LocalDate?) -> Unit,
-    onFavoritesOnlyToggled: () -> Unit,
-    onClearFilters: () -> Unit,
-) {
-    val context = LocalContext.current
-    val filters = state.filters
-
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        OutlinedTextField(
-            value = filters.query,
-            onValueChange = onSearchChanged,
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-            trailingIcon = {
-                if (filters.query.isNotBlank()) {
-                    IconButton(onClick = { onSearchChanged("") }) {
-                        Icon(Icons.Filled.Close, contentDescription = "Clear search")
-                    }
-                }
-            },
-            placeholder = { Text("Search timeline") },
-        )
-
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            FilterChip(
-                selected = filters.favoritesOnly,
-                onClick = onFavoritesOnlyToggled,
-                label = { Text("Favorites") },
-                leadingIcon = {
-                    Icon(
-                        imageVector = if (filters.favoritesOnly) {
-                            Icons.Filled.Favorite
-                        } else {
-                            Icons.Filled.FavoriteBorder
-                        },
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                },
-            )
-            LifeItemType.entries.forEach { type ->
-                FilterChip(
-                    selected = filters.selectedType == type,
-                    onClick = {
-                        onTypeSelected(if (filters.selectedType == type) null else type)
-                    },
-                    label = { Text(type.label) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = type.icon(),
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    },
-                )
-            }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            DateRangeButton(
-                label = filters.dateRangeStart?.format(FilterDateFormatter) ?: "From",
-                contentDescription = "Select start date",
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    showDatePicker(
-                        context = context,
-                        initialDate = filters.dateRangeStart ?: filters.dateRangeEnd ?: LocalDate.now(),
-                        onDateSelected = { selected ->
-                            onDateRangeChanged(selected, filters.dateRangeEnd)
-                        },
-                    )
-                },
-            )
-            DateRangeButton(
-                label = filters.dateRangeEnd?.format(FilterDateFormatter) ?: "To",
-                contentDescription = "Select end date",
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    showDatePicker(
-                        context = context,
-                        initialDate = filters.dateRangeEnd ?: filters.dateRangeStart ?: LocalDate.now(),
-                        onDateSelected = { selected ->
-                            onDateRangeChanged(filters.dateRangeStart, selected)
-                        },
-                    )
-                },
-            )
-            if (filters.dateRangeStart != null || filters.dateRangeEnd != null) {
-                IconButton(onClick = { onDateRangeChanged(null, null) }) {
-                    Icon(Icons.Filled.Close, contentDescription = "Clear date range")
-                }
-            }
-        }
-
-        if (state.allTags.isNotEmpty()) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                state.allTags.forEach { tag ->
-                    FilterChip(
-                        selected = filters.selectedTag == tag,
-                        onClick = {
-                            onTagSelected(if (filters.selectedTag == tag) null else tag)
-                        },
-                        label = { Text("#$tag") },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Label,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        },
-                    )
-                }
-            }
-        }
-
-        if (filters != DailyLifeFilters()) {
-            TextButton(onClick = onClearFilters) {
-                Icon(Icons.Filled.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Clear filters")
-            }
-        }
-    }
-}
-
-@Composable
-private fun DateRangeButton(
-    label: String,
-    contentDescription: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    OutlinedButton(
-        onClick = onClick,
-        modifier = modifier,
-        contentPadding = PaddingValues(horizontal = 12.dp),
-    ) {
-        Icon(
-            imageVector = Icons.Filled.CalendarMonth,
-            contentDescription = contentDescription,
-            modifier = Modifier.size(18.dp),
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = label,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun DateHeader(date: LocalDate) {
+internal fun DateHeader(date: LocalDate) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -1424,236 +1178,8 @@ private fun DateHeader(date: LocalDate) {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun LifeItemCard(
-    item: LifeItem,
-    onClick: () -> Unit,
-    onFavoriteToggled: () -> Unit,
-    onPinnedToggled: () -> Unit,
-    onTaskStatusChanged: (TaskStatus) -> Unit,
-    onCompleted: () -> Unit,
-) {
-    val occurrenceStats = item.occurrenceStats()
-
-    ElevatedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                TypeBadge(type = item.type)
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = item.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = item.createdAt.format(TimestampFormatter),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                IconButton(onClick = onPinnedToggled) {
-                    Icon(
-                        imageVector = Icons.Filled.PushPin,
-                        contentDescription = if (item.isPinned) "Unpin item" else "Pin item",
-                        tint = if (item.isPinned) {
-                            MaterialTheme.colorScheme.tertiary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    )
-                }
-                IconButton(onClick = onFavoriteToggled) {
-                    Icon(
-                        imageVector = if (item.isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
-                        contentDescription = if (item.isFavorite) {
-                            "Remove favorite"
-                        } else {
-                            "Add favorite"
-                        },
-                        tint = if (item.isFavorite) {
-                            MaterialTheme.colorScheme.tertiary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    )
-                }
-            }
-
-            if (item.type.isMediaLike()) {
-                MediaPreview(item = item)
-            }
-
-            if (item.body.isNotBlank()) {
-                Text(
-                    text = item.body,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                item.tags.forEach { tag ->
-                    AssistChip(
-                        onClick = onClick,
-                        label = { Text("#$tag") },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Label,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        },
-                    )
-                }
-                if (item.isRecurring) {
-                    AssistChip(
-                        onClick = onClick,
-                        label = { Text(item.recurrenceRule.frequency.label) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Filled.EventRepeat,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        },
-                    )
-                }
-                item.reminderAt?.let { reminderAt ->
-                    AssistChip(
-                        onClick = onClick,
-                        label = { Text(reminderAt.format(TimestampFormatter)) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Filled.AccessTime,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        },
-                    )
-                }
-                if (item.notificationSettings.enabled) {
-                    AssistChip(
-                        onClick = onClick,
-                        label = { Text("Notify") },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Filled.Notifications,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        },
-                    )
-                }
-            }
-
-            if (item.isRecurring || occurrenceStats.completedCount > 0 || occurrenceStats.missedCount > 0) {
-                OccurrenceStatsRow(stats = occurrenceStats)
-            }
-
-            if (item.type == LifeItemType.Task) {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    TaskStatus.entries.forEach { status ->
-                        FilterChip(
-                            selected = item.taskStatus == status,
-                            onClick = { onTaskStatusChanged(status) },
-                            label = { Text(status.label) },
-                        )
-                    }
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                TextButton(onClick = onCompleted) {
-                    Icon(Icons.Filled.Done, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Complete")
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun OccurrenceStatsRow(stats: OccurrenceStats) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        OccurrenceMetric(
-            label = "Done",
-            value = stats.completedCount.toString(),
-            modifier = Modifier.weight(1f),
-        )
-        OccurrenceMetric(
-            label = "Missed",
-            value = stats.missedCount.toString(),
-            modifier = Modifier.weight(1f),
-        )
-        OccurrenceMetric(
-            label = "Streak",
-            value = stats.currentStreak.toString(),
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-@Composable
-private fun OccurrenceMetric(
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = value,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun TypeBadge(type: LifeItemType) {
+internal fun TypeBadge(type: LifeItemType) {
     Box(
         modifier = Modifier
             .size(44.dp)
@@ -1666,33 +1192,6 @@ private fun TypeBadge(type: LifeItemType) {
             contentDescription = type.label,
             tint = MaterialTheme.colorScheme.onPrimaryContainer,
         )
-    }
-}
-
-@Composable
-private fun MediaPreview(item: LifeItem) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(150.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.secondaryContainer),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                imageVector = item.type.icon(),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                modifier = Modifier.size(36.dp),
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "${item.type.label} placeholder",
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                style = MaterialTheme.typography.labelLarge,
-            )
-        }
     }
 }
 
@@ -2100,7 +1599,7 @@ internal fun ToggleRow(
 }
 
 @Composable
-private fun EmptyTimeline() {
+internal fun EmptyTimeline() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
