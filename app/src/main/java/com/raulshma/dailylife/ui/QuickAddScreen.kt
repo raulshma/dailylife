@@ -562,7 +562,7 @@ private fun QuickAddContent(
                                 style = MaterialTheme.typography.headlineSmall.copy(
                                     fontWeight = FontWeight.SemiBold
                                 ),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         innerTextField()
@@ -590,7 +590,7 @@ private fun QuickAddContent(
                                 Text(
                                     "Add details, #tags, or paste links here...",
                                     style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             innerTextField()
@@ -686,7 +686,7 @@ private fun QuickAddContent(
                                 Text(
                                     "Add tags (comma separated)",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             innerTextField()
@@ -1337,7 +1337,7 @@ private fun AudioRecordingCard(
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (liveTranscription.isBlank()) {
-                        MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.6f)
+                        MaterialTheme.colorScheme.onTertiaryContainer
                     } else {
                         MaterialTheme.colorScheme.onTertiaryContainer
                     },
@@ -1476,7 +1476,7 @@ private fun ChecklistEditor(
                     },
                     modifier = Modifier.weight(1f).padding(start = 4.dp),
                     textStyle = MaterialTheme.typography.bodyLarge.copy(
-                        color = if (item.isChecked) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface,
+                        color = if (item.isChecked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                         textDecoration = if (item.isChecked) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
                     ),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
@@ -1486,7 +1486,7 @@ private fun ChecklistEditor(
                             Text(
                                 "Add item...",
                                 style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         innerTextField()

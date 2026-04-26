@@ -480,7 +480,7 @@ private fun LifeItemCard(
                     Text(
                         text = item.createdAt.format(TimestampFormatter),
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
                 }
                 IconButton(onClick = onPinnedToggled) {
@@ -657,7 +657,7 @@ private fun OccurrenceMetric(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

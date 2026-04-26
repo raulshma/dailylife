@@ -113,7 +113,7 @@ fun ItemDetailScreen(
         contentVisible = true
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         LargeTopAppBar(
             title = {
                 Text(
@@ -223,7 +223,7 @@ private fun DetailContentSection(
                     )
                     Text(
                         text = item.createdAt.format(TimestampFormatter),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.labelMedium,
                     )
                 }
@@ -383,7 +383,7 @@ private fun DetailLine(label: String, value: String) {
     ) {
         Text(
             text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.labelLarge,
         )
         Text(

@@ -61,7 +61,9 @@ fun GraphViewScreen(
     var selectedNodeId by remember { mutableStateOf<Long?>(null) }
     val outlineVariant = MaterialTheme.colorScheme.outlineVariant
     val primaryColor = MaterialTheme.colorScheme.primary
+    val onPrimary = MaterialTheme.colorScheme.onPrimary
     val tertiaryColor = MaterialTheme.colorScheme.tertiary
+    val onTertiary = MaterialTheme.colorScheme.onTertiary
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
 
     // Animate nodes from center to target with spring physics
@@ -181,6 +183,11 @@ fun GraphViewScreen(
                         dimmed -> primaryColor.copy(alpha = 0.45f)
                         else -> primaryColor
                     }
+                    val nodeTextColor = when {
+                        isSelected -> onTertiary
+                        dimmed -> onPrimary.copy(alpha = 0.6f)
+                        else -> onPrimary
+                    }
 
                     drawCircle(
                         color = nodeColor,
@@ -201,7 +208,7 @@ fun GraphViewScreen(
                             y = pos.y - 10f,
                         ),
                         style = androidx.compose.ui.text.TextStyle(
-                            color = Color.White.copy(alpha = if (dimmed) 0.6f else 1f),
+                            color = nodeTextColor,
                             fontSize = androidx.compose.ui.unit.TextUnit(10f, androidx.compose.ui.unit.TextUnitType.Sp),
                         ),
                     )

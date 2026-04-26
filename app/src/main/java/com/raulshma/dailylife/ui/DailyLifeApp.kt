@@ -864,7 +864,7 @@ private fun CollectionCard(
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
             }
             AnimatedCounter(
@@ -900,7 +900,7 @@ private fun MediaMosaicTile(
                     .background(
                         brush = Brush.verticalGradient(
                             colors = listOf(
-                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.15f),
                                 Color.Black.copy(alpha = 0.45f),
                                 Color.Black.copy(alpha = 0.65f),
                             ),
@@ -1052,7 +1052,7 @@ internal fun VideoPreview(item: LifeItem) {
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
-                .background(Color.Black.copy(alpha = 0.35f), shape = RoundedCornerShape(14.dp))
+                .background(Color.Black.copy(alpha = 0.55f), shape = RoundedCornerShape(14.dp))
                 .padding(horizontal = 10.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -1145,7 +1145,7 @@ internal fun LocationPreview(item: LifeItem) {
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(8.dp)
-                    .background(Color.Black.copy(alpha = 0.45f), shape = RoundedCornerShape(12.dp))
+                    .background(Color.Black.copy(alpha = 0.58f), shape = RoundedCornerShape(12.dp))
                     .padding(horizontal = 8.dp, vertical = 4.dp),
             ) {
                 Row(
@@ -1297,7 +1297,7 @@ internal fun AnimatedSnapshotPill(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurface,
             )
         }
     }
@@ -1623,7 +1623,7 @@ internal fun EmptyTimeline() {
             Text(
                 text = "No items match these filters",
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurface,
             )
         }
     }
@@ -1674,7 +1674,7 @@ internal fun EmptyPhotosScreen() {
             Text(
                 text = "Capture photos, videos, and moments to see them beautifully arranged here.",
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurface,
             )
 
             Row(
