@@ -40,6 +40,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
@@ -282,23 +283,23 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
     val mediaLauncher = rememberMediaCaptureLauncher(
         context = context,
         onPhotoCaptured = { uri ->
-            quickAddDraft = quickAddDraft.copy(body = uri.toString())
+            quickAddDraft = quickAddDraft.copy(body = if (quickAddDraft.body.isBlank()) uri.toString() else "${quickAddDraft.body}\n$uri")
             showQuickAdd = true
         },
         onVideoCaptured = { uri ->
-            quickAddDraft = quickAddDraft.copy(body = uri.toString())
+            quickAddDraft = quickAddDraft.copy(body = if (quickAddDraft.body.isBlank()) uri.toString() else "${quickAddDraft.body}\n$uri")
             showQuickAdd = true
         },
         onPhotoPicked = { uri ->
-            quickAddDraft = quickAddDraft.copy(body = uri.toString())
+            quickAddDraft = quickAddDraft.copy(body = if (quickAddDraft.body.isBlank()) uri.toString() else "${quickAddDraft.body}\n$uri")
             showQuickAdd = true
         },
         onVideoPicked = { uri ->
-            quickAddDraft = quickAddDraft.copy(body = uri.toString())
+            quickAddDraft = quickAddDraft.copy(body = if (quickAddDraft.body.isBlank()) uri.toString() else "${quickAddDraft.body}\n$uri")
             showQuickAdd = true
         },
         onFilePicked = { uri ->
-            quickAddDraft = quickAddDraft.copy(body = uri.toString())
+            quickAddDraft = quickAddDraft.copy(body = if (quickAddDraft.body.isBlank()) uri.toString() else "${quickAddDraft.body}\n$uri")
             showQuickAdd = true
         },
     )
@@ -1851,6 +1852,12 @@ private fun QuickAddSheet(
     val inferredType = remember(body) { inferTypeFromBody(body) }
     val canSave = title.isNotBlank() || body.isNotBlank()
 
+    LaunchedEffect(initialDraft.body) {
+        if (body != initialDraft.body) {
+            body = initialDraft.body
+        }
+    }
+
     LaunchedEffect(Unit) {
         titleFocusRequester.requestFocus()
     }
@@ -2157,7 +2164,7 @@ private fun QuickAddSheet(
             onFile = { mediaLauncher.launchFilePicker() },
             onLocation = {
                 onShowLocationPicker { lat, lon ->
-                    body = "geo:$lat,$lon"
+                    body = if (body.isBlank()) "geo:$lat,$lon" else "$body\ngeo:$lat,$lon"
                 }
             },
         )
@@ -2180,8 +2187,8 @@ private fun QuickAddSheet(
         }
 
         // Attached content preview
-        val attachedUri = remember(body) {
-            body.takeIf {
+        val attachedUris = remember(body) {
+            body.split("\\s+".toRegex()).filter {
                 it.startsWith("content://") ||
                     it.startsWith("file://") ||
                     it.startsWith("geo:") ||
@@ -2189,51 +2196,74 @@ private fun QuickAddSheet(
             }
         }
         AnimatedVisibility(
-            visible = attachedUri != null,
+            visible = attachedUris.isNotEmpty(),
             enter = fadeIn() + expandVertically(),
             exit = fadeOut() + shrinkVertically(),
         ) {
-            ElevatedCard(
-                colors = CardDefaults.elevatedCardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                ),
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = when {
-                            body.startsWith("geo:") -> Icons.Filled.LocationOn
-                            body.startsWith("http") -> Icons.Filled.CloudUpload
-                            else -> Icons.Filled.EditNote
-                        },
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                    )
-                    Text(
-                        text = attachedUri?.take(60) ?: "",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    IconButton(
-                        onClick = {
-                            body = ""
-                        },
-                        modifier = Modifier.size(24.dp),
+                attachedUris.forEach { uriStr ->
+                    ElevatedCard(
+                        colors = CardDefaults.elevatedCardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        ),
+                        modifier = Modifier.widthIn(max = 200.dp),
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = "Clear attachment",
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.size(16.dp),
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            val isImage = (uriStr.startsWith("content://") || uriStr.startsWith("http")) &&
+                                !uriStr.contains("video", ignoreCase = true)
+                            if (isImage) {
+                                AsyncImage(
+                                    model = uriStr,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(RoundedCornerShape(4.dp)),
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = when {
+                                        uriStr.startsWith("geo:") -> Icons.Filled.LocationOn
+                                        uriStr.startsWith("http") -> Icons.Filled.CloudUpload
+                                        else -> Icons.Filled.EditNote
+                                    },
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            }
+                            Text(
+                                text = uriStr.substringAfterLast("/").take(20),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(
+                                onClick = {
+                                    body = body.replace(uriStr, "").trim()
+                                },
+                                modifier = Modifier.size(24.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = "Clear attachment",
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                        }
                     }
                 }
             }
