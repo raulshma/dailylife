@@ -13,6 +13,11 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -99,6 +104,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.InputChip
@@ -112,15 +118,19 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.mapSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -153,6 +163,7 @@ import com.raulshma.dailylife.domain.inferImagePreviewUrl
 import com.raulshma.dailylife.domain.inferVideoPlaybackUrl
 import com.raulshma.dailylife.ui.capture.AudioRecorder
 import com.raulshma.dailylife.ui.capture.LocationPickerSheet
+import com.raulshma.dailylife.ui.capture.SpeechTranscriber
 import com.raulshma.dailylife.ui.capture.hasAudioPermission
 import com.raulshma.dailylife.ui.capture.hasCameraPermission
 import com.raulshma.dailylife.ui.capture.rememberMediaCaptureLauncher
@@ -181,6 +192,59 @@ private enum class HomeTab(
     Graph(label = "Graph", icon = Icons.Filled.AccountTree),
 }
 
+private data class QuickAddDraft(
+    val typeName: String = LifeItemType.Thought.name,
+    val title: String = "",
+    val body: String = "",
+    val tags: String = "",
+    val favorite: Boolean = false,
+    val pinned: Boolean = false,
+    val reminderDate: String = "",
+    val reminderTime: String = "",
+    val notificationsEnabled: Boolean = true,
+    val overrideTime: String = "",
+    val recurring: Boolean = false,
+    val showAdvanced: Boolean = false,
+    val showReminderOptions: Boolean = false,
+)
+
+private val QuickAddDraftSaver = mapSaver(
+    save = {
+        mapOf(
+            "typeName" to it.typeName,
+            "title" to it.title,
+            "body" to it.body,
+            "tags" to it.tags,
+            "favorite" to it.favorite,
+            "pinned" to it.pinned,
+            "reminderDate" to it.reminderDate,
+            "reminderTime" to it.reminderTime,
+            "notificationsEnabled" to it.notificationsEnabled,
+            "overrideTime" to it.overrideTime,
+            "recurring" to it.recurring,
+            "showAdvanced" to it.showAdvanced,
+            "showReminderOptions" to it.showReminderOptions,
+        )
+    },
+    restore = {
+        QuickAddDraft(
+            typeName = it["typeName"] as? String ?: LifeItemType.Thought.name,
+            title = it["title"] as? String ?: "",
+            body = it["body"] as? String ?: "",
+            tags = it["tags"] as? String ?: "",
+            favorite = it["favorite"] as? Boolean ?: false,
+            pinned = it["pinned"] as? Boolean ?: false,
+            reminderDate = it["reminderDate"] as? String ?: "",
+            reminderTime = it["reminderTime"] as? String ?: "",
+            notificationsEnabled = it["notificationsEnabled"] as? Boolean ?: true,
+            overrideTime = it["overrideTime"] as? String ?: "",
+            recurring = it["recurring"] as? Boolean ?: false,
+            showAdvanced = it["showAdvanced"] as? Boolean ?: false,
+            showReminderOptions = it["showReminderOptions"] as? Boolean ?: false,
+        )
+    },
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DailyLifeApp(viewModel: DailyLifeViewModel) {
@@ -196,7 +260,9 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
     val selectedItem = state.items.firstOrNull { it.id == selectedItemId }
     val s3Settings by viewModel.s3BackupSettings.collectAsStateWithLifecycle()
     val lastBackupResult by viewModel.lastBackupResult.collectAsStateWithLifecycle()
-    var quickAddBody by rememberSaveable { mutableStateOf("") }
+    var quickAddDraft by rememberSaveable(stateSaver = QuickAddDraftSaver) {
+        mutableStateOf(QuickAddDraft())
+    }
     var quickAddLocationCallback by remember { mutableStateOf<((Double, Double) -> Unit)?>(null) }
 
     DisposableEffect(Unit) {
@@ -208,28 +274,29 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
     val mediaLauncher = rememberMediaCaptureLauncher(
         context = context,
         onPhotoCaptured = { uri ->
-            quickAddBody = uri.toString()
+            quickAddDraft = quickAddDraft.copy(body = uri.toString())
             showQuickAdd = true
         },
         onVideoCaptured = { uri ->
-            quickAddBody = uri.toString()
+            quickAddDraft = quickAddDraft.copy(body = uri.toString())
             showQuickAdd = true
         },
         onPhotoPicked = { uri ->
-            quickAddBody = uri.toString()
+            quickAddDraft = quickAddDraft.copy(body = uri.toString())
             showQuickAdd = true
         },
         onVideoPicked = { uri ->
-            quickAddBody = uri.toString()
+            quickAddDraft = quickAddDraft.copy(body = uri.toString())
             showQuickAdd = true
         },
         onFilePicked = { uri ->
-            quickAddBody = uri.toString()
+            quickAddDraft = quickAddDraft.copy(body = uri.toString())
             showQuickAdd = true
         },
     )
 
     Scaffold(
+        modifier = Modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
@@ -346,30 +413,32 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
     }
 
     if (showQuickAdd) {
-        ModalBottomSheet(onDismissRequest = {
-            showQuickAdd = false
-            quickAddBody = ""
-        }) {
-            QuickAddSheet(
-                initialBody = quickAddBody,
-                onBodyChanged = { quickAddBody = it },
-                onAdd = { draft ->
-                    viewModel.addItem(draft)
-                    showQuickAdd = false
-                    quickAddBody = ""
-                },
-                onDismiss = {
-                    showQuickAdd = false
-                    quickAddBody = ""
-                },
-                mediaLauncher = mediaLauncher,
-                onShowLocationPicker = { onLocationSelected ->
-                    quickAddLocationCallback = onLocationSelected
-                    showLocationPicker = true
-                },
-                allTags = state.allTags,
-            )
-        }
+        QuickAddComposerScreen(
+            draft = quickAddDraft,
+            onDraftChanged = { quickAddDraft = it },
+            onAdd = { draft ->
+                viewModel.addItem(draft)
+                showQuickAdd = false
+                quickAddDraft = QuickAddDraft()
+            },
+            onAddAndContinue = { draft ->
+                viewModel.addItem(draft)
+                quickAddDraft = QuickAddDraft()
+            },
+            onDismiss = {
+                showQuickAdd = false
+            },
+            onDiscardDraft = {
+                showQuickAdd = false
+                quickAddDraft = QuickAddDraft()
+            },
+            mediaLauncher = mediaLauncher,
+            onShowLocationPicker = { onLocationSelected ->
+                quickAddLocationCallback = onLocationSelected
+                showLocationPicker = true
+            },
+            allTags = state.allTags,
+        )
     }
 
     if (showLocationPicker) {
@@ -1611,43 +1680,189 @@ private fun ReminderDateTimeRow(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
-private fun QuickAddSheet(
-    initialBody: String,
-    onBodyChanged: (String) -> Unit,
+private fun QuickAddComposerScreen(
+    draft: QuickAddDraft,
+    onDraftChanged: (QuickAddDraft) -> Unit,
     onAdd: (LifeItemDraft) -> Unit,
+    onAddAndContinue: (LifeItemDraft) -> Unit,
     onDismiss: () -> Unit,
+    onDiscardDraft: () -> Unit,
     mediaLauncher: com.raulshma.dailylife.ui.capture.MediaCaptureLauncher,
     onShowLocationPicker: ((Double, Double) -> Unit) -> Unit,
     allTags: List<String> = emptyList(),
 ) {
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        contentWindowInsets = WindowInsets.safeDrawing,
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text(
+                            text = "Quick add",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = "Compose full screen",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Close quick add",
+                        )
+                    }
+                },
+                actions = {
+                    TextButton(onClick = onDiscardDraft) {
+                        Text("Discard")
+                    }
+                },
+            )
+        },
+    ) { paddingValues ->
+        QuickAddSheet(
+            modifier = Modifier.padding(paddingValues),
+            initialDraft = draft,
+            onDraftChanged = onDraftChanged,
+            onAdd = onAdd,
+            onAddAndContinue = onAddAndContinue,
+            onDismiss = onDismiss,
+            mediaLauncher = mediaLauncher,
+            onShowLocationPicker = onShowLocationPicker,
+            allTags = allTags,
+            showHeader = false,
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun QuickAddSheet(
+    modifier: Modifier = Modifier,
+    initialDraft: QuickAddDraft,
+    onDraftChanged: (QuickAddDraft) -> Unit,
+    onAdd: (LifeItemDraft) -> Unit,
+    onAddAndContinue: (LifeItemDraft) -> Unit,
+    onDismiss: () -> Unit,
+    mediaLauncher: com.raulshma.dailylife.ui.capture.MediaCaptureLauncher,
+    onShowLocationPicker: ((Double, Double) -> Unit) -> Unit,
+    allTags: List<String> = emptyList(),
+    showHeader: Boolean = true,
+) {
     val context = LocalContext.current
-    var selectedType by rememberSaveable { mutableStateOf(LifeItemType.Thought) }
-    var title by rememberSaveable { mutableStateOf("") }
-    var body by rememberSaveable { mutableStateOf(initialBody) }
-    var tags by rememberSaveable { mutableStateOf("") }
-    var favorite by rememberSaveable { mutableStateOf(false) }
-    var pinned by rememberSaveable { mutableStateOf(false) }
-    var reminderDate by rememberSaveable { mutableStateOf("") }
-    var reminderTime by rememberSaveable { mutableStateOf("") }
-    var notificationsEnabled by rememberSaveable { mutableStateOf(true) }
-    var overrideTime by rememberSaveable { mutableStateOf("") }
-    var recurring by rememberSaveable { mutableStateOf(false) }
-    var showAdvanced by rememberSaveable { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
+    val initialType = remember(initialDraft.typeName) {
+        LifeItemType.entries.firstOrNull { it.name == initialDraft.typeName } ?: LifeItemType.Thought
+    }
+    var selectedType by rememberSaveable { mutableStateOf(initialType) }
+    var title by rememberSaveable { mutableStateOf(initialDraft.title) }
+    var body by rememberSaveable { mutableStateOf(initialDraft.body) }
+    var tags by rememberSaveable { mutableStateOf(initialDraft.tags) }
+    var favorite by rememberSaveable { mutableStateOf(initialDraft.favorite) }
+    var pinned by rememberSaveable { mutableStateOf(initialDraft.pinned) }
+    var reminderDate by rememberSaveable { mutableStateOf(initialDraft.reminderDate) }
+    var reminderTime by rememberSaveable { mutableStateOf(initialDraft.reminderTime) }
+    var notificationsEnabled by rememberSaveable { mutableStateOf(initialDraft.notificationsEnabled) }
+    var overrideTime by rememberSaveable { mutableStateOf(initialDraft.overrideTime) }
+    var recurring by rememberSaveable { mutableStateOf(initialDraft.recurring) }
+    var showAdvanced by rememberSaveable { mutableStateOf(initialDraft.showAdvanced) }
+    var showReminderOptions by rememberSaveable { mutableStateOf(initialDraft.showReminderOptions) }
     var isRecordingAudio by remember { mutableStateOf(false) }
+    var activeRecordingUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingAudioUri by remember { mutableStateOf<Uri?>(null) }
+    var liveTranscription by rememberSaveable { mutableStateOf("") }
     val audioRecorder = remember { AudioRecorder(context) }
+    val speechTranscriber = remember { SpeechTranscriber(context) }
     val titleFocusRequester = remember { FocusRequester() }
 
-    if (initialBody.isNotBlank() && body != initialBody) {
-        body = initialBody
+    fun currentDraftSnapshot(): QuickAddDraft = QuickAddDraft(
+        typeName = selectedType.name,
+        title = title,
+        body = body,
+        tags = tags,
+        favorite = favorite,
+        pinned = pinned,
+        reminderDate = reminderDate,
+        reminderTime = reminderTime,
+        notificationsEnabled = notificationsEnabled,
+        overrideTime = overrideTime,
+        recurring = recurring,
+        showAdvanced = showAdvanced,
+        showReminderOptions = showReminderOptions,
+    )
+
+    fun buildDraftPayload(): LifeItemDraft = LifeItemDraft(
+        type = selectedType,
+        title = title,
+        body = body,
+        tags = parseTags(tags),
+        isFavorite = favorite,
+        isPinned = pinned,
+        taskStatus = if (selectedType == LifeItemType.Task) {
+            TaskStatus.Open
+        } else {
+            null
+        },
+        reminderAt = parseReminderDateTime(reminderDate, reminderTime),
+        recurrenceRule = if (recurring) {
+            RecurrenceRule(RecurrenceFrequency.Daily)
+        } else {
+            RecurrenceRule()
+        },
+        notificationSettings = ItemNotificationSettings(
+            enabled = notificationsEnabled,
+            timeOverride = parseTimeOrNull(overrideTime),
+        ),
+    )
+
+    fun resetLocalDraft() {
+        selectedType = LifeItemType.Thought
+        title = ""
+        body = ""
+        tags = ""
+        favorite = false
+        pinned = false
+        reminderDate = ""
+        reminderTime = ""
+        notificationsEnabled = true
+        overrideTime = ""
+        recurring = false
+        showAdvanced = false
+        showReminderOptions = false
     }
 
     // Smart type detection from body content
     val inferredType = remember(body) { inferTypeFromBody(body) }
+    val canSave = title.isNotBlank() || body.isNotBlank()
 
     LaunchedEffect(Unit) {
         titleFocusRequester.requestFocus()
+    }
+
+    LaunchedEffect(
+        selectedType,
+        title,
+        body,
+        tags,
+        favorite,
+        pinned,
+        reminderDate,
+        reminderTime,
+        notificationsEnabled,
+        overrideTime,
+        recurring,
+        showAdvanced,
+        showReminderOptions,
+    ) {
+        onDraftChanged(currentDraftSnapshot())
     }
 
     DisposableEffect(Unit) {
@@ -1655,105 +1870,170 @@ private fun QuickAddSheet(
             if (audioRecorder.isRecording) {
                 audioRecorder.cancelRecording()
             }
+            speechTranscriber.destroy()
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        // Header
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "Quick add",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-            IconButton(onClick = onDismiss) {
-                Icon(
-                    imageVector = Icons.Filled.Close,
-                    contentDescription = "Close",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+    fun startAudioCapture() {
+        pendingAudioUri = null
+        liveTranscription = ""
+        val uri = audioRecorder.startRecording() ?: return
+        activeRecordingUri = uri
+        val startedTranscription = speechTranscriber.start { transcript ->
+            liveTranscription = transcript
+        }
+        if (!startedTranscription) {
+            liveTranscription = ""
+        }
+        isRecordingAudio = true
+    }
+
+    fun stopAudioCapture() {
+        if (!isRecordingAudio) return
+        val stoppedUri = audioRecorder.stopRecording()
+        val finalTranscript = speechTranscriber.stop()
+        isRecordingAudio = false
+        pendingAudioUri = stoppedUri ?: activeRecordingUri
+        activeRecordingUri = null
+        liveTranscription = finalTranscript
+    }
+
+    fun discardCapturedAudio() {
+        pendingAudioUri = null
+        activeRecordingUri = null
+        liveTranscription = ""
+        audioRecorder.discardLastRecording()
+    }
+
+    fun addCapturedAudioToDraft() {
+        val uri = pendingAudioUri ?: return
+        val transcript = liveTranscription.trim()
+        body = buildString {
+            append(uri.toString())
+            if (transcript.isNotBlank()) {
+                append("\n\n")
+                append(transcript)
             }
         }
+        selectedType = LifeItemType.Audio
+        pendingAudioUri = null
+        liveTranscription = ""
+        audioRecorder.clearLastRecordingReference()
+    }
 
-        // Type selector
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                LifeItemType.entries.forEach { type ->
-                    val isSelected = selectedType == type
-                    val containerColor = if (isSelected) {
-                        MaterialTheme.colorScheme.primaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surface
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            if (showHeader) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Quick add",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Close",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
-                    val contentColor = if (isSelected) {
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            }
+
+            // Type selector
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    LifeItemType.entries.forEach { type ->
+                        val isSelected = selectedType == type
+                        val containerColor = if (isSelected) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surface
+                        }
+                        val contentColor = if (isSelected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(containerColor)
+                                .clickable {
+                                    if (selectedType != type) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    }
+                                    selectedType = type
+                                }
+                                .padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    imageVector = type.icon(),
+                                    contentDescription = type.label,
+                                    tint = contentColor,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = type.label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = contentColor,
+                                )
+                            }
+                        }
                     }
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(containerColor)
-                            .clickable { selectedType = type }
-                            .padding(vertical = 10.dp),
-                        contentAlignment = Alignment.Center,
+                }
+
+                AnimatedVisibility(
+                    visible = inferredType != null && inferredType != selectedType,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically(),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                imageVector = type.icon(),
-                                contentDescription = type.label,
-                                tint = contentColor,
-                                modifier = Modifier.size(20.dp),
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = type.label,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = contentColor,
-                            )
+                        Text(
+                            text = "Detected ${inferredType?.label ?: ""}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        TextButton(
+                            onClick = {
+                                inferredType?.let {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    selectedType = it
+                                }
+                            },
+                        ) {
+                            Text("Switch")
                         }
                     }
                 }
             }
-
-            AnimatedVisibility(
-                visible = inferredType != null && inferredType != selectedType,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically(),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "Detected ${inferredType?.label ?: ""}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    TextButton(
-                        onClick = { inferredType?.let { selectedType = it } },
-                    ) {
-                        Text("Switch")
-                    }
-                }
-            }
-        }
 
         // Title
         OutlinedTextField(
@@ -1783,7 +2063,6 @@ private fun QuickAddSheet(
             onValueChange = {
                 if (it.length <= 2000) {
                     body = it
-                    onBodyChanged(it)
                 }
             },
             modifier = Modifier.fillMaxWidth(),
@@ -1827,18 +2106,10 @@ private fun QuickAddSheet(
             onPickVideo = { mediaLauncher.launchVideoPicker() },
             onAudio = {
                 if (isRecordingAudio) {
-                    audioRecorder.stopRecording()?.let { uri ->
-                        body = uri.toString()
-                        onBodyChanged(uri.toString())
-                    }
-                    isRecordingAudio = false
+                    stopAudioCapture()
                 } else {
                     if (hasAudioPermission(context)) {
-                        audioRecorder.startRecording()?.let { uri ->
-                            body = uri.toString()
-                            onBodyChanged(uri.toString())
-                        }
-                        isRecordingAudio = true
+                        startAudioCapture()
                     } else {
                         mediaLauncher.requestAudioPermissionIfNeeded()
                     }
@@ -1848,10 +2119,77 @@ private fun QuickAddSheet(
             onLocation = {
                 onShowLocationPicker { lat, lon ->
                     body = "geo:$lat,$lon"
-                    onBodyChanged("geo:$lat,$lon")
                 }
             },
         )
+
+        AnimatedVisibility(
+            visible = isRecordingAudio || pendingAudioUri != null,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
+        ) {
+            ElevatedCard(
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                ),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (isRecordingAudio) Icons.Filled.Mic else Icons.Filled.Done,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                        )
+                        Text(
+                            text = if (isRecordingAudio) {
+                                "Recording in progress"
+                            } else {
+                                "Recording ready to add"
+                            },
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        )
+                    }
+
+                    Text(
+                        text = if (liveTranscription.isBlank()) {
+                            if (isRecordingAudio) {
+                                "Listening… start speaking to see live transcription."
+                            } else {
+                                "No transcription detected for this recording."
+                            }
+                        } else {
+                            liveTranscription
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    )
+
+                    if (pendingAudioUri != null && !isRecordingAudio) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                        ) {
+                            OutlinedButton(onClick = ::discardCapturedAudio) {
+                                Text("Discard")
+                            }
+                            Button(onClick = ::addCapturedAudioToDraft) {
+                                Text("Add recording")
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // Attached content preview
         val attachedUri = remember(body) {
@@ -1899,7 +2237,6 @@ private fun QuickAddSheet(
                     IconButton(
                         onClick = {
                             body = ""
-                            onBodyChanged("")
                         },
                         modifier = Modifier.size(24.dp),
                     ) {
@@ -1951,117 +2288,45 @@ private fun QuickAddSheet(
             }
         }
 
-        // Quick properties row
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            FilledTonalIconButton(
-                onClick = { favorite = !favorite },
-                modifier = Modifier.size(40.dp),
+            // Quick properties row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    imageVector = if (favorite) Icons.Filled.Star else Icons.Filled.StarBorder,
-                    contentDescription = if (favorite) "Favorited" else "Favorite",
-                    tint = if (favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                )
+                FilledTonalIconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        favorite = !favorite
+                    },
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Icon(
+                        imageVector = if (favorite) Icons.Filled.Star else Icons.Filled.StarBorder,
+                        contentDescription = if (favorite) "Favorited" else "Favorite",
+                        tint = if (favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                FilledTonalIconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        pinned = !pinned
+                    },
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.PushPin,
+                        contentDescription = if (pinned) "Pinned" else "Pin",
+                        tint = if (pinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                TextButton(onClick = { showAdvanced = !showAdvanced }) {
+                    Text(if (showAdvanced) "Less options" else "More options")
+                }
             }
-            FilledTonalIconButton(
-                onClick = { pinned = !pinned },
-                modifier = Modifier.size(40.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.PushPin,
-                    contentDescription = if (pinned) "Pinned" else "Pin",
-                    tint = if (pinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                )
-            }
-            Spacer(modifier = Modifier.weight(1f))
-            TextButton(onClick = { showAdvanced = !showAdvanced }) {
-                Text(if (showAdvanced) "Less options" else "More options")
-            }
-        }
 
-        // Reminder card
-        ElevatedCard(
-            colors = CardDefaults.elevatedCardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-            ),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                QuickAddSectionTitle(
-                    icon = Icons.Filled.Alarm,
-                    title = "Reminder",
-                )
-                ReminderDateTimeRow(
-                    reminderDate = parseDateOrNull(reminderDate),
-                    reminderTime = parseTimeOrNull(reminderTime),
-                    onDateClick = {
-                        showDatePicker(
-                            context = context,
-                            initialDate = parseDateOrNull(reminderDate) ?: LocalDate.now(),
-                            onDateSelected = { selected ->
-                                reminderDate = selected.toString()
-                                if (reminderTime.isBlank()) {
-                                    reminderTime = DefaultReminderTime.format(TimeFormatter)
-                                }
-                            },
-                        )
-                    },
-                    onTimeClick = {
-                        showTimePicker(
-                            context = context,
-                            initialTime = parseTimeOrNull(reminderTime)
-                                ?: parseTimeOrNull(overrideTime)
-                                ?: DefaultReminderTime,
-                            onTimeSelected = { selected ->
-                                if (reminderDate.isBlank()) {
-                                    reminderDate = LocalDate.now().toString()
-                                }
-                                reminderTime = selected.format(TimeFormatter)
-                            },
-                        )
-                    },
-                    onClear = {
-                        reminderDate = ""
-                        reminderTime = ""
-                    },
-                )
-                QuickReminderPresets(
-                    onToday = {
-                        reminderDate = LocalDate.now().toString()
-                        if (reminderTime.isBlank()) {
-                            reminderTime = DefaultReminderTime.format(TimeFormatter)
-                        }
-                    },
-                    onTomorrow = {
-                        reminderDate = LocalDate.now().plusDays(1).toString()
-                        if (reminderTime.isBlank()) {
-                            reminderTime = DefaultReminderTime.format(TimeFormatter)
-                        }
-                    },
-                    onNextWeek = {
-                        reminderDate = LocalDate.now().plusWeeks(1).toString()
-                        if (reminderTime.isBlank()) {
-                            reminderTime = DefaultReminderTime.format(TimeFormatter)
-                        }
-                    },
-                )
-            }
-        }
-
-        // Advanced options
-        AnimatedVisibility(
-            visible = showAdvanced,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically(),
-        ) {
+            // Reminder card
             ElevatedCard(
                 colors = CardDefaults.elevatedCardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -2073,84 +2338,185 @@ private fun QuickAddSheet(
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    QuickAddSectionTitle(
-                        icon = Icons.Filled.Tune,
-                        title = "Advanced",
-                    )
-                    ToggleRow(
-                        icon = if (notificationsEnabled) {
-                            Icons.Filled.Notifications
-                        } else {
-                            Icons.Filled.NotificationsOff
-                        },
-                        label = "Notifications",
-                        checked = notificationsEnabled,
-                        onCheckedChange = { notificationsEnabled = it },
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        QuickAddSectionTitle(
+                            icon = Icons.Filled.Alarm,
+                            title = "Reminder",
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        TextButton(onClick = { showReminderOptions = !showReminderOptions }) {
+                            Text(if (showReminderOptions) "Hide" else "Add reminder")
+                        }
+                    }
                     AnimatedVisibility(
-                        visible = notificationsEnabled,
+                        visible = showReminderOptions,
                         enter = fadeIn() + expandVertically(),
                         exit = fadeOut() + shrinkVertically(),
                     ) {
-                        OutlinedTextField(
-                            value = overrideTime,
-                            onValueChange = { overrideTime = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            label = { Text("Time override, HH:mm") },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Filled.AccessTime,
-                                    contentDescription = null,
-                                )
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            ReminderDateTimeRow(
+                                reminderDate = parseDateOrNull(reminderDate),
+                                reminderTime = parseTimeOrNull(reminderTime),
+                                onDateClick = {
+                                    showDatePicker(
+                                        context = context,
+                                        initialDate = parseDateOrNull(reminderDate) ?: LocalDate.now(),
+                                        onDateSelected = { selected ->
+                                            reminderDate = selected.toString()
+                                            if (reminderTime.isBlank()) {
+                                                reminderTime = DefaultReminderTime.format(TimeFormatter)
+                                            }
+                                        },
+                                    )
+                                },
+                                onTimeClick = {
+                                    showTimePicker(
+                                        context = context,
+                                        initialTime = parseTimeOrNull(reminderTime)
+                                            ?: parseTimeOrNull(overrideTime)
+                                            ?: DefaultReminderTime,
+                                        onTimeSelected = { selected ->
+                                            if (reminderDate.isBlank()) {
+                                                reminderDate = LocalDate.now().toString()
+                                            }
+                                            reminderTime = selected.format(TimeFormatter)
+                                        },
+                                    )
+                                },
+                                onClear = {
+                                    reminderDate = ""
+                                    reminderTime = ""
+                                },
+                            )
+                            QuickReminderPresets(
+                                onToday = {
+                                    reminderDate = LocalDate.now().toString()
+                                    if (reminderTime.isBlank()) {
+                                        reminderTime = DefaultReminderTime.format(TimeFormatter)
+                                    }
+                                },
+                                onTomorrow = {
+                                    reminderDate = LocalDate.now().plusDays(1).toString()
+                                    if (reminderTime.isBlank()) {
+                                        reminderTime = DefaultReminderTime.format(TimeFormatter)
+                                    }
+                                },
+                                onNextWeek = {
+                                    reminderDate = LocalDate.now().plusWeeks(1).toString()
+                                    if (reminderTime.isBlank()) {
+                                        reminderTime = DefaultReminderTime.format(TimeFormatter)
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Advanced options
+            AnimatedVisibility(
+                visible = showAdvanced,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                ElevatedCard(
+                    colors = CardDefaults.elevatedCardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    ),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        QuickAddSectionTitle(
+                            icon = Icons.Filled.Tune,
+                            title = "Advanced",
+                        )
+                        ToggleRow(
+                            icon = if (notificationsEnabled) {
+                                Icons.Filled.Notifications
+                            } else {
+                                Icons.Filled.NotificationsOff
                             },
+                            label = "Notifications",
+                            checked = notificationsEnabled,
+                            onCheckedChange = { notificationsEnabled = it },
+                        )
+                        AnimatedVisibility(
+                            visible = notificationsEnabled,
+                            enter = fadeIn() + expandVertically(),
+                            exit = fadeOut() + shrinkVertically(),
+                        ) {
+                            OutlinedTextField(
+                                value = overrideTime,
+                                onValueChange = { overrideTime = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                label = { Text("Time override, HH:mm") },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Filled.AccessTime,
+                                        contentDescription = null,
+                                    )
+                                },
+                            )
+                        }
+                        ToggleRow(
+                            icon = Icons.Filled.EventRepeat,
+                            label = "Daily recurrence",
+                            checked = recurring,
+                            onCheckedChange = { recurring = it },
                         )
                     }
-                    ToggleRow(
-                        icon = Icons.Filled.EventRepeat,
-                        label = "Daily recurrence",
-                        checked = recurring,
-                        onCheckedChange = { recurring = it },
-                    )
                 }
             }
         }
 
-        // Save button
-        Button(
-            onClick = {
-                onAdd(
-                    LifeItemDraft(
-                        type = selectedType,
-                        title = title,
-                        body = body,
-                        tags = parseTags(tags),
-                        isFavorite = favorite,
-                        isPinned = pinned,
-                        taskStatus = if (selectedType == LifeItemType.Task) {
-                            TaskStatus.Open
-                        } else {
-                            null
-                        },
-                        reminderAt = parseReminderDateTime(reminderDate, reminderTime),
-                        recurrenceRule = if (recurring) {
-                            RecurrenceRule(RecurrenceFrequency.Daily)
-                        } else {
-                            RecurrenceRule()
-                        },
-                        notificationSettings = ItemNotificationSettings(
-                            enabled = notificationsEnabled,
-                            timeOverride = parseTimeOrNull(overrideTime),
-                        ),
-                    ),
-                )
-            },
-            enabled = title.isNotBlank() || body.isNotBlank(),
-            modifier = Modifier.fillMaxWidth(),
+        HorizontalDivider()
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Filled.Done, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Save")
+            OutlinedButton(
+                onClick = onDismiss,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Cancel")
+            }
+            Button(
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onAdd(buildDraftPayload())
+                },
+                enabled = canSave,
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(Icons.Filled.Done, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Save")
+            }
+        }
+
+        TextButton(
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onAddAndContinue(buildDraftPayload())
+                resetLocalDraft()
+                titleFocusRequester.requestFocus()
+            },
+            enabled = canSave,
+            modifier = Modifier.align(Alignment.End),
+        ) {
+            Text("Save + new")
         }
     }
 }
@@ -2195,16 +2561,22 @@ private fun QuickAddAttachmentToolbar(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        val recordingPulse = rememberInfiniteTransition(label = "recordingPulse")
+        val recordingScale by recordingPulse.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.18f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 700),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "recordingScale",
+        )
+
         listOf(
             Triple(Icons.Filled.PhotoCamera, "Camera", onCamera),
             Triple(Icons.Filled.PhotoLibrary, "Photos", onPhotos),
             Triple(Icons.Filled.Videocam, "Video", onVideo),
             Triple(Icons.Filled.PlayArrow, "Pick video", onPickVideo),
-            Triple(
-                if (isRecordingAudio) Icons.Filled.Done else Icons.Filled.Mic,
-                if (isRecordingAudio) "Stop" else "Audio",
-                onAudio,
-            ),
             Triple(Icons.Filled.EditNote, "File", onFile),
             Triple(Icons.Filled.LocationOn, "Location", onLocation),
         ).forEach { (icon, desc, action) ->
@@ -2225,6 +2597,39 @@ private fun QuickAddAttachmentToolbar(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            FilledTonalIconButton(
+                onClick = onAudio,
+                modifier = Modifier
+                    .size(44.dp)
+                    .graphicsLayer {
+                        val scale = if (isRecordingAudio) recordingScale else 1f
+                        scaleX = scale
+                        scaleY = scale
+                    },
+            ) {
+                Icon(
+                    imageVector = if (isRecordingAudio) Icons.Filled.Done else Icons.Filled.Mic,
+                    contentDescription = if (isRecordingAudio) "Stop" else "Audio",
+                    modifier = Modifier.size(20.dp),
+                    tint = if (isRecordingAudio) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        LocalContentColor.current
+                    },
+                )
+            }
+            Text(
+                text = if (isRecordingAudio) "Stop" else "Audio",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isRecordingAudio) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
         }
     }
 }

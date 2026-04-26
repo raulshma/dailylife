@@ -26,6 +26,9 @@ class DailyLifeAppTest {
         composeTestRule.onNodeWithContentDescription("Add").assertIsDisplayed()
         composeTestRule.onNodeWithText("Add").performClick()
         composeTestRule.onNodeWithText("Quick add").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Compose full screen").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Add reminder").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Save + new").assertIsDisplayed()
     }
 
     @Test

@@ -63,6 +63,15 @@ class AudioRecorder(private val context: Context) {
         }
     }
 
+    fun discardLastRecording() {
+        outputFile?.delete()
+        outputFile = null
+    }
+
+    fun clearLastRecordingReference() {
+        outputFile = null
+    }
+
     fun cancelRecording() {
         if (!isRecording) return
         try {
