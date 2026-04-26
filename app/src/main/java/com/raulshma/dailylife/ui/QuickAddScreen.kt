@@ -154,20 +154,13 @@ internal fun QuickAddScreen(
     allTags: List<String> = emptyList(),
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
-            horizontalArrangement = Arrangement.End
-        ) {
-            TextButton(onClick = onDiscardDraft) {
-                Text("Discard Draft")
-            }
-        }
         QuickAddContent(
             modifier = Modifier.weight(1f),
             initialDraft = draft,
             onDraftChanged = onDraftChanged,
             onAdd = onAdd,
             onAddAndContinue = onAddAndContinue,
+            onDiscardDraft = onDiscardDraft,
             mediaLauncher = mediaLauncher,
             onShowLocationPicker = onShowLocationPicker,
             allTags = allTags,
@@ -183,6 +176,7 @@ private fun QuickAddContent(
     onDraftChanged: (QuickAddDraft) -> Unit,
     onAdd: (LifeItemDraft) -> Unit,
     onAddAndContinue: (LifeItemDraft) -> Unit,
+    onDiscardDraft: () -> Unit,
     mediaLauncher: com.raulshma.dailylife.ui.capture.MediaCaptureLauncher,
     onShowLocationPicker: ((Double, Double) -> Unit) -> Unit,
     allTags: List<String> = emptyList(),
@@ -374,7 +368,7 @@ private fun QuickAddContent(
                 .padding(horizontal = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // Timestamp and Templates
+            // Timestamp, Templates and Discard
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -386,45 +380,56 @@ private fun QuickAddContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 
-                // Templates Button
-                var showTemplates by remember { mutableStateOf(false) }
-                Box {
-                    TextButton(onClick = { showTemplates = true }) {
-                        Icon(Icons.Filled.Lightbulb, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Templates")
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Templates Button
+                    var showTemplates by remember { mutableStateOf(false) }
+                    Box {
+                        TextButton(onClick = { showTemplates = true }) {
+                            Icon(Icons.Filled.Lightbulb, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Templates")
+                        }
+                        DropdownMenu(
+                            expanded = showTemplates,
+                            onDismissRequest = { showTemplates = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Daily Reflection") },
+                                onClick = {
+                                    selectedType = LifeItemType.Note
+                                    title = "Daily Reflection"
+                                    body = "1. What went well today?\n2. What could be improved?\n3. What am I grateful for?"
+                                    showTemplates = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Meeting Notes") },
+                                onClick = {
+                                    selectedType = LifeItemType.Note
+                                    title = "Meeting: "
+                                    body = "Attendees:\n\nAgenda:\n- \n\nAction Items:\n- [ ] "
+                                    showTemplates = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Quick Task") },
+                                onClick = {
+                                    selectedType = LifeItemType.Task
+                                    title = "Task"
+                                    body = "Details: "
+                                    showTemplates = false
+                                }
+                            )
+                        }
                     }
-                    DropdownMenu(
-                        expanded = showTemplates,
-                        onDismissRequest = { showTemplates = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Daily Reflection") },
-                            onClick = {
-                                selectedType = LifeItemType.Note
-                                title = "Daily Reflection"
-                                body = "1. What went well today?\n2. What could be improved?\n3. What am I grateful for?"
-                                showTemplates = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Meeting Notes") },
-                            onClick = {
-                                selectedType = LifeItemType.Note
-                                title = "Meeting: "
-                                body = "Attendees:\n\nAgenda:\n- \n\nAction Items:\n- [ ] "
-                                showTemplates = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Quick Task") },
-                            onClick = {
-                                selectedType = LifeItemType.Task
-                                title = "Task"
-                                body = "Details: "
-                                showTemplates = false
-                            }
-                        )
+                    
+                    Box(modifier = Modifier.height(20.dp).width(1.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)))
+                    
+                    TextButton(onClick = onDiscardDraft) {
+                        Text("Discard")
                     }
                 }
             }
