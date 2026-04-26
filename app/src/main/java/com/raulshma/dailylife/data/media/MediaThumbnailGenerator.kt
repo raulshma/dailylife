@@ -24,6 +24,7 @@ class MediaThumbnailGenerator(context: Context) {
      */
     fun generateVideoThumbnail(videoUri: Uri, context: Context): Uri? {
         val videoFile = videoUri.toFile(context) ?: return null
+        if (!videoFile.exists() || videoFile.length() == 0L) return null
         val cacheKey = "thumb_${videoFile.name}_${videoFile.length()}"
         val thumbFile = cacheManager.obtainCacheFile(cacheKey, "jpg")
 
@@ -31,12 +32,11 @@ class MediaThumbnailGenerator(context: Context) {
             return FileProvider.getUriForFile(context, "$packageName.fileprovider", thumbFile)
         }
 
+        val retriever = MediaMetadataRetriever()
         return try {
-            val retriever = MediaMetadataRetriever()
             retriever.setDataSource(context, videoUri)
             val bitmap = retriever.frameAtTime
                 ?: retriever.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-            retriever.release()
 
             bitmap?.let {
                 FileOutputStream(thumbFile).use { fos ->
@@ -46,8 +46,10 @@ class MediaThumbnailGenerator(context: Context) {
             }
             cacheManager.enforceSizeLimit(maxSizeBytes = ThumbCacheMaxSize)
             FileProvider.getUriForFile(context, "$packageName.fileprovider", thumbFile)
-        } catch (e: Exception) {
+        } catch (_: Throwable) {
             null
+        } finally {
+            runCatching { retriever.release() }
         }
     }
 

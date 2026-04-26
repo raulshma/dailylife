@@ -507,8 +507,21 @@ private fun LifeItemCard(
                 }
             }
 
-            if (item.type.isMediaLike()) {
-                MediaPreview(item = item)
+            val hasMediaContent = item.type.isMediaLike() ||
+                item.inferImagePreviewUrl() != null ||
+                item.inferVideoPlaybackUrl() != null ||
+                item.inferAudioUrl() != null ||
+                item.inferLocationPreview() != null
+            if (hasMediaContent) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.secondaryContainer),
+                ) {
+                    ItemPreview(item = item)
+                }
             }
 
             if (item.body.isNotBlank()) {
@@ -664,29 +677,4 @@ private fun OccurrenceMetric(
     }
 }
 
-@Composable
-private fun MediaPreview(item: LifeItem) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(150.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.secondaryContainer),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                imageVector = item.type.icon(),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                modifier = Modifier.size(36.dp),
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "${item.type.label} placeholder",
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                style = MaterialTheme.typography.labelLarge,
-            )
-        }
-    }
-}
+

@@ -126,6 +126,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.raulshma.dailylife.data.media.MediaThumbnailGenerator
 import com.raulshma.dailylife.domain.ItemNotificationSettings
 import com.raulshma.dailylife.domain.LifeItemDraft
 import com.raulshma.dailylife.domain.LifeItemType
@@ -1073,11 +1074,42 @@ private fun AnimatedAudioWaveform(
     }
 }
 
+private enum class AttachmentType {
+    Image, Video, Audio, Location, Other
+}
+
 @Composable
 private fun AttachmentPreviewCard(
     uriStr: String,
     onRemove: () -> Unit
 ) {
+    val context = LocalContext.current
+    val attachmentType = remember(uriStr) {
+        when (inferTypeFromBody(uriStr)) {
+            LifeItemType.Photo -> AttachmentType.Image
+            LifeItemType.Video -> AttachmentType.Video
+            LifeItemType.Audio -> AttachmentType.Audio
+            LifeItemType.Location -> AttachmentType.Location
+            else -> {
+                when {
+                    uriStr.contains("image", ignoreCase = true) -> AttachmentType.Image
+                    uriStr.contains("video", ignoreCase = true) -> AttachmentType.Video
+                    uriStr.contains("audio", ignoreCase = true) -> AttachmentType.Audio
+                    else -> AttachmentType.Other
+                }
+            }
+        }
+    }
+
+    val videoThumbUri = remember(uriStr) {
+        if (attachmentType == AttachmentType.Video) {
+            runCatching {
+                val generator = MediaThumbnailGenerator(context)
+                generator.generateVideoThumbnail(Uri.parse(uriStr), context)?.toString()
+            }.getOrNull()
+        } else null
+    }
+
     ElevatedCard(
         modifier = Modifier.width(140.dp).height(100.dp),
         colors = CardDefaults.elevatedCardColors(
@@ -1085,43 +1117,115 @@ private fun AttachmentPreviewCard(
         )
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            val isImage = (uriStr.startsWith("content://") || uriStr.startsWith("http")) && !uriStr.contains("video", ignoreCase = true)
-            
-            if (isImage) {
-                AsyncImage(
-                    model = uriStr,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
-                )
-            } else {
-                Column(
-                    modifier = Modifier.fillMaxSize().padding(8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = when {
-                            uriStr.startsWith("geo:") -> Icons.Filled.LocationOn
-                            uriStr.startsWith("http") -> Icons.Filled.CloudUpload
-                            uriStr.contains("video", ignoreCase = true) -> Icons.Filled.PlayArrow
-                            else -> Icons.Filled.EditNote
-                        },
+            when (attachmentType) {
+                AttachmentType.Image -> {
+                    AsyncImage(
+                        model = uriStr,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.size(32.dp)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = uriStr.substringAfterLast("/").take(20),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
                     )
                 }
+                AttachmentType.Video -> {
+                    if (videoThumbUri != null) {
+                        AsyncImage(
+                            model = videoThumbUri,
+                            contentDescription = "Video thumbnail",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.tertiaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Videocam,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .background(Color.Black.copy(alpha = 0.55f), shape = RoundedCornerShape(14.dp))
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PlayArrow,
+                            contentDescription = "Play video",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                AttachmentType.Audio -> {
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Mic,
+                            contentDescription = "Audio",
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Audio",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+                AttachmentType.Location -> {
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.LocationOn,
+                            contentDescription = "Location",
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Location",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+                AttachmentType.Other -> {
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.EditNote,
+                            contentDescription = "File",
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = uriStr.substringAfterLast("/").take(20),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
-            
+
             IconButton(
                 onClick = onRemove,
                 modifier = Modifier.align(Alignment.TopEnd).size(28.dp).padding(4.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape)

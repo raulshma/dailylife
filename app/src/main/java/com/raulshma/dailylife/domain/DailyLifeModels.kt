@@ -183,6 +183,10 @@ private val VideoUrlPattern =
     Regex("""https?://\S+\.(?:mp4|m4v|webm|mkv|mov|m3u8)(?:\?\S*)?""", RegexOption.IGNORE_CASE)
 private val ContentVideoPattern =
     Regex("""(?:content|file)://\S+\.(?:mp4|m4v|webm|mkv|mov)(?:\.enc)?""", RegexOption.IGNORE_CASE)
+private val AudioUrlPattern =
+    Regex("""https?://\S+\.(?:mp3|aac|wav|ogg|m4a|flac)(?:\?\S*)?""", RegexOption.IGNORE_CASE)
+private val ContentAudioPattern =
+    Regex("""(?:content|file)://\S+\.(?:mp3|aac|wav|ogg|m4a|flac)(?:\.enc)?""", RegexOption.IGNORE_CASE)
 
 fun LifeItem.inferImagePreviewUrl(): String? {
     val source = listOf(title, body).joinToString(" ")
@@ -199,6 +203,12 @@ fun LifeItem.inferVideoPlaybackUrl(): String? {
     val source = listOf(title, body).joinToString(" ")
     return VideoUrlPattern.find(source)?.value
         ?: ContentVideoPattern.find(source)?.value
+}
+
+fun LifeItem.inferAudioUrl(): String? {
+    val source = listOf(title, body).joinToString(" ")
+    return AudioUrlPattern.find(source)?.value
+        ?: ContentAudioPattern.find(source)?.value
 }
 
 data class DailyLifeFilters(

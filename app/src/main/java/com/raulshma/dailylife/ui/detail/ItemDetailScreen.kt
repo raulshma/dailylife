@@ -72,7 +72,9 @@ import com.raulshma.dailylife.domain.ItemNotificationSettings
 import com.raulshma.dailylife.domain.LifeItem
 import com.raulshma.dailylife.domain.NotificationSettings
 import com.raulshma.dailylife.domain.OccurrenceStats
+import com.raulshma.dailylife.domain.inferAudioUrl
 import com.raulshma.dailylife.domain.inferImagePreviewUrl
+import com.raulshma.dailylife.domain.inferVideoPlaybackUrl
 import com.raulshma.dailylife.ui.DateFormatter
 import com.raulshma.dailylife.ui.inferLocationPreview
 import com.raulshma.dailylife.ui.isMediaLike
@@ -163,7 +165,12 @@ fun ItemDetailScreen(
                 .padding(bottom = 32.dp),
         ) {
             // Media Hero
-            if (item.type.isMediaLike() || item.inferImagePreviewUrl() != null) {
+            val hasMediaContent = item.type.isMediaLike() ||
+                item.inferImagePreviewUrl() != null ||
+                item.inferVideoPlaybackUrl() != null ||
+                item.inferAudioUrl() != null ||
+                item.inferLocationPreview() != null
+            if (hasMediaContent) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -172,7 +179,7 @@ fun ItemDetailScreen(
                         .clip(RoundedCornerShape(20.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                 ) {
-                    ItemPreview(item = item)
+                    ItemPreview(item = item, autoplayVideo = true)
                 }
                 Spacer(modifier = Modifier.height(20.dp))
             }

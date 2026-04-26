@@ -56,6 +56,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Label
@@ -174,6 +175,7 @@ import com.raulshma.dailylife.domain.RecurrenceRule
 import com.raulshma.dailylife.domain.S3BackupSettings
 import com.raulshma.dailylife.domain.StorageError
 import com.raulshma.dailylife.domain.TaskStatus
+import com.raulshma.dailylife.domain.inferAudioUrl
 import com.raulshma.dailylife.domain.inferImagePreviewUrl
 import com.raulshma.dailylife.domain.inferVideoPlaybackUrl
 import com.raulshma.dailylife.ui.capture.AudioRecorder
@@ -887,6 +889,7 @@ private fun MediaMosaicTile(
         modifier = modifier
             .fillMaxWidth()
             .height(item.inferMosaicHeight()),
+        shape = RectangleShape,
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.surface,
         ),
@@ -921,22 +924,31 @@ private fun MediaMosaicTile(
 }
 
 @Composable
-internal fun ItemPreview(item: LifeItem) {
+internal fun ItemPreview(item: LifeItem, autoplayVideo: Boolean = false) {
     when (item.type) {
         LifeItemType.Photo -> ImagePreview(item = item)
-        LifeItemType.Video -> VideoPreview(item = item)
+        LifeItemType.Video -> VideoPreview(item = item, autoplay = autoplayVideo)
         LifeItemType.Audio -> AudioPreview(item = item)
         LifeItemType.Location -> LocationPreview(item = item)
         LifeItemType.Mixed -> {
             when {
                 item.inferImagePreviewUrl() != null -> ImagePreview(item = item)
                 item.inferLocationPreview() != null -> LocationPreview(item = item)
-                item.inferVideoPlaybackUrl() != null -> VideoPreview(item = item)
+                item.inferVideoPlaybackUrl() != null -> VideoPreview(item = item, autoplay = autoplayVideo)
+                item.inferAudioUrl() != null -> AudioPreview(item = item)
                 else -> TextPreview(item = item)
             }
         }
 
-        else -> TextPreview(item = item)
+        else -> {
+            when {
+                item.inferImagePreviewUrl() != null -> ImagePreview(item = item)
+                item.inferVideoPlaybackUrl() != null -> VideoPreview(item = item, autoplay = autoplayVideo)
+                item.inferAudioUrl() != null -> AudioPreview(item = item)
+                item.inferLocationPreview() != null -> LocationPreview(item = item)
+                else -> TextPreview(item = item)
+            }
+        }
     }
 }
 
@@ -1031,43 +1043,82 @@ internal fun ImagePreview(item: LifeItem) {
 }
 
 @Composable
-internal fun VideoPreview(item: LifeItem) {
-    val imageUrl = rememberDecryptedMediaUri(item.inferImagePreviewUrl())
-    val thumbUrl = rememberVideoThumbnail(item)
-    val displayUrl = imageUrl ?: thumbUrl
-    Box(modifier = Modifier.fillMaxSize()) {
-        if (displayUrl != null) {
-            AsyncImage(
-                model = displayUrl,
-                contentDescription = "Video preview",
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.tertiaryContainer),
-            )
+internal fun VideoPreview(item: LifeItem, autoplay: Boolean = false) {
+    val videoUrl = rememberDecryptedMediaUri(item.inferVideoPlaybackUrl())
+
+    if (autoplay && videoUrl != null) {
+        val context = LocalContext.current
+        val lifecycleOwner = LocalLifecycleOwner.current
+        var videoView by remember { mutableStateOf<android.widget.VideoView?>(null) }
+
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { ctx ->
+                android.widget.VideoView(ctx).apply {
+                    setVideoURI(Uri.parse(videoUrl))
+                    setOnPreparedListener { mp ->
+                        mp.isLooping = true
+                        mp.setVolume(0f, 0f)
+                        start()
+                    }
+                    setOnErrorListener { _, _, _ -> true }
+                    videoView = this
+                }
+            }
+        )
+
+        DisposableEffect(videoView, lifecycleOwner) {
+            val observer = LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_PAUSE -> videoView?.pause()
+                    Lifecycle.Event.ON_RESUME -> videoView?.let { if (!it.isPlaying) it.start() }
+                    else -> {}
+                }
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose {
+                lifecycleOwner.lifecycle.removeObserver(observer)
+                videoView?.stopPlayback()
+            }
         }
-        Column(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .background(Color.Black.copy(alpha = 0.55f), shape = RoundedCornerShape(14.dp))
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Filled.PlayArrow,
-                contentDescription = "Play video",
-                tint = Color.White,
-                modifier = Modifier.size(20.dp),
-            )
-            Text(
-                text = "View playback",
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White,
-            )
+    } else {
+        val imageUrl = rememberDecryptedMediaUri(item.inferImagePreviewUrl())
+        val thumbUrl = rememberVideoThumbnail(item)
+        val displayUrl = imageUrl ?: thumbUrl
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (displayUrl != null) {
+                AsyncImage(
+                    model = displayUrl,
+                    contentDescription = "Video preview",
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.tertiaryContainer),
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .background(Color.Black.copy(alpha = 0.55f), shape = RoundedCornerShape(14.dp))
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.PlayArrow,
+                    contentDescription = "Play video",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    text = "View playback",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White,
+                )
+            }
         }
     }
 }
@@ -1750,12 +1801,13 @@ internal fun rememberVideoThumbnail(item: LifeItem): String? {
 
 @Composable
 internal fun rememberAudioWaveform(item: LifeItem): List<Float> {
+    val context = LocalContext.current
     return remember(item.id, item.body) {
-        val audioUrl = item.inferVideoPlaybackUrl()
-            ?: item.body.split(" ").firstOrNull { it.startsWith("content://") || it.startsWith("file://") }
+        val audioUrl = item.inferAudioUrl()
+            ?: item.body.split("\\s+".toRegex()).firstOrNull { it.startsWith("content://") || it.startsWith("file://") }
         if (audioUrl == null) return@remember emptyList()
         val generator = AudioWaveformGenerator()
-        generator.generateWaveform(android.net.Uri.parse(audioUrl), barCount = 8) ?: emptyList()
+        generator.generateWaveform(context, android.net.Uri.parse(audioUrl), barCount = 8) ?: emptyList()
     }
 }
 
@@ -1767,7 +1819,16 @@ private fun LifeItem.inferMosaicHeight(): Dp {
         LifeItemType.Location -> 198.dp
         LifeItemType.Audio -> 156.dp
         LifeItemType.Mixed -> if (bucket % 2L == 0L) 228.dp else 172.dp
-        else -> if (body.length > 120) 198.dp else 152.dp
+        else -> {
+            when {
+                inferImagePreviewUrl() != null -> if (bucket % 3L == 0L) 222.dp else 164.dp
+                inferVideoPlaybackUrl() != null -> if (bucket % 2L == 0L) 214.dp else 168.dp
+                inferAudioUrl() != null -> 156.dp
+                inferLocationPreview() != null -> 198.dp
+                body.length > 120 -> 198.dp
+                else -> 152.dp
+            }
+        }
     }
 }
 

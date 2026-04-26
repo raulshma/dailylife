@@ -1,5 +1,6 @@
 package com.raulshma.dailylife.data.media
 
+import android.content.Context
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
@@ -17,10 +18,10 @@ class AudioWaveformGenerator {
      * Extracts [barCount] amplitude values from the audio at [uri].
      * Returns null if the file cannot be decoded.
      */
-    fun generateWaveform(uri: Uri, barCount: Int = 32): List<Float>? {
+    fun generateWaveform(context: Context, uri: Uri, barCount: Int = 32): List<Float>? {
         val extractor = MediaExtractor()
         return try {
-            extractor.setDataSource(uri.toString())
+            extractor.setDataSource(context, uri, null)
             val trackIndex = selectAudioTrack(extractor)
             if (trackIndex < 0) return null
 

@@ -208,6 +208,6 @@ fun hasAudioPermission(context: Context): Boolean {
 
 fun Context.createMediaFileUri(subDir: String, extension: String): Uri {
     val dir = File(filesDir, "media/$subDir").apply { mkdirs() }
-    val file = File(dir, "${System.currentTimeMillis()}.$extension")
+    val file = File(dir, "${System.currentTimeMillis()}.$extension").apply { createNewFile() }
     return FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
 }
