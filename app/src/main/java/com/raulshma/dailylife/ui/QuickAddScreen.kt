@@ -988,6 +988,16 @@ private fun QuickAddContent(
             }
         }
     }
+
+    if (showSketchCanvas) {
+        SketchCanvasSheet(
+            onSave = { uri ->
+                body = if (body.isBlank()) uri.toString() else "$body\n$uri"
+                showSketchCanvas = false
+            },
+            onDismiss = { showSketchCanvas = false }
+        )
+    }
 }
 
 @Composable
