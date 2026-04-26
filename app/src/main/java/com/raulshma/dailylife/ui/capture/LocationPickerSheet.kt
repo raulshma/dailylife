@@ -205,7 +205,12 @@ fun LocationPickerSheet(
         }
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.fillMaxSize()) {
+    val sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss, 
+        sheetState = sheetState,
+        modifier = Modifier.fillMaxSize()
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()

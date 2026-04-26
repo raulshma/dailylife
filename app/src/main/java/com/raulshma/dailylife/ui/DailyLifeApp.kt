@@ -360,37 +360,46 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(
-                            text = "DailyLife Photos",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold,
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Filled.PhotoLibrary,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(28.dp)
                         )
+                        Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = "${state.visibleItems.size} of ${state.items.size} items",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            text = "DailyLife",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Medium,
                         )
                     }
                 },
                 actions = {
-                    IconButton(onClick = { selectedTabName = HomeTab.Search.name }) {
-                        Icon(
-                            imageVector = Icons.Filled.Search,
-                            contentDescription = "Open search",
-                        )
-                    }
                     IconButton(onClick = { showS3BackupSettings = true }) {
                         Icon(
                             imageVector = Icons.Filled.CloudUpload,
                             contentDescription = "Cloud backup settings",
                         )
                     }
-                    IconButton(onClick = { showPreferences = true }) {
-                        Icon(
-                            imageVector = Icons.Filled.Settings,
-                            contentDescription = "Notification preferences",
-                        )
+                    IconButton(
+                        onClick = { showPreferences = true },
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "U",
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 },
             )
@@ -527,7 +536,11 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
     }
 
     if (showPreferences) {
-        ModalBottomSheet(onDismissRequest = { showPreferences = false }) {
+        val prefsSheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showPreferences = false },
+            sheetState = prefsSheetState
+        ) {
             NotificationPreferencesSheet(
                 settings = state.notificationSettings,
                 onSave = {
@@ -540,7 +553,11 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
     }
 
     if (showS3BackupSettings) {
-        ModalBottomSheet(onDismissRequest = { showS3BackupSettings = false }) {
+        val s3SheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showS3BackupSettings = false },
+            sheetState = s3SheetState
+        ) {
             S3BackupSettingsSheet(
                 settings = s3Settings,
                 lastResult = lastBackupResult,
@@ -591,9 +608,6 @@ private fun PhotosMosaicScreen(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalItemSpacing = 8.dp,
     ) {
-        item(key = "mosaic-header", span = StaggeredGridItemSpan.FullLine) {
-            SnapshotRow(state = state)
-        }
         state.storageError?.let { storageError ->
             item(key = "storage-error", span = StaggeredGridItemSpan.FullLine) {
                 StorageWarningCard(

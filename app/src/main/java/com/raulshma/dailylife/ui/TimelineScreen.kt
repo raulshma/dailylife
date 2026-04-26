@@ -71,7 +71,6 @@ fun TimelineScreen(
                 onTypeSelected = onTypeSelected,
                 onOpenFilters = { showAdvancedFilters = true }
             )
-            HorizontalDivider()
         }
 
         // Timeline Items
@@ -123,7 +122,11 @@ fun TimelineScreen(
     }
 
     if (showAdvancedFilters) {
-        ModalBottomSheet(onDismissRequest = { showAdvancedFilters = false }) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showAdvancedFilters = false },
+            sheetState = sheetState
+        ) {
             AdvancedFiltersSheet(
                 state = state,
                 onTypeSelected = onTypeSelected,
@@ -142,37 +145,66 @@ private fun SearchBarRow(
     onSearchChanged: (String) -> Unit,
     onOpenFilters: () -> Unit
 ) {
-    Row(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        tonalElevation = 2.dp
     ) {
-        OutlinedTextField(
+        TextField(
             value = query,
             onValueChange = onSearchChanged,
-            modifier = Modifier.weight(1f),
-            shape = RoundedCornerShape(24.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-            ),
-            singleLine = true,
-            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-            trailingIcon = {
-                if (query.isNotBlank()) {
-                    IconButton(onClick = { onSearchChanged("") }) {
-                        Icon(Icons.Filled.Close, contentDescription = "Clear search")
-                    }
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("Search your timeline") },
+            leadingIcon = {
+                IconButton(onClick = { /* Menu or search action */ }) {
+                    Icon(
+                        imageVector = Icons.Filled.Search,
+                        contentDescription = "Search",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             },
-            placeholder = { Text("Search timeline") },
+            trailingIcon = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (query.isNotBlank()) {
+                        IconButton(onClick = { onSearchChanged("") }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Clear search")
+                        }
+                    } else {
+                        IconButton(onClick = onOpenFilters) {
+                            Icon(Icons.Filled.Tune, contentDescription = "Filters")
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "U",
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                }
+            },
+            singleLine = true,
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent,
+                disabledContainerColor = Color.Transparent,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+                disabledIndicatorColor = Color.Transparent,
+            )
         )
-
-        FilledTonalIconButton(onClick = onOpenFilters) {
-            Icon(Icons.Filled.Tune, contentDescription = "Advanced Filters")
-        }
     }
 }
 
