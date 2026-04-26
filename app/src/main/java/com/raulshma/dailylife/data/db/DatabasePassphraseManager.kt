@@ -78,12 +78,16 @@ class DatabasePassphraseManager(context: Context) {
         }
         val backupEncrypted = backupCipher.doFinal(passphrase)
 
-        prefs.edit()
+        val didPersist = prefs.edit()
             .putString(KEY_ENCRYPTED_PASSPHRASE, bytesToHex(keystoreEncrypted))
             .putString(KEY_PASSPHRASE_IV, bytesToHex(keystoreCipher.iv))
             .putString(KEY_BACKUP_ENCRYPTED, bytesToHex(backupEncrypted))
             .putString(KEY_BACKUP_IV, bytesToHex(backupCipher.iv))
-            .apply()
+            .commit()
+
+        if (!didPersist) {
+            throw IllegalStateException("Failed to persist database passphrase")
+        }
     }
 
     private fun ensureBackupExists(passphrase: ByteArray) {
@@ -94,10 +98,14 @@ class DatabasePassphraseManager(context: Context) {
             init(Cipher.ENCRYPT_MODE, backupKey)
         }
         val backupEncrypted = cipher.doFinal(passphrase)
-        prefs.edit()
+        val didPersist = prefs.edit()
             .putString(KEY_BACKUP_ENCRYPTED, bytesToHex(backupEncrypted))
             .putString(KEY_BACKUP_IV, bytesToHex(cipher.iv))
-            .apply()
+            .commit()
+
+        if (!didPersist) {
+            throw IllegalStateException("Failed to persist backup database passphrase")
+        }
     }
 
     private fun decryptWithKeystore(encrypted: ByteArray, iv: ByteArray): ByteArray {

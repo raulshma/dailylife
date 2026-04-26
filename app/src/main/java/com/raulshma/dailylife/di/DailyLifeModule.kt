@@ -22,11 +22,14 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
+import java.io.File
 import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
 object DailyLifeModule {
+    private const val DatabaseName = "dailylife.db"
+
     @Provides
     @Singleton
     fun provideDatabasePassphraseManager(
@@ -39,15 +42,40 @@ object DailyLifeModule {
         @ApplicationContext context: Context,
         passphraseManager: DatabasePassphraseManager,
     ): DailyLifeDatabase {
-        val factory = SupportOpenHelperFactory(passphraseManager.getPassphrase(), null, false)
-        return Room.databaseBuilder(
-            context,
-            DailyLifeDatabase::class.java,
-            "dailylife.db",
-        )
-            .openHelperFactory(factory)
-            .addMigrations(MIGRATION_1_2)
-            .build()
+        fun buildDatabase(passphrase: ByteArray): DailyLifeDatabase {
+            val factory = SupportOpenHelperFactory(passphrase, null, false)
+            return Room.databaseBuilder(
+                context,
+                DailyLifeDatabase::class.java,
+                DatabaseName,
+            )
+                .openHelperFactory(factory)
+                .addMigrations(MIGRATION_1_2)
+                .build()
+        }
+
+        fun deleteDatabaseFiles() {
+            context.deleteDatabase(DatabaseName)
+            val dbDir = context.getDatabasePath(DatabaseName).parentFile ?: return
+            val sidecarNames = listOf("$DatabaseName-shm", "$DatabaseName-wal", "$DatabaseName-journal")
+            sidecarNames.forEach { name ->
+                runCatching { File(dbDir, name).delete() }
+            }
+        }
+
+        val initialPassphrase = passphraseManager.getPassphrase()
+        val initialDatabase = buildDatabase(initialPassphrase)
+        return runCatching {
+            initialDatabase.openHelper.writableDatabase
+            initialDatabase
+        }.getOrElse {
+            runCatching { initialDatabase.close() }
+            deleteDatabaseFiles()
+            val regeneratedPassphrase = passphraseManager.regeneratePassphrase()
+            val recoveredDatabase = buildDatabase(regeneratedPassphrase)
+            recoveredDatabase.openHelper.writableDatabase
+            recoveredDatabase
+        }
     }
 
     @Provides

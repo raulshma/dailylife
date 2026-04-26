@@ -18,12 +18,14 @@ import com.raulshma.dailylife.MainActivity
 import com.raulshma.dailylife.R
 import com.raulshma.dailylife.data.RoomDailyLifeStore
 import com.raulshma.dailylife.data.db.DailyLifeDatabase
+import com.raulshma.dailylife.data.db.DatabasePassphraseManager
 import com.raulshma.dailylife.domain.LifeItem
 import com.raulshma.dailylife.domain.NotificationSettings
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.max
+import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 
 interface ReminderScheduler {
     fun sync(
@@ -291,11 +293,15 @@ private fun rescheduleStoredReminders(
     now: LocalDateTime = LocalDateTime.now(),
 ) {
     runCatching {
+        val passphrase = DatabasePassphraseManager(context.applicationContext).getPassphrase()
+        val openHelperFactory = SupportOpenHelperFactory(passphrase, null, false)
         val database = Room.databaseBuilder(
             context.applicationContext,
             DailyLifeDatabase::class.java,
             "dailylife.db",
-        ).build()
+        )
+            .openHelperFactory(openHelperFactory)
+            .build()
         val snapshot = RoomDailyLifeStore(database).load() ?: return
         AndroidReminderScheduler(context).sync(
             items = snapshot.items,

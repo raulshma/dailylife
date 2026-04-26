@@ -1,0 +1,1329 @@
+package com.raulshma.dailylife.ui
+
+import android.content.Context
+import android.net.Uri
+import android.media.MediaPlayer
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Label
+import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.EventRepeat
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.InputChipDefaults
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import com.raulshma.dailylife.domain.ItemNotificationSettings
+import com.raulshma.dailylife.domain.LifeItemDraft
+import com.raulshma.dailylife.domain.LifeItemType
+import com.raulshma.dailylife.domain.RecurrenceFrequency
+import com.raulshma.dailylife.domain.RecurrenceRule
+import com.raulshma.dailylife.domain.TaskStatus
+import com.raulshma.dailylife.ui.capture.AudioRecorder
+import com.raulshma.dailylife.ui.capture.SpeechTranscriber
+import com.raulshma.dailylife.ui.capture.hasAudioPermission
+import com.raulshma.dailylife.ui.capture.hasCameraPermission
+import java.time.LocalDate
+import java.time.LocalTime
+import kotlinx.coroutines.delay
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun QuickAddScreen(
+    draft: QuickAddDraft,
+    onDraftChanged: (QuickAddDraft) -> Unit,
+    onAdd: (LifeItemDraft) -> Unit,
+    onAddAndContinue: (LifeItemDraft) -> Unit,
+    onDismiss: () -> Unit,
+    onDiscardDraft: () -> Unit,
+    mediaLauncher: com.raulshma.dailylife.ui.capture.MediaCaptureLauncher,
+    onShowLocationPicker: ((Double, Double) -> Unit) -> Unit,
+    allTags: List<String> = emptyList(),
+) {
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        contentWindowInsets = WindowInsets.safeDrawing,
+        topBar = {
+            TopAppBar(
+                title = {},
+                navigationIcon = {
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Close",
+                        )
+                    }
+                },
+                actions = {
+                    TextButton(onClick = onDiscardDraft) {
+                        Text("Discard")
+                    }
+                },
+            )
+        },
+        bottomBar = {
+            // We put bottom bar in Scaffold so it stays pinned
+        }
+    ) { paddingValues ->
+        QuickAddContent(
+            modifier = Modifier.padding(paddingValues),
+            initialDraft = draft,
+            onDraftChanged = onDraftChanged,
+            onAdd = onAdd,
+            onAddAndContinue = onAddAndContinue,
+            mediaLauncher = mediaLauncher,
+            onShowLocationPicker = onShowLocationPicker,
+            allTags = allTags,
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun QuickAddContent(
+    modifier: Modifier = Modifier,
+    initialDraft: QuickAddDraft,
+    onDraftChanged: (QuickAddDraft) -> Unit,
+    onAdd: (LifeItemDraft) -> Unit,
+    onAddAndContinue: (LifeItemDraft) -> Unit,
+    mediaLauncher: com.raulshma.dailylife.ui.capture.MediaCaptureLauncher,
+    onShowLocationPicker: ((Double, Double) -> Unit) -> Unit,
+    allTags: List<String> = emptyList(),
+) {
+    val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
+    
+    val initialType = remember(initialDraft.typeName) {
+        LifeItemType.entries.firstOrNull { it.name == initialDraft.typeName } ?: LifeItemType.Thought
+    }
+    
+    var selectedType by rememberSaveable { mutableStateOf(initialType) }
+    var title by rememberSaveable { mutableStateOf(initialDraft.title) }
+    var body by rememberSaveable { mutableStateOf(initialDraft.body) }
+    var tags by rememberSaveable { mutableStateOf(initialDraft.tags) }
+    var favorite by rememberSaveable { mutableStateOf(initialDraft.favorite) }
+    var pinned by rememberSaveable { mutableStateOf(initialDraft.pinned) }
+    var reminderDate by rememberSaveable { mutableStateOf(initialDraft.reminderDate) }
+    var reminderTime by rememberSaveable { mutableStateOf(initialDraft.reminderTime) }
+    var notificationsEnabled by rememberSaveable { mutableStateOf(initialDraft.notificationsEnabled) }
+    var overrideTime by rememberSaveable { mutableStateOf(initialDraft.overrideTime) }
+    var recurring by rememberSaveable { mutableStateOf(initialDraft.recurring) }
+    
+    var showAdvanced by rememberSaveable { mutableStateOf(initialDraft.showAdvanced) }
+    var showReminderOptions by rememberSaveable { mutableStateOf(initialDraft.showReminderOptions) }
+    
+    var isRecordingAudio by remember { mutableStateOf(false) }
+    var activeRecordingUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingAudioUri by remember { mutableStateOf<Uri?>(null) }
+    var liveTranscription by rememberSaveable { mutableStateOf("") }
+    val audioRecorder = remember { AudioRecorder(context) }
+    val speechTranscriber = remember { SpeechTranscriber(context) }
+
+    val titleFocusRequester = remember { FocusRequester() }
+    val bodyFocusRequester = remember { FocusRequester() }
+
+    fun currentDraftSnapshot(): QuickAddDraft = QuickAddDraft(
+        typeName = selectedType.name,
+        title = title,
+        body = body,
+        tags = tags,
+        favorite = favorite,
+        pinned = pinned,
+        reminderDate = reminderDate,
+        reminderTime = reminderTime,
+        notificationsEnabled = notificationsEnabled,
+        overrideTime = overrideTime,
+        recurring = recurring,
+        showAdvanced = showAdvanced,
+        showReminderOptions = showReminderOptions,
+    )
+
+    fun buildDraftPayload(): LifeItemDraft = LifeItemDraft(
+        type = selectedType,
+        title = title,
+        body = body,
+        tags = parseTags(tags),
+        isFavorite = favorite,
+        isPinned = pinned,
+        taskStatus = if (selectedType == LifeItemType.Task) TaskStatus.Open else null,
+        reminderAt = parseReminderDateTime(reminderDate, reminderTime),
+        recurrenceRule = if (recurring) RecurrenceRule(RecurrenceFrequency.Daily) else RecurrenceRule(),
+        notificationSettings = ItemNotificationSettings(
+            enabled = notificationsEnabled,
+            timeOverride = parseTimeOrNull(overrideTime),
+        ),
+    )
+
+    fun resetLocalDraft() {
+        selectedType = LifeItemType.Thought
+        title = ""
+        body = ""
+        tags = ""
+        favorite = false
+        pinned = false
+        reminderDate = ""
+        reminderTime = ""
+        notificationsEnabled = true
+        overrideTime = ""
+        recurring = false
+        showAdvanced = false
+        showReminderOptions = false
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            if (audioRecorder.isRecording) {
+                audioRecorder.cancelRecording()
+            }
+            speechTranscriber.destroy()
+        }
+    }
+
+    fun startAudioCapture() {
+        pendingAudioUri = null
+        liveTranscription = ""
+        isRecordingAudio = true
+        val transcriberStarted = speechTranscriber.start(
+            onTranscriptChanged = { transcript -> liveTranscription = transcript },
+            onError = { errorMsg ->
+                if (liveTranscription.isBlank()) liveTranscription = errorMsg
+            }
+        )
+        if (!transcriberStarted) {
+            liveTranscription = "Speech recognition not available on this device."
+        }
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            if (isRecordingAudio) {
+                val uri = audioRecorder.startRecording()
+                if (uri != null) activeRecordingUri = uri
+            }
+        }, 500L)
+    }
+
+    fun stopAudioCapture() {
+        if (!isRecordingAudio) return
+        val stoppedUri = if (audioRecorder.isRecording) audioRecorder.stopRecording() else null
+        val finalTranscript = speechTranscriber.stop()
+        isRecordingAudio = false
+        pendingAudioUri = stoppedUri ?: activeRecordingUri
+        activeRecordingUri = null
+        if (finalTranscript.isNotBlank()) liveTranscription = finalTranscript
+    }
+
+    fun discardCapturedAudio() {
+        pendingAudioUri = null
+        activeRecordingUri = null
+        liveTranscription = ""
+        speechTranscriber.cancel()
+        if (audioRecorder.isRecording) {
+            audioRecorder.cancelRecording()
+        } else {
+            audioRecorder.discardLastRecording()
+        }
+    }
+
+    fun reRecordAudio() {
+        discardCapturedAudio()
+        startAudioCapture()
+    }
+
+    fun addCapturedAudioToDraft() {
+        val uri = pendingAudioUri
+        val transcript = liveTranscription.trim()
+        if (uri != null) {
+            body = buildString {
+                append(uri.toString())
+                if (transcript.isNotBlank()) {
+                    append("\n\n")
+                    append(transcript)
+                }
+            }
+            selectedType = LifeItemType.Audio
+        } else if (transcript.isNotBlank()) {
+            body = transcript
+        }
+        pendingAudioUri = null
+        liveTranscription = ""
+        audioRecorder.clearLastRecordingReference()
+    }
+
+    val inferredType = remember(body) { inferTypeFromBody(body) }
+    val canSave = title.isNotBlank() || body.isNotBlank()
+
+    LaunchedEffect(initialDraft.body) {
+        if (body != initialDraft.body) {
+            body = initialDraft.body
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        titleFocusRequester.requestFocus()
+    }
+
+    LaunchedEffect(
+        selectedType, title, body, tags, favorite, pinned,
+        reminderDate, reminderTime, notificationsEnabled,
+        overrideTime, recurring, showAdvanced, showReminderOptions
+    ) {
+        onDraftChanged(currentDraftSnapshot())
+    }
+
+    Column(modifier = modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            // Timestamp and Templates
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Today, ${LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                
+                // Templates Button
+                var showTemplates by remember { mutableStateOf(false) }
+                Box {
+                    TextButton(onClick = { showTemplates = true }) {
+                        Icon(Icons.Filled.Lightbulb, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Templates")
+                    }
+                    DropdownMenu(
+                        expanded = showTemplates,
+                        onDismissRequest = { showTemplates = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Daily Reflection") },
+                            onClick = {
+                                selectedType = LifeItemType.Note
+                                title = "Daily Reflection"
+                                body = "1. What went well today?\n2. What could be improved?\n3. What am I grateful for?"
+                                showTemplates = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Meeting Notes") },
+                            onClick = {
+                                selectedType = LifeItemType.Note
+                                title = "Meeting: "
+                                body = "Attendees:\n\nAgenda:\n- \n\nAction Items:\n- [ ] "
+                                showTemplates = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Quick Task") },
+                            onClick = {
+                                selectedType = LifeItemType.Task
+                                title = "Task"
+                                body = "Details: "
+                                showTemplates = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Smart Type Selector (4 Pills + More)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val topTypes = listOf(LifeItemType.Thought, LifeItemType.Note, LifeItemType.Task, LifeItemType.Photo)
+                
+                topTypes.forEach { type ->
+                    val isSelected = selectedType == type
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = {
+                            if (selectedType != type) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            selectedType = type
+                        },
+                        label = { Text(type.label) },
+                        leadingIcon = {
+                            Icon(imageVector = type.icon(), contentDescription = null, modifier = Modifier.size(18.dp))
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    )
+                }
+
+                // More dropdown for other types
+                var showMoreTypes by remember { mutableStateOf(false) }
+                val isOtherTypeSelected = selectedType !in topTypes
+                
+                Box {
+                    FilterChip(
+                        selected = isOtherTypeSelected,
+                        onClick = { showMoreTypes = true },
+                        label = { Text(if (isOtherTypeSelected) selectedType.label else "More") },
+                        leadingIcon = {
+                            if (isOtherTypeSelected) {
+                                Icon(imageVector = selectedType.icon(), contentDescription = null, modifier = Modifier.size(18.dp))
+                            } else {
+                                Icon(imageVector = Icons.Filled.MoreHoriz, contentDescription = null, modifier = Modifier.size(18.dp))
+                            }
+                        },
+                        trailingIcon = {
+                            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, modifier = Modifier.size(16.dp))
+                        }
+                    )
+                    
+                    DropdownMenu(
+                        expanded = showMoreTypes,
+                        onDismissRequest = { showMoreTypes = false }
+                    ) {
+                        LifeItemType.entries.filter { it !in topTypes }.forEach { type ->
+                            DropdownMenuItem(
+                                text = { Text(type.label) },
+                                leadingIcon = {
+                                    Icon(imageVector = type.icon(), contentDescription = null)
+                                },
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    selectedType = type
+                                    showMoreTypes = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Auto-detected type hint
+            AnimatedVisibility(visible = inferredType != null && inferredType != selectedType) {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    shape = RoundedCornerShape(8.dp),
+                    onClick = {
+                        inferredType?.let {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            selectedType = it
+                        }
+                    }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Lightbulb, 
+                            contentDescription = null, 
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Detected ${inferredType?.label ?: ""}. Tap to switch.",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+            }
+
+            // Content Area: Borderless Title & Body
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Title
+                BasicTextField(
+                    value = title,
+                    onValueChange = { if (it.length <= 120) title = it },
+                    modifier = Modifier.fillMaxWidth().focusRequester(titleFocusRequester),
+                    textStyle = MaterialTheme.typography.headlineSmall.copy(
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.SemiBold
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    singleLine = true,
+                    decorationBox = { innerTextField ->
+                        if (title.isEmpty()) {
+                            Text(
+                                "What's on your mind?",
+                                style = MaterialTheme.typography.headlineSmall.copy(
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                        }
+                        innerTextField()
+                    }
+                )
+
+                // Body
+                BasicTextField(
+                    value = body,
+                    onValueChange = { if (it.length <= 2000) body = it },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp).focusRequester(bodyFocusRequester),
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                        color = MaterialTheme.colorScheme.onSurface
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    decorationBox = { innerTextField ->
+                        if (body.isEmpty()) {
+                            Text(
+                                "Add details, #tags, or paste links here...",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                        }
+                        innerTextField()
+                    }
+                )
+                
+                // Character counters (only show when > 80% used)
+                if (title.length > 96 || body.length > 1600) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        if (title.length > 96) {
+                            Text(
+                                "${title.length}/120", 
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (title.length >= 120) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (title.length > 96 && body.length > 1600) Spacer(modifier = Modifier.width(8.dp))
+                        if (body.length > 1600) {
+                            Text(
+                                "Body: ${body.length}/2000", 
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (body.length >= 2000) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            AnimatedVisibility(
+                visible = isRecordingAudio || pendingAudioUri != null || liveTranscription.isNotBlank(),
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                AudioRecordingCard(
+                    isRecordingAudio = isRecordingAudio,
+                    pendingAudioUri = pendingAudioUri,
+                    liveTranscription = liveTranscription,
+                    audioRecorder = audioRecorder,
+                    onStop = ::stopAudioCapture,
+                    onDiscard = ::discardCapturedAudio,
+                    onReRecord = ::reRecordAudio,
+                    onAddRecording = ::addCapturedAudioToDraft,
+                )
+            }
+
+            // Visual Attachments Grid
+            val attachedUris = remember(body) {
+                body.split("\\s+".toRegex()).filter {
+                    it.startsWith("content://") || it.startsWith("file://") || it.startsWith("geo:") || it.startsWith("http")
+                }
+            }
+            
+            if (attachedUris.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    attachedUris.forEach { uriStr ->
+                        AttachmentPreviewCard(
+                            uriStr = uriStr,
+                            onRemove = { body = body.replace(uriStr, "").trim() }
+                        )
+                    }
+                }
+            }
+
+            // Inline Tags Editor
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val currentTagSet = parseTags(tags)
+                
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Label, 
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    BasicTextField(
+                        value = tags,
+                        onValueChange = { tags = it },
+                        modifier = Modifier.weight(1f),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        singleLine = true,
+                        decorationBox = { innerTextField ->
+                            if (tags.isEmpty()) {
+                                Text(
+                                    "Add tags (comma separated)",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                )
+                            }
+                            innerTextField()
+                        }
+                    )
+                }
+
+                // Tag Suggestions
+                val suggestions = remember(allTags, currentTagSet) {
+                    allTags.filter { it !in currentTagSet }.take(6)
+                }
+                
+                if (suggestions.isNotEmpty() || currentTagSet.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        currentTagSet.forEach { tag ->
+                            InputChip(
+                                selected = true,
+                                onClick = {
+                                    // Remove tag logic
+                                    val tagPattern = Regex("(^|,\\s*)$tag(\\s*,|\$)")
+                                    tags = tags.replace(tagPattern, "$1").trim(',', ' ')
+                                },
+                                label = { Text(tag) },
+                                trailingIcon = { Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                colors = InputChipDefaults.inputChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer
+                                )
+                            )
+                        }
+                        
+                        suggestions.forEach { tag ->
+                            AssistChip(
+                                onClick = { tags = if (tags.isBlank()) tag else "$tags, $tag" },
+                                label = { Text("+$tag") }
+                            )
+                        }
+                    }
+                }
+            }
+
+            HorizontalDivider()
+
+            // Properties Quick Bar
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FilterChip(
+                    selected = favorite,
+                    onClick = { favorite = !favorite },
+                    label = { Text("Favorite") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = if (favorite) Icons.Filled.Star else Icons.Filled.StarBorder,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                )
+                
+                FilterChip(
+                    selected = pinned,
+                    onClick = { pinned = !pinned },
+                    label = { Text("Pin") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Filled.PushPin,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                )
+                
+                Spacer(modifier = Modifier.weight(1f))
+                
+                TextButton(onClick = { showReminderOptions = !showReminderOptions }) {
+                    Icon(Icons.Filled.Alarm, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(if (showReminderOptions) "Hide reminder" else "Add reminder")
+                }
+            }
+
+            // Collapsible Reminder Section
+            AnimatedVisibility(visible = showReminderOptions) {
+                ElevatedCard(
+                    colors = CardDefaults.elevatedCardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Alarm, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Reminder Details", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                        }
+                        
+                        ReminderDateTimeRow(
+                            reminderDate = parseDateOrNull(reminderDate),
+                            reminderTime = parseTimeOrNull(reminderTime),
+                            onDateClick = {
+                                showDatePicker(
+                                    context = context,
+                                    initialDate = parseDateOrNull(reminderDate) ?: LocalDate.now(),
+                                    onDateSelected = { selected ->
+                                        reminderDate = selected.toString()
+                                        if (reminderTime.isBlank()) reminderTime = "09:00"
+                                    }
+                                )
+                            },
+                            onTimeClick = {
+                                showTimePicker(
+                                    context = context,
+                                    initialTime = parseTimeOrNull(reminderTime) ?: parseTimeOrNull(overrideTime) ?: LocalTime.of(9, 0),
+                                    onTimeSelected = { selected ->
+                                        if (reminderDate.isBlank()) reminderDate = LocalDate.now().toString()
+                                        reminderTime = selected.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+                                    }
+                                )
+                            },
+                            onClear = { reminderDate = ""; reminderTime = "" }
+                        )
+                        
+                        TextButton(onClick = { showAdvanced = !showAdvanced }) {
+                            Text(if (showAdvanced) "Hide advanced options" else "Advanced options")
+                        }
+                        
+                        AnimatedVisibility(visible = showAdvanced) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                ToggleRow(
+                                    icon = if (notificationsEnabled) Icons.Filled.Notifications else Icons.Filled.NotificationsOff,
+                                    label = "Notifications",
+                                    checked = notificationsEnabled,
+                                    onCheckedChange = { notificationsEnabled = it }
+                                )
+                                if (notificationsEnabled) {
+                                    OutlinedTextField(
+                                        value = overrideTime,
+                                        onValueChange = { overrideTime = it },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true,
+                                        label = { Text("Time override, HH:mm") },
+                                        leadingIcon = { Icon(Icons.Filled.AccessTime, contentDescription = null) }
+                                    )
+                                }
+                                ToggleRow(
+                                    icon = Icons.Filled.EventRepeat,
+                                    label = "Daily recurrence",
+                                    checked = recurring,
+                                    onCheckedChange = { recurring = it }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(32.dp)) // padding for bottom bar
+        }
+
+        // Smart Toolbar and Action Bar
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 3.dp,
+            shadowElevation = 8.dp
+        ) {
+            Column {
+                // Attachments Toolbar
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        IconButton(onClick = {
+                            if (hasCameraPermission(context)) mediaLauncher.launchCamera() else mediaLauncher.requestCameraPermissionIfNeeded()
+                        }) {
+                            Icon(Icons.Filled.PhotoCamera, contentDescription = "Camera")
+                        }
+                        IconButton(onClick = { mediaLauncher.launchPhotoPicker() }) {
+                            Icon(Icons.Filled.PhotoLibrary, contentDescription = "Photos")
+                        }
+                        IconButton(onClick = {
+                            if (hasCameraPermission(context)) mediaLauncher.launchVideoCamera() else mediaLauncher.requestCameraPermissionIfNeeded()
+                        }) {
+                            Icon(Icons.Filled.Videocam, contentDescription = "Video")
+                        }
+                    }
+                    
+                    // Vertical divider
+                    Box(modifier = Modifier.height(24.dp).width(1.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)))
+                    
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        IconButton(onClick = {
+                            if (isRecordingAudio) {
+                                stopAudioCapture()
+                            } else {
+                                if (hasAudioPermission(context)) startAudioCapture() else mediaLauncher.requestAudioPermissionIfNeeded()
+                            }
+                        }) {
+                            Icon(
+                                imageVector = if (isRecordingAudio) Icons.Filled.Stop else Icons.Filled.Mic,
+                                contentDescription = if (isRecordingAudio) "Stop Recording" else "Audio",
+                                tint = if (isRecordingAudio) MaterialTheme.colorScheme.error else LocalContentColor.current
+                            )
+                        }
+                        IconButton(onClick = { mediaLauncher.launchFilePicker() }) {
+                            Icon(Icons.Filled.EditNote, contentDescription = "File")
+                        }
+                        IconButton(onClick = {
+                            onShowLocationPicker { lat, lon ->
+                                body = if (body.isBlank()) "geo:$lat,$lon" else "$body\ngeo:$lat,$lon"
+                            }
+                        }) {
+                            Icon(Icons.Filled.LocationOn, contentDescription = "Location")
+                        }
+                    }
+                }
+                
+                HorizontalDivider()
+                
+                // Bottom Action Bar
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onAddAndContinue(buildDraftPayload())
+                            resetLocalDraft()
+                            titleFocusRequester.requestFocus()
+                        },
+                        enabled = canSave,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Save & New")
+                    }
+                    
+                    Button(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onAdd(buildDraftPayload())
+                        },
+                        enabled = canSave,
+                        modifier = Modifier.weight(1.5f)
+                    ) {
+                        Text("Save Item")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AttachmentPreviewCard(
+    uriStr: String,
+    onRemove: () -> Unit
+) {
+    ElevatedCard(
+        modifier = Modifier.width(140.dp).height(100.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            val isImage = (uriStr.startsWith("content://") || uriStr.startsWith("http")) && !uriStr.contains("video", ignoreCase = true)
+            
+            if (isImage) {
+                AsyncImage(
+                    model = uriStr,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                )
+            } else {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = when {
+                            uriStr.startsWith("geo:") -> Icons.Filled.LocationOn
+                            uriStr.startsWith("http") -> Icons.Filled.CloudUpload
+                            uriStr.contains("video", ignoreCase = true) -> Icons.Filled.PlayArrow
+                            else -> Icons.Filled.EditNote
+                        },
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = uriStr.substringAfterLast("/").take(20),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            
+            IconButton(
+                onClick = onRemove,
+                modifier = Modifier.align(Alignment.TopEnd).size(28.dp).padding(4.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Remove",
+                    tint = Color.White,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AudioRecordingCard(
+    isRecordingAudio: Boolean,
+    pendingAudioUri: Uri?,
+    liveTranscription: String,
+    audioRecorder: AudioRecorder,
+    onStop: () -> Unit,
+    onDiscard: () -> Unit,
+    onReRecord: () -> Unit,
+    onAddRecording: () -> Unit,
+) {
+    val context = LocalContext.current
+    var isPlaying by remember { mutableStateOf(false) }
+    var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+    val transcriptionScrollState = rememberScrollState()
+
+    var playbackPosition by remember { mutableStateOf(0f) }
+    var playbackDuration by remember { mutableStateOf(0) }
+    var isSeeking by remember { mutableStateOf(false) }
+
+    var amplitudeSamples by remember { mutableStateOf(listOf<Float>()) }
+    var displayedElapsedMs by remember { mutableStateOf(0L) }
+
+    LaunchedEffect(isRecordingAudio) {
+        if (isRecordingAudio) {
+            amplitudeSamples = emptyList()
+            while (isRecordingAudio) {
+                val amp = audioRecorder.currentAmplitude
+                displayedElapsedMs = audioRecorder.elapsedMs
+                amplitudeSamples = (amplitudeSamples + amp).takeLast(48)
+                delay(80L)
+            }
+        }
+    }
+
+    LaunchedEffect(isPlaying) {
+        while (isPlaying) {
+            val mp = mediaPlayer
+            if (mp != null && mp.isPlaying && !isSeeking) {
+                playbackPosition = mp.currentPosition.toFloat()
+                playbackDuration = mp.duration
+            }
+            delay(200L)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            mediaPlayer?.release()
+            mediaPlayer = null
+        }
+    }
+
+    fun stopPlayback() {
+        mediaPlayer?.release()
+        mediaPlayer = null
+        isPlaying = false
+        playbackPosition = 0f
+    }
+
+    fun startPlayback(uri: Uri) {
+        stopPlayback()
+        mediaPlayer = MediaPlayer().apply {
+            setDataSource(context, uri)
+            setOnCompletionListener {
+                isPlaying = false
+                playbackPosition = 0f
+            }
+            prepare()
+            playbackDuration = duration
+            start()
+        }
+        isPlaying = true
+    }
+
+    fun togglePlayback() {
+        val uri = pendingAudioUri ?: return
+        if (isPlaying) {
+            mediaPlayer?.pause()
+            isPlaying = false
+        } else {
+            val mp = mediaPlayer
+            if (mp != null) {
+                mp.start()
+                isPlaying = true
+            } else {
+                startPlayback(uri)
+            }
+        }
+    }
+
+    LaunchedEffect(liveTranscription) {
+        if (liveTranscription.isNotBlank()) {
+            transcriptionScrollState.animateScrollTo(transcriptionScrollState.maxValue)
+        }
+    }
+
+    val recordingPulseAlpha = rememberInfiniteTransition(label = "recordingPulse")
+    val pulseAlpha by recordingPulseAlpha.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 800),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "pulseAlpha",
+    )
+
+    fun formatTime(ms: Long): String {
+        val totalSeconds = ms / 1000
+        val minutes = totalSeconds / 60
+        val seconds = totalSeconds % 60
+        return "%02d:%02d".format(minutes, seconds)
+    }
+
+    ElevatedCard(
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (isRecordingAudio) {
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.error.copy(alpha = pulseAlpha),
+                                shape = CircleShape,
+                            ),
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.Checklist,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+                Text(
+                    text = when {
+                        isRecordingAudio -> "Recording & transcribing"
+                        isPlaying -> "Playing recording"
+                        pendingAudioUri != null -> "Recording ready"
+                        else -> "Transcription ready"
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.weight(1f),
+                )
+                if (isRecordingAudio) {
+                    Text(
+                        text = formatTime(displayedElapsedMs),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+
+            if (isRecordingAudio) {
+                val waveColor = MaterialTheme.colorScheme.primary
+                val waveTrackColor = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.15f)
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)),
+                ) {
+                    val barCount = amplitudeSamples.size.coerceAtLeast(1)
+                    val barWidth = (size.width / 48f) * 0.65f
+                    val gap = (size.width / 48f) * 0.35f
+                    val startX = size.width - (barCount * (barWidth + gap))
+                    amplitudeSamples.forEachIndexed { index, amp ->
+                        val barHeight = (amp * size.height * 0.85f).coerceAtLeast(4f)
+                        val x = startX + index * (barWidth + gap)
+                        val y = (size.height - barHeight) / 2f
+                        drawRoundRect(
+                            color = waveColor,
+                            topLeft = androidx.compose.ui.geometry.Offset(x, y),
+                            size = androidx.compose.ui.geometry.Size(barWidth, barHeight),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f),
+                        )
+                    }
+                    val emptyBars = 48 - barCount
+                    for (i in 0 until emptyBars) {
+                        val x = i * (barWidth + gap)
+                        val barH = 4f
+                        val y = (size.height - barH) / 2f
+                        drawRoundRect(
+                            color = waveTrackColor,
+                            topLeft = androidx.compose.ui.geometry.Offset(x, y),
+                            size = androidx.compose.ui.geometry.Size(barWidth, barH),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f),
+                        )
+                    }
+                }
+            }
+
+            if (isRecordingAudio) {
+                Button(
+                    onClick = onStop,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Stop recording")
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(if (isRecordingAudio) 100.dp else 80.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f))
+                    .verticalScroll(transcriptionScrollState)
+                    .padding(10.dp),
+            ) {
+                Text(
+                    text = liveTranscription.ifBlank {
+                        if (isRecordingAudio) "Listening\u2026" else "No transcription available."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (liveTranscription.isBlank()) {
+                        MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.6f)
+                    } else {
+                        MaterialTheme.colorScheme.onTertiaryContainer
+                    },
+                )
+            }
+
+            if (!isRecordingAudio && pendingAudioUri != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    androidx.compose.material3.FilledTonalIconButton(
+                        onClick = { togglePlayback() },
+                        modifier = Modifier.size(44.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (isPlaying) "Pause" else "Play",
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                    Text(
+                        text = formatTime(playbackPosition.toLong()),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    )
+                    Slider(
+                        value = playbackPosition,
+                        onValueChange = { newVal ->
+                            isSeeking = true
+                            playbackPosition = newVal
+                        },
+                        onValueChangeFinished = {
+                            mediaPlayer?.seekTo(playbackPosition.toInt())
+                            isSeeking = false
+                        },
+                        valueRange = 0f..playbackDuration.toFloat().coerceAtLeast(1f),
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = formatTime(playbackDuration.toLong()),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedButton(onClick = {
+                        stopPlayback()
+                        onDiscard()
+                    }) {
+                        Text("Discard")
+                    }
+                    OutlinedButton(onClick = {
+                        stopPlayback()
+                        onReRecord()
+                    }) {
+                        Text("Re-record")
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    Button(onClick = {
+                        stopPlayback()
+                        onAddRecording()
+                    }) {
+                        Text("Add")
+                    }
+                }
+            }
+
+            if (!isRecordingAudio && pendingAudioUri == null && liveTranscription.isNotBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                ) {
+                    OutlinedButton(onClick = onDiscard) {
+                        Text("Discard")
+                    }
+                    Button(onClick = onAddRecording) {
+                        Text("Add text")
+                    }
+                }
+            }
+        }
+    }
+}
