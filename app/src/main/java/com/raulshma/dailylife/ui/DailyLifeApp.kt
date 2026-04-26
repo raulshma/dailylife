@@ -254,6 +254,51 @@ internal val QuickAddDraftSaver = mapSaver(
     },
 )
 
+private const val DRAFT_PREFS_NAME = "quick_add_draft_prefs"
+
+private fun saveDraftToPrefs(context: Context, draft: QuickAddDraft) {
+    val prefs = context.getSharedPreferences(DRAFT_PREFS_NAME, Context.MODE_PRIVATE)
+    prefs.edit().apply {
+        putString("typeName", draft.typeName)
+        putString("title", draft.title)
+        putString("body", draft.body)
+        putString("tags", draft.tags)
+        putBoolean("favorite", draft.favorite)
+        putBoolean("pinned", draft.pinned)
+        putString("reminderDate", draft.reminderDate)
+        putString("reminderTime", draft.reminderTime)
+        putBoolean("notificationsEnabled", draft.notificationsEnabled)
+        putString("overrideTime", draft.overrideTime)
+        putBoolean("recurring", draft.recurring)
+        putBoolean("showAdvanced", draft.showAdvanced)
+        putBoolean("showReminderOptions", draft.showReminderOptions)
+        apply()
+    }
+}
+
+private fun loadDraftFromPrefs(context: Context): QuickAddDraft {
+    val prefs = context.getSharedPreferences(DRAFT_PREFS_NAME, Context.MODE_PRIVATE)
+    return QuickAddDraft(
+        typeName = prefs.getString("typeName", null) ?: LifeItemType.Thought.name,
+        title = prefs.getString("title", null) ?: "",
+        body = prefs.getString("body", null) ?: "",
+        tags = prefs.getString("tags", null) ?: "",
+        favorite = prefs.getBoolean("favorite", false),
+        pinned = prefs.getBoolean("pinned", false),
+        reminderDate = prefs.getString("reminderDate", null) ?: "",
+        reminderTime = prefs.getString("reminderTime", null) ?: "",
+        notificationsEnabled = prefs.getBoolean("notificationsEnabled", true),
+        overrideTime = prefs.getString("overrideTime", null) ?: "",
+        recurring = prefs.getBoolean("recurring", false),
+        showAdvanced = prefs.getBoolean("showAdvanced", false),
+        showReminderOptions = prefs.getBoolean("showReminderOptions", false),
+    )
+}
+
+private fun clearDraftFromPrefs(context: Context) {
+    context.getSharedPreferences(DRAFT_PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DailyLifeApp(viewModel: DailyLifeViewModel) {
@@ -270,8 +315,13 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
     val s3Settings by viewModel.s3BackupSettings.collectAsStateWithLifecycle()
     val lastBackupResult by viewModel.lastBackupResult.collectAsStateWithLifecycle()
     var quickAddDraft by rememberSaveable(stateSaver = QuickAddDraftSaver) {
-        mutableStateOf(QuickAddDraft())
+        mutableStateOf(loadDraftFromPrefs(context))
     }
+
+    LaunchedEffect(quickAddDraft) {
+        saveDraftToPrefs(context, quickAddDraft)
+    }
+
     var quickAddLocationCallback by remember { mutableStateOf<((Double, Double) -> Unit)?>(null) }
 
     DisposableEffect(Unit) {
@@ -421,18 +471,28 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
         }
     }
 
+    val quickAddSheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = false)
+
     if (showQuickAdd) {
-        QuickAddScreen(
+        ModalBottomSheet(
+            onDismissRequest = { showQuickAdd = false },
+            sheetState = quickAddSheetState,
+            dragHandle = { androidx.compose.material3.BottomSheetDefaults.DragHandle() },
+            modifier = Modifier.fillMaxSize()
+        ) {
+            QuickAddScreen(
             draft = quickAddDraft,
             onDraftChanged = { quickAddDraft = it },
             onAdd = { draft ->
                 viewModel.addItem(draft)
                 showQuickAdd = false
                 quickAddDraft = QuickAddDraft()
+                clearDraftFromPrefs(context)
             },
             onAddAndContinue = { draft ->
                 viewModel.addItem(draft)
                 quickAddDraft = QuickAddDraft()
+                clearDraftFromPrefs(context)
             },
             onDismiss = {
                 showQuickAdd = false
@@ -440,6 +500,7 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
             onDiscardDraft = {
                 showQuickAdd = false
                 quickAddDraft = QuickAddDraft()
+                clearDraftFromPrefs(context)
             },
             mediaLauncher = mediaLauncher,
             onShowLocationPicker = { onLocationSelected ->
@@ -448,6 +509,7 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
             },
             allTags = state.allTags,
         )
+        }
     }
 
     if (showLocationPicker) {

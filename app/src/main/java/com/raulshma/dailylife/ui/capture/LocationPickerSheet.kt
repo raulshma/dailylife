@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Button
@@ -22,17 +23,68 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.IconButton
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import android.Manifest
+import android.content.pm.PackageManager
+import android.location.LocationManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.osmdroid.events.MapEventsReceiver
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.MapEventsOverlay
 import org.osmdroid.views.overlay.Marker
+import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
+import org.osmdroid.util.MapTileIndex
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.isSystemInDarkTheme
+
+private val CartoLight = object : OnlineTileSourceBase(
+    "CartoDB Positron", 1, 20, 256, ".png",
+    arrayOf("https://a.basemaps.cartocdn.com/light_all/"), "© OpenStreetMap contributors, © CARTO"
+) {
+    override fun getTileURLString(pMapTileIndex: Long): String {
+        return baseUrl + MapTileIndex.getZoom(pMapTileIndex) + "/" + MapTileIndex.getX(pMapTileIndex) + "/" + MapTileIndex.getY(pMapTileIndex) + mImageFilenameEnding
+    }
+}
+
+private val CartoDark = object : OnlineTileSourceBase(
+    "CartoDB Dark Matter", 1, 20, 256, ".png",
+    arrayOf("https://a.basemaps.cartocdn.com/dark_all/"), "© OpenStreetMap contributors, © CARTO"
+) {
+    override fun getTileURLString(pMapTileIndex: Long): String {
+        return baseUrl + MapTileIndex.getZoom(pMapTileIndex) + "/" + MapTileIndex.getX(pMapTileIndex) + "/" + MapTileIndex.getY(pMapTileIndex) + mImageFilenameEnding
+    }
+}
+
+private val EsriSatellite = object : OnlineTileSourceBase(
+    "Esri World Imagery", 1, 19, 256, "",
+    arrayOf("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/"), "Tiles © Esri"
+) {
+    override fun getTileURLString(pMapTileIndex: Long): String {
+        return baseUrl + MapTileIndex.getZoom(pMapTileIndex) + "/" + MapTileIndex.getY(pMapTileIndex) + "/" + MapTileIndex.getX(pMapTileIndex)
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,7 +103,65 @@ fun LocationPickerSheet(
         )
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    val coroutineScope = rememberCoroutineScope()
+    var searchQuery by remember { mutableStateOf("") }
+    var isSearching by remember { mutableStateOf(false) }
+    var selectedTile by remember { mutableStateOf("Auto") }
+    val isDarkTheme = isSystemInDarkTheme()
+
+    fun jumpToCurrentLocation() {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            val locationManager = context.getSystemService(android.content.Context.LOCATION_SERVICE) as LocationManager
+            val providers = locationManager.getProviders(true)
+            var bestLocation: android.location.Location? = null
+            for (provider in providers) {
+                try {
+                    val l = locationManager.getLastKnownLocation(provider) ?: continue
+                    if (bestLocation == null || l.accuracy < bestLocation.accuracy) {
+                        bestLocation = l
+                    }
+                } catch (e: SecurityException) {
+                    // Ignore
+                }
+            }
+            bestLocation?.let {
+                selectedPoint = GeoPoint(it.latitude, it.longitude)
+            }
+        }
+    }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions.values.any { it }) {
+            jumpToCurrentLocation()
+        }
+    }
+
+    fun performSearch() {
+        if (searchQuery.isBlank()) return
+        isSearching = true
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                val geocoder = android.location.Geocoder(context)
+                val addresses = geocoder.getFromLocationName(searchQuery, 1)
+                if (!addresses.isNullOrEmpty()) {
+                    val address = addresses[0]
+                    val point = GeoPoint(address.latitude, address.longitude)
+                    withContext(Dispatchers.Main) {
+                        selectedPoint = point
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                withContext(Dispatchers.Main) { isSearching = false }
+            }
+        }
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -69,6 +179,55 @@ fun LocationPickerSheet(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search location...") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    trailingIcon = {
+                        if (isSearching) {
+                            CircularProgressIndicator(modifier = Modifier.padding(12.dp).size(24.dp), strokeWidth = 2.dp)
+                        } else {
+                            IconButton(onClick = ::performSearch) {
+                                Icon(Icons.Filled.Search, "Search")
+                            }
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { performSearch() })
+                )
+                
+                IconButton(onClick = {
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                        jumpToCurrentLocation()
+                    } else {
+                        locationPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                    }
+                }) {
+                    Icon(Icons.Filled.MyLocation, "Current Location")
+                }
+            }
+
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val tileOptions = listOf("Auto", "Satellite", "OSM")
+                tileOptions.forEach { option ->
+                    FilterChip(
+                        selected = selectedTile == option,
+                        onClick = { selectedTile = option },
+                        label = { Text(option) }
+                    )
+                }
+            }
 
             Box(
                 modifier = Modifier
@@ -119,6 +278,17 @@ fun LocationPickerSheet(
                         mapView.controller.setCenter(selectedPoint)
                         val marker = mapView.overlays.filterIsInstance<Marker>().firstOrNull()
                         marker?.position = selectedPoint
+                        
+                        val newSource = when (selectedTile) {
+                            "Auto" -> if (isDarkTheme) CartoDark else CartoLight
+                            "Satellite" -> EsriSatellite
+                            "OSM" -> TileSourceFactory.MAPNIK
+                            else -> TileSourceFactory.MAPNIK
+                        }
+                        if (mapView.tileProvider.tileSource != newSource) {
+                            mapView.setTileSource(newSource)
+                        }
+                        
                         mapView.invalidate()
                     },
                 )

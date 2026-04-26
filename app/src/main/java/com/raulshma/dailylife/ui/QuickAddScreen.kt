@@ -40,9 +40,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.graphics.asAndroidPath
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.material.icons.filled.Create
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Checklist
@@ -54,6 +61,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Mood
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
@@ -141,33 +149,17 @@ internal fun QuickAddScreen(
     onShowLocationPicker: ((Double, Double) -> Unit) -> Unit,
     allTags: List<String> = emptyList(),
 ) {
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        contentWindowInsets = WindowInsets.safeDrawing,
-        topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = {
-                    IconButton(onClick = onDismiss) {
-                        Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = "Close",
-                        )
-                    }
-                },
-                actions = {
-                    TextButton(onClick = onDiscardDraft) {
-                        Text("Discard")
-                    }
-                },
-            )
-        },
-        bottomBar = {
-            // We put bottom bar in Scaffold so it stays pinned
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
+            horizontalArrangement = Arrangement.End
+        ) {
+            TextButton(onClick = onDiscardDraft) {
+                Text("Discard Draft")
+            }
         }
-    ) { paddingValues ->
         QuickAddContent(
-            modifier = Modifier.padding(paddingValues),
+            modifier = Modifier.weight(1f),
             initialDraft = draft,
             onDraftChanged = onDraftChanged,
             onAdd = onAdd,
@@ -199,6 +191,7 @@ private fun QuickAddContent(
     }
     
     var selectedType by rememberSaveable { mutableStateOf(initialType) }
+    var showSketchCanvas by remember { mutableStateOf(false) }
     var title by rememberSaveable { mutableStateOf(initialDraft.title) }
     var body by rememberSaveable { mutableStateOf(initialDraft.body) }
     var tags by rememberSaveable { mutableStateOf(initialDraft.tags) }
@@ -567,25 +560,33 @@ private fun QuickAddContent(
                 )
 
                 // Body
-                BasicTextField(
-                    value = body,
-                    onValueChange = { if (it.length <= 2000) body = it },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp).focusRequester(bodyFocusRequester),
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(
-                        color = MaterialTheme.colorScheme.onSurface
-                    ),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    decorationBox = { innerTextField ->
-                        if (body.isEmpty()) {
-                            Text(
-                                "Add details, #tags, or paste links here...",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            )
+                if (selectedType == LifeItemType.Task) {
+                    ChecklistEditor(
+                        body = body,
+                        onBodyChange = { if (it.length <= 2000) body = it },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp).focusRequester(bodyFocusRequester)
+                    )
+                } else {
+                    BasicTextField(
+                        value = body,
+                        onValueChange = { if (it.length <= 2000) body = it },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp).focusRequester(bodyFocusRequester),
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        decorationBox = { innerTextField ->
+                            if (body.isEmpty()) {
+                                Text(
+                                    "Add details, #tags, or paste links here...",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                )
+                            }
+                            innerTextField()
                         }
-                        innerTextField()
-                    }
-                )
+                    )
+                }
                 
                 // Character counters (only show when > 80% used)
                 if (title.length > 96 || body.length > 1600) {
@@ -722,11 +723,59 @@ private fun QuickAddContent(
             HorizontalDivider()
 
             // Properties Quick Bar
+            val currentMood = remember(tags) {
+                Regex("#mood-([a-zA-Z]+)").find(tags)?.groupValues?.get(1)
+            }
+            var showMoodPicker by remember { mutableStateOf(false) }
+
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Box {
+                    FilterChip(
+                        selected = currentMood != null,
+                        onClick = { showMoodPicker = true },
+                        label = { Text(currentMood?.replaceFirstChar { it.uppercase() } ?: "Mood") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.Mood,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    )
+                    DropdownMenu(
+                        expanded = showMoodPicker,
+                        onDismissRequest = { showMoodPicker = false }
+                    ) {
+                        val moods = listOf("awful" to "😫 Awful", "bad" to "😕 Bad", "neutral" to "😐 Neutral", "good" to "🙂 Good", "excellent" to "🤩 Excellent")
+                        moods.forEach { (id, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    var newTags = tags.replace(Regex("#mood-[a-zA-Z]+(,\\s*)?"), "").trim(',', ' ')
+                                    if (newTags.isNotBlank()) newTags += ", "
+                                    newTags += "#mood-$id"
+                                    tags = newTags
+                                    showMoodPicker = false
+                                }
+                            )
+                        }
+                        if (currentMood != null) {
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("Clear mood", color = MaterialTheme.colorScheme.error) },
+                                onClick = {
+                                    tags = tags.replace(Regex("#mood-[a-zA-Z]+(,\\s*)?"), "").trim(',', ' ')
+                                    showMoodPicker = false
+                                }
+                            )
+                        }
+                    }
+                }
+                
                 FilterChip(
                     selected = favorite,
                     onClick = { favorite = !favorite },
@@ -869,6 +918,9 @@ private fun QuickAddContent(
                             if (hasCameraPermission(context)) mediaLauncher.launchVideoCamera() else mediaLauncher.requestCameraPermissionIfNeeded()
                         }) {
                             Icon(Icons.Filled.Videocam, contentDescription = "Video")
+                        }
+                        IconButton(onClick = { showSketchCanvas = true }) {
+                            Icon(Icons.Filled.Create, contentDescription = "Sketch")
                         }
                     }
                     
@@ -1324,6 +1376,224 @@ private fun AudioRecordingCard(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ChecklistEditor(
+    body: String,
+    onBodyChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val items = remember(body) {
+        if (body.isBlank()) listOf(ChecklistItem("", false))
+        else body.split("\n").map { line ->
+            when {
+                line.startsWith("- [x] ", ignoreCase = true) -> ChecklistItem(line.substring(6), true)
+                line.startsWith("- [ ] ") -> ChecklistItem(line.substring(6), false)
+                else -> ChecklistItem(line, false) // Not prefixed, treat as an unchecked item
+            }
+        }
+    }
+
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        items.forEachIndexed { index, item ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                androidx.compose.material3.Checkbox(
+                    checked = item.isChecked,
+                    onCheckedChange = { checked ->
+                        val newItems = items.toMutableList()
+                        newItems[index] = item.copy(isChecked = checked)
+                        onBodyChange(newItems.joinToString("\n") { it.toMarkdown() })
+                    },
+                    modifier = Modifier.size(36.dp)
+                )
+                BasicTextField(
+                    value = item.text,
+                    onValueChange = { newText ->
+                        val newItems = items.toMutableList()
+                        if (newText.contains("\n")) {
+                            val parts = newText.split("\n")
+                            newItems[index] = item.copy(text = parts[0])
+                            newItems.addAll(index + 1, parts.drop(1).map { ChecklistItem(it, false) })
+                        } else {
+                            newItems[index] = item.copy(text = newText)
+                        }
+                        onBodyChange(newItems.joinToString("\n") { it.toMarkdown() })
+                    },
+                    modifier = Modifier.weight(1f).padding(start = 4.dp),
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                        color = if (item.isChecked) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface,
+                        textDecoration = if (item.isChecked) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    keyboardOptions = KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences),
+                    decorationBox = { innerTextField ->
+                        if (item.text.isEmpty() && index == items.size - 1) {
+                            Text(
+                                "Add item...",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                        }
+                        innerTextField()
+                    }
+                )
+                if (items.size > 1) {
+                    IconButton(
+                        onClick = {
+                            val newItems = items.toMutableList()
+                            newItems.removeAt(index)
+                            onBodyChange(newItems.joinToString("\n") { it.toMarkdown() })
+                        },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(Icons.Filled.Close, contentDescription = "Remove", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        TextButton(
+            onClick = {
+                val newItems = items.toMutableList()
+                newItems.add(ChecklistItem("", false))
+                onBodyChange(newItems.joinToString("\n") { it.toMarkdown() })
+            },
+            modifier = Modifier.padding(start = 36.dp)
+        ) {
+            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(4.dp))
+            Text("Add item")
+        }
+    }
+}
+
+private data class ChecklistItem(val text: String, val isChecked: Boolean) {
+    fun toMarkdown() = if (isChecked) "- [x] $text" else "- [ ] $text"
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SketchCanvasSheet(
+    onSave: (Uri) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var paths by remember { mutableStateOf(listOf<androidx.compose.ui.graphics.Path>()) }
+    var currentPath by remember { mutableStateOf<androidx.compose.ui.graphics.Path?>(null) }
+    var canvasSize by remember { mutableStateOf(androidx.compose.ui.geometry.Size.Zero) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = { paths = emptyList() }) {
+                    Text("Clear")
+                }
+                Text("Quick Sketch", style = MaterialTheme.typography.titleMedium)
+                Button(
+                    onClick = {
+                        if (paths.isEmpty() && currentPath == null) {
+                            onDismiss()
+                            return@Button
+                        }
+                        val width = canvasSize.width.toInt().coerceAtLeast(1)
+                        val height = canvasSize.height.toInt().coerceAtLeast(1)
+                        val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+                        val canvas = android.graphics.Canvas(bitmap)
+                        canvas.drawColor(android.graphics.Color.WHITE)
+                        val paint = android.graphics.Paint().apply {
+                            color = android.graphics.Color.BLACK
+                            style = android.graphics.Paint.Style.STROKE
+                            strokeWidth = 12f
+                            strokeJoin = android.graphics.Paint.Join.ROUND
+                            strokeCap = android.graphics.Paint.Cap.ROUND
+                            isAntiAlias = true
+                        }
+                        paths.forEach { p ->
+                            canvas.drawPath(p.asAndroidPath(), paint)
+                        }
+                        
+                        val file = java.io.File(context.cacheDir, "sketch_${System.currentTimeMillis()}.jpg")
+                        file.outputStream().use { out ->
+                            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
+                        }
+                        onSave(Uri.fromFile(file))
+                    }
+                ) {
+                    Text("Save")
+                }
+            }
+            
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(16.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.White)
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDragStart = { offset ->
+                                currentPath = androidx.compose.ui.graphics.Path().apply { moveTo(offset.x, offset.y) }
+                            },
+                            onDrag = { change, _ ->
+                                change.consume()
+                                currentPath = androidx.compose.ui.graphics.Path().apply { 
+                                    addPath(currentPath!!)
+                                    lineTo(change.position.x, change.position.y)
+                                }
+                            },
+                            onDragEnd = {
+                                currentPath?.let { paths = paths + it }
+                                currentPath = null
+                            },
+                            onDragCancel = {
+                                currentPath = null
+                            }
+                        )
+                    }
+            ) {
+                Canvas(
+                    modifier = Modifier.fillMaxSize().onSizeChanged { 
+                        canvasSize = androidx.compose.ui.geometry.Size(it.width.toFloat(), it.height.toFloat()) 
+                    }
+                ) {
+                    paths.forEach { path ->
+                        drawPath(
+                            path = path,
+                            color = Color.Black,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                width = 12f,
+                                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                                join = androidx.compose.ui.graphics.StrokeJoin.Round
+                            )
+                        )
+                    }
+                    currentPath?.let { path ->
+                        drawPath(
+                            path = path,
+                            color = Color.Black,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                width = 12f,
+                                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                                join = androidx.compose.ui.graphics.StrokeJoin.Round
+                            )
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
