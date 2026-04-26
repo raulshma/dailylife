@@ -471,7 +471,7 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
         }
     }
 
-    val quickAddSheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val quickAddSheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     if (showQuickAdd) {
         ModalBottomSheet(

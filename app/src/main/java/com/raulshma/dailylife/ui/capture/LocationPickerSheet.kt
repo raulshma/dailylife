@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -24,6 +25,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -52,6 +54,8 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.MapEventsOverlay
 import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
+import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
 import org.osmdroid.util.MapTileIndex
 import androidx.compose.foundation.horizontalScroll
@@ -108,17 +112,32 @@ fun LocationPickerSheet(
     var isSearching by remember { mutableStateOf(false) }
     var selectedTile by remember { mutableStateOf("Auto") }
     val isDarkTheme = isSystemInDarkTheme()
+    var myLocationOverlay by remember { mutableStateOf<MyLocationNewOverlay?>(null) }
 
     fun jumpToCurrentLocation() {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            
+            val myLoc = myLocationOverlay?.myLocation
+            if (myLoc != null) {
+                selectedPoint = GeoPoint(myLoc.latitude, myLoc.longitude)
+                return
+            }
+            val lastFix = myLocationOverlay?.lastFix
+            if (lastFix != null) {
+                selectedPoint = GeoPoint(lastFix.latitude, lastFix.longitude)
+                return
+            }
+            
+            android.widget.Toast.makeText(context, "Locating...", android.widget.Toast.LENGTH_SHORT).show()
+            
             val locationManager = context.getSystemService(android.content.Context.LOCATION_SERVICE) as LocationManager
             val providers = locationManager.getProviders(true)
             var bestLocation: android.location.Location? = null
             for (provider in providers) {
                 try {
                     val l = locationManager.getLastKnownLocation(provider) ?: continue
-                    if (bestLocation == null || l.accuracy < bestLocation.accuracy) {
+                    if (bestLocation == null || l.accuracy < bestLocation.accuracy || l.time > bestLocation.time) {
                         bestLocation = l
                     }
                 } catch (e: SecurityException) {
@@ -127,6 +146,31 @@ fun LocationPickerSheet(
             }
             bestLocation?.let {
                 selectedPoint = GeoPoint(it.latitude, it.longitude)
+            }
+            
+            try {
+                val provider = if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) LocationManager.NETWORK_PROVIDER else if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) LocationManager.GPS_PROVIDER else null
+                if (provider != null) {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                        locationManager.getCurrentLocation(provider, null, context.mainExecutor) { newLoc ->
+                            if (newLoc != null) selectedPoint = GeoPoint(newLoc.latitude, newLoc.longitude)
+                        }
+                    } else {
+                        val listener = object : android.location.LocationListener {
+                            override fun onLocationChanged(newLoc: android.location.Location) {
+                                selectedPoint = GeoPoint(newLoc.latitude, newLoc.longitude)
+                            }
+                            @Deprecated("Deprecated in Java")
+                            override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
+                            override fun onProviderEnabled(provider: String) {}
+                            override fun onProviderDisabled(provider: String) {}
+                        }
+                        @Suppress("DEPRECATION")
+                        locationManager.requestSingleUpdate(provider, listener, android.os.Looper.getMainLooper())
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }
@@ -215,25 +259,12 @@ fun LocationPickerSheet(
                 }
             }
 
-            androidx.compose.foundation.layout.Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val tileOptions = listOf("Auto", "Satellite", "OSM")
-                tileOptions.forEach { option ->
-                    FilterChip(
-                        selected = selectedTile == option,
-                        onClick = { selectedTile = option },
-                        label = { Text(option) }
-                    )
-                }
-            }
-
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f, fill = false)
-                    .padding(vertical = 8.dp),
+                    .weight(1f, fill = true)
+                    .padding(vertical = 8.dp)
+                    .clip(RoundedCornerShape(12.dp)),
             ) {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
@@ -253,6 +284,11 @@ fun LocationPickerSheet(
                                 title = "Selected"
                             }
                             overlays.add(marker)
+
+                            myLocationOverlay = MyLocationNewOverlay(GpsMyLocationProvider(ctx), this).apply {
+                                enableMyLocation()
+                            }
+                            overlays.add(myLocationOverlay)
 
                             overlays.add(
                                 MapEventsOverlay(
@@ -292,6 +328,26 @@ fun LocationPickerSheet(
                         mapView.invalidate()
                     },
                 )
+                
+                androidx.compose.foundation.layout.Row(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val tileOptions = listOf("Auto", "Satellite", "OSM")
+                    tileOptions.forEach { option ->
+                        FilterChip(
+                            selected = selectedTile == option,
+                            onClick = { selectedTile = option },
+                            label = { Text(option) },
+                            colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+                            )
+                        )
+                    }
+                }
             }
 
             Text(
