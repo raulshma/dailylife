@@ -8,13 +8,11 @@ import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.PBEKeySpec
+import javax.crypto.spec.SecretKeySpec
 
-/**
- * Manages a secure passphrase for SQLCipher database encryption.
- * The passphrase is randomly generated on first access and encrypted
- * using Android Keystore for storage.
- */
 class DatabasePassphraseManager(context: Context) {
 
     private val prefs: SharedPreferences =
@@ -26,35 +24,102 @@ class DatabasePassphraseManager(context: Context) {
         val iv = prefs.getString(KEY_PASSPHRASE_IV, null)
             ?.let { hexToBytes(it) }
 
-        return if (encryptedPassphrase != null && iv != null) {
-            decryptPassphrase(encryptedPassphrase, iv)
-        } else {
-            generateAndStorePassphrase()
+        if (encryptedPassphrase != null && iv != null) {
+            try {
+                val passphrase = decryptWithKeystore(encryptedPassphrase, iv)
+                ensureBackupExists(passphrase)
+                return passphrase
+            } catch (_: Exception) {
+                // Keystore key lost (e.g. app reinstalled), try backup
+            }
         }
+
+        val backupEncrypted = prefs.getString(KEY_BACKUP_ENCRYPTED, null)
+            ?.let { hexToBytes(it) }
+        val backupIv = prefs.getString(KEY_BACKUP_IV, null)
+            ?.let { hexToBytes(it) }
+
+        if (backupEncrypted != null && backupIv != null) {
+            try {
+                val passphrase = decryptWithBackup(backupEncrypted, backupIv)
+                storePassphrase(passphrase)
+                return passphrase
+            } catch (_: Exception) {
+                // Backup also failed
+            }
+        }
+
+        return generateAndStorePassphrase()
+    }
+
+    fun regeneratePassphrase(): ByteArray {
+        prefs.edit().clear().apply()
+        return generateAndStorePassphrase()
     }
 
     private fun generateAndStorePassphrase(): ByteArray {
         val passphrase = ByteArray(PASSPHRASE_LENGTH).apply {
             java.security.SecureRandom().nextBytes(this)
         }
-        val key = getOrCreateKeystoreKey()
-        val cipher = Cipher.getInstance(TRANSFORMATION).apply {
-            init(Cipher.ENCRYPT_MODE, key)
-        }
-        val encrypted = cipher.doFinal(passphrase)
-        prefs.edit()
-            .putString(KEY_ENCRYPTED_PASSPHRASE, bytesToHex(encrypted))
-            .putString(KEY_PASSPHRASE_IV, bytesToHex(cipher.iv))
-            .apply()
+        storePassphrase(passphrase)
         return passphrase
     }
 
-    private fun decryptPassphrase(encrypted: ByteArray, iv: ByteArray): ByteArray {
+    private fun storePassphrase(passphrase: ByteArray) {
+        val keystoreKey = getOrCreateKeystoreKey()
+        val keystoreCipher = Cipher.getInstance(TRANSFORMATION).apply {
+            init(Cipher.ENCRYPT_MODE, keystoreKey)
+        }
+        val keystoreEncrypted = keystoreCipher.doFinal(passphrase)
+
+        val backupKey = deriveBackupKey()
+        val backupCipher = Cipher.getInstance(TRANSFORMATION).apply {
+            init(Cipher.ENCRYPT_MODE, backupKey)
+        }
+        val backupEncrypted = backupCipher.doFinal(passphrase)
+
+        prefs.edit()
+            .putString(KEY_ENCRYPTED_PASSPHRASE, bytesToHex(keystoreEncrypted))
+            .putString(KEY_PASSPHRASE_IV, bytesToHex(keystoreCipher.iv))
+            .putString(KEY_BACKUP_ENCRYPTED, bytesToHex(backupEncrypted))
+            .putString(KEY_BACKUP_IV, bytesToHex(backupCipher.iv))
+            .apply()
+    }
+
+    private fun ensureBackupExists(passphrase: ByteArray) {
+        if (prefs.contains(KEY_BACKUP_ENCRYPTED)) return
+
+        val backupKey = deriveBackupKey()
+        val cipher = Cipher.getInstance(TRANSFORMATION).apply {
+            init(Cipher.ENCRYPT_MODE, backupKey)
+        }
+        val backupEncrypted = cipher.doFinal(passphrase)
+        prefs.edit()
+            .putString(KEY_BACKUP_ENCRYPTED, bytesToHex(backupEncrypted))
+            .putString(KEY_BACKUP_IV, bytesToHex(cipher.iv))
+            .apply()
+    }
+
+    private fun decryptWithKeystore(encrypted: ByteArray, iv: ByteArray): ByteArray {
         val key = getOrCreateKeystoreKey()
         val cipher = Cipher.getInstance(TRANSFORMATION).apply {
             init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_LENGTH, iv))
         }
         return cipher.doFinal(encrypted)
+    }
+
+    private fun decryptWithBackup(encrypted: ByteArray, iv: ByteArray): ByteArray {
+        val key = deriveBackupKey()
+        val cipher = Cipher.getInstance(TRANSFORMATION).apply {
+            init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_LENGTH, iv))
+        }
+        return cipher.doFinal(encrypted)
+    }
+
+    private fun deriveBackupKey(): SecretKey {
+        val spec = PBEKeySpec(BACKUP_SECRET.toCharArray(), BACKUP_SALT, BACKUP_ITERATIONS, KEY_SIZE)
+        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+        return SecretKeySpec(factory.generateSecret(spec).encoded, KEY_ALGORITHM)
     }
 
     private fun getOrCreateKeystoreKey(): SecretKey {
@@ -92,14 +157,22 @@ class DatabasePassphraseManager(context: Context) {
         private const val PREFS_NAME = "dailylife_db_passphrase"
         private const val KEY_ENCRYPTED_PASSPHRASE = "encrypted_passphrase"
         private const val KEY_PASSPHRASE_IV = "passphrase_iv"
+        private const val KEY_BACKUP_ENCRYPTED = "backup_encrypted"
+        private const val KEY_BACKUP_IV = "backup_iv"
         private const val KEY_ALIAS = "dailylife_db_key"
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
-        private const val KEY_ALGORITHM = KeyProperties.KEY_ALGORITHM_AES
+        private const val KEY_ALGORITHM = "AES"
         private const val BLOCK_MODE = KeyProperties.BLOCK_MODE_GCM
         private const val PADDING = KeyProperties.ENCRYPTION_PADDING_NONE
         private const val TRANSFORMATION = "$KEY_ALGORITHM/$BLOCK_MODE/$PADDING"
         private const val KEY_SIZE = 256
         private const val GCM_TAG_LENGTH = 128
         private const val PASSPHRASE_LENGTH = 32
+        private const val BACKUP_SECRET = "dailylife_db_passphrase_backup_v1"
+        private val BACKUP_SALT = byteArrayOf(
+            0x44, 0x61, 0x69, 0x6c, 0x79, 0x4c, 0x69, 0x66,
+            0x65, 0x53, 0x61, 0x6c, 0x74, 0x56, 0x31, 0x00,
+        )
+        private const val BACKUP_ITERATIONS = 50000
     }
 }

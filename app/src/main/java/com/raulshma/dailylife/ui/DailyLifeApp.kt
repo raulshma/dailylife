@@ -5,6 +5,7 @@ import android.app.TimePickerDialog
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -74,6 +75,7 @@ import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -84,9 +86,15 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.foundation.Canvas
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Slider
+import kotlinx.coroutines.delay
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
@@ -1877,45 +1885,76 @@ private fun QuickAddSheet(
     fun startAudioCapture() {
         pendingAudioUri = null
         liveTranscription = ""
-        val uri = audioRecorder.startRecording() ?: return
-        activeRecordingUri = uri
-        val startedTranscription = speechTranscriber.start { transcript ->
-            liveTranscription = transcript
-        }
-        if (!startedTranscription) {
-            liveTranscription = ""
-        }
         isRecordingAudio = true
+        val transcriberStarted = speechTranscriber.start(
+            onTranscriptChanged = { transcript ->
+                liveTranscription = transcript
+            },
+            onError = { errorMsg ->
+                // Show speech errors in transcription area if no text yet
+                if (liveTranscription.isBlank()) {
+                    liveTranscription = errorMsg
+                }
+            },
+        )
+        if (!transcriberStarted) {
+            liveTranscription = "Speech recognition not available on this device."
+        }
+        // Delay audio recording start to let SpeechRecognizer claim the mic first
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            if (isRecordingAudio) {
+                val uri = audioRecorder.startRecording()
+                if (uri != null) {
+                    activeRecordingUri = uri
+                }
+            }
+        }, 500L)
     }
 
     fun stopAudioCapture() {
         if (!isRecordingAudio) return
-        val stoppedUri = audioRecorder.stopRecording()
+        val stoppedUri = if (audioRecorder.isRecording) audioRecorder.stopRecording() else null
         val finalTranscript = speechTranscriber.stop()
         isRecordingAudio = false
         pendingAudioUri = stoppedUri ?: activeRecordingUri
         activeRecordingUri = null
-        liveTranscription = finalTranscript
+        if (finalTranscript.isNotBlank()) {
+            liveTranscription = finalTranscript
+        }
     }
 
     fun discardCapturedAudio() {
         pendingAudioUri = null
         activeRecordingUri = null
         liveTranscription = ""
-        audioRecorder.discardLastRecording()
+        speechTranscriber.cancel()
+        if (audioRecorder.isRecording) {
+            audioRecorder.cancelRecording()
+        } else {
+            audioRecorder.discardLastRecording()
+        }
+    }
+
+    fun reRecordAudio() {
+        discardCapturedAudio()
+        startAudioCapture()
     }
 
     fun addCapturedAudioToDraft() {
-        val uri = pendingAudioUri ?: return
+        val uri = pendingAudioUri
         val transcript = liveTranscription.trim()
-        body = buildString {
-            append(uri.toString())
-            if (transcript.isNotBlank()) {
-                append("\n\n")
-                append(transcript)
+        if (uri != null) {
+            body = buildString {
+                append(uri.toString())
+                if (transcript.isNotBlank()) {
+                    append("\n\n")
+                    append(transcript)
+                }
             }
+            selectedType = LifeItemType.Audio
+        } else if (transcript.isNotBlank()) {
+            body = transcript
         }
-        selectedType = LifeItemType.Audio
         pendingAudioUri = null
         liveTranscription = ""
         audioRecorder.clearLastRecordingReference()
@@ -2124,71 +2163,20 @@ private fun QuickAddSheet(
         )
 
         AnimatedVisibility(
-            visible = isRecordingAudio || pendingAudioUri != null,
+            visible = isRecordingAudio || pendingAudioUri != null || liveTranscription.isNotBlank(),
             enter = fadeIn() + expandVertically(),
             exit = fadeOut() + shrinkVertically(),
         ) {
-            ElevatedCard(
-                colors = CardDefaults.elevatedCardColors(
-                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                ),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Icon(
-                            imageVector = if (isRecordingAudio) Icons.Filled.Mic else Icons.Filled.Done,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                        )
-                        Text(
-                            text = if (isRecordingAudio) {
-                                "Recording in progress"
-                            } else {
-                                "Recording ready to add"
-                            },
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer,
-                        )
-                    }
-
-                    Text(
-                        text = if (liveTranscription.isBlank()) {
-                            if (isRecordingAudio) {
-                                "Listening… start speaking to see live transcription."
-                            } else {
-                                "No transcription detected for this recording."
-                            }
-                        } else {
-                            liveTranscription
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer,
-                    )
-
-                    if (pendingAudioUri != null && !isRecordingAudio) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                        ) {
-                            OutlinedButton(onClick = ::discardCapturedAudio) {
-                                Text("Discard")
-                            }
-                            Button(onClick = ::addCapturedAudioToDraft) {
-                                Text("Add recording")
-                            }
-                        }
-                    }
-                }
-            }
+            AudioRecordingCard(
+                isRecordingAudio = isRecordingAudio,
+                pendingAudioUri = pendingAudioUri,
+                liveTranscription = liveTranscription,
+                audioRecorder = audioRecorder,
+                onStop = ::stopAudioCapture,
+                onDiscard = ::discardCapturedAudio,
+                onReRecord = ::reRecordAudio,
+                onAddRecording = ::addCapturedAudioToDraft,
+            )
         }
 
         // Attached content preview
@@ -2678,6 +2666,365 @@ private fun QuickReminderPresets(
                 )
             },
         )
+    }
+}
+
+@Composable
+private fun AudioRecordingCard(
+    isRecordingAudio: Boolean,
+    pendingAudioUri: Uri?,
+    liveTranscription: String,
+    audioRecorder: AudioRecorder,
+    onStop: () -> Unit,
+    onDiscard: () -> Unit,
+    onReRecord: () -> Unit,
+    onAddRecording: () -> Unit,
+) {
+    val context = LocalContext.current
+    var isPlaying by remember { mutableStateOf(false) }
+    var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+    val transcriptionScrollState = rememberScrollState()
+
+    // Seekbar state
+    var playbackPosition by remember { mutableStateOf(0f) }
+    var playbackDuration by remember { mutableStateOf(0) }
+    var isSeeking by remember { mutableStateOf(false) }
+
+    // Live amplitude samples for waveform (rolling buffer)
+    var amplitudeSamples by remember { mutableStateOf(listOf<Float>()) }
+    var displayedElapsedMs by remember { mutableStateOf(0L) }
+
+    // Poll the recorder for live amplitude and elapsed time while recording
+    LaunchedEffect(isRecordingAudio) {
+        if (isRecordingAudio) {
+            amplitudeSamples = emptyList()
+            while (isRecordingAudio) {
+                val amp = audioRecorder.currentAmplitude
+                displayedElapsedMs = audioRecorder.elapsedMs
+                amplitudeSamples = (amplitudeSamples + amp).takeLast(48)
+                delay(80L)
+            }
+        }
+    }
+
+    // Poll media player position during playback
+    LaunchedEffect(isPlaying) {
+        while (isPlaying) {
+            val mp = mediaPlayer
+            if (mp != null && mp.isPlaying && !isSeeking) {
+                playbackPosition = mp.currentPosition.toFloat()
+                playbackDuration = mp.duration
+            }
+            delay(200L)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            mediaPlayer?.release()
+            mediaPlayer = null
+        }
+    }
+
+    fun stopPlayback() {
+        mediaPlayer?.release()
+        mediaPlayer = null
+        isPlaying = false
+        playbackPosition = 0f
+    }
+
+    fun startPlayback(uri: Uri) {
+        stopPlayback()
+        mediaPlayer = MediaPlayer().apply {
+            setDataSource(context, uri)
+            setOnCompletionListener {
+                isPlaying = false
+                playbackPosition = 0f
+            }
+            prepare()
+            playbackDuration = duration
+            start()
+        }
+        isPlaying = true
+    }
+
+    fun togglePlayback() {
+        val uri = pendingAudioUri ?: return
+        if (isPlaying) {
+            mediaPlayer?.pause()
+            isPlaying = false
+        } else {
+            val mp = mediaPlayer
+            if (mp != null) {
+                mp.start()
+                isPlaying = true
+            } else {
+                startPlayback(uri)
+            }
+        }
+    }
+
+    LaunchedEffect(liveTranscription) {
+        if (liveTranscription.isNotBlank()) {
+            transcriptionScrollState.animateScrollTo(transcriptionScrollState.maxValue)
+        }
+    }
+
+    val recordingPulseAlpha = rememberInfiniteTransition(label = "recordingPulse")
+    val pulseAlpha by recordingPulseAlpha.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 800),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "pulseAlpha",
+    )
+
+    fun formatTime(ms: Long): String {
+        val totalSeconds = ms / 1000
+        val minutes = totalSeconds / 60
+        val seconds = totalSeconds % 60
+        return "%02d:%02d".format(minutes, seconds)
+    }
+
+    ElevatedCard(
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            // Header row with status + timer
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (isRecordingAudio) {
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.error.copy(alpha = pulseAlpha),
+                                shape = CircleShape,
+                            ),
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.Done,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+                Text(
+                    text = when {
+                        isRecordingAudio -> "Recording & transcribing"
+                        isPlaying -> "Playing recording"
+                        pendingAudioUri != null -> "Recording ready"
+                        else -> "Transcription ready"
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.weight(1f),
+                )
+                if (isRecordingAudio) {
+                    Text(
+                        text = formatTime(displayedElapsedMs),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+
+            // Live waveform during recording
+            if (isRecordingAudio) {
+                val waveColor = MaterialTheme.colorScheme.primary
+                val waveTrackColor = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.15f)
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)),
+                ) {
+                    val barCount = amplitudeSamples.size.coerceAtLeast(1)
+                    val barWidth = (size.width / 48f) * 0.65f
+                    val gap = (size.width / 48f) * 0.35f
+                    val startX = size.width - (barCount * (barWidth + gap))
+                    amplitudeSamples.forEachIndexed { index, amp ->
+                        val barHeight = (amp * size.height * 0.85f).coerceAtLeast(4f)
+                        val x = startX + index * (barWidth + gap)
+                        val y = (size.height - barHeight) / 2f
+                        drawRoundRect(
+                            color = waveColor,
+                            topLeft = androidx.compose.ui.geometry.Offset(x, y),
+                            size = androidx.compose.ui.geometry.Size(barWidth, barHeight),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f),
+                        )
+                    }
+                    // Fill remaining bars as dim track
+                    val emptyBars = 48 - barCount
+                    for (i in 0 until emptyBars) {
+                        val x = i * (barWidth + gap)
+                        val barH = 4f
+                        val y = (size.height - barH) / 2f
+                        drawRoundRect(
+                            color = waveTrackColor,
+                            topLeft = androidx.compose.ui.geometry.Offset(x, y),
+                            size = androidx.compose.ui.geometry.Size(barWidth, barH),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f),
+                        )
+                    }
+                }
+            }
+
+            // Stop button while recording
+            if (isRecordingAudio) {
+                Button(
+                    onClick = onStop,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Stop,
+                        contentDescription = "Stop recording",
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Stop recording")
+                }
+            }
+
+            // Live transcription panel
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(if (isRecordingAudio) 100.dp else 80.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f),
+                    )
+                    .verticalScroll(transcriptionScrollState)
+                    .padding(10.dp),
+            ) {
+                Text(
+                    text = liveTranscription.ifBlank {
+                        if (isRecordingAudio) "Listening\u2026" else "No transcription available."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (liveTranscription.isBlank()) {
+                        MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.6f)
+                    } else {
+                        MaterialTheme.colorScheme.onTertiaryContainer
+                    },
+                )
+            }
+
+            // Playback controls (after recording stopped)
+            if (!isRecordingAudio && pendingAudioUri != null) {
+                // Seek slider + play/pause
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilledTonalIconButton(
+                        onClick = { togglePlayback() },
+                        modifier = Modifier.size(44.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (isPlaying) "Pause" else "Play",
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                    Text(
+                        text = formatTime(playbackPosition.toLong()),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    )
+                    Slider(
+                        value = playbackPosition,
+                        onValueChange = { newVal ->
+                            isSeeking = true
+                            playbackPosition = newVal
+                        },
+                        onValueChangeFinished = {
+                            mediaPlayer?.seekTo(playbackPosition.toInt())
+                            isSeeking = false
+                        },
+                        valueRange = 0f..playbackDuration.toFloat().coerceAtLeast(1f),
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = formatTime(playbackDuration.toLong()),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    )
+                }
+
+                // Action buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedButton(onClick = {
+                        stopPlayback()
+                        onDiscard()
+                    }) {
+                        Icon(
+                            imageVector = Icons.Filled.Delete,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Discard")
+                    }
+                    OutlinedButton(onClick = {
+                        stopPlayback()
+                        onReRecord()
+                    }) {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Re-record")
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    Button(onClick = {
+                        stopPlayback()
+                        onAddRecording()
+                    }) {
+                        Text("Add")
+                    }
+                }
+            }
+
+            // Discard button if only transcription with no recording
+            if (!isRecordingAudio && pendingAudioUri == null && liveTranscription.isNotBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                ) {
+                    OutlinedButton(onClick = onDiscard) {
+                        Text("Discard")
+                    }
+                    Button(onClick = onAddRecording) {
+                        Text("Add text")
+                    }
+                }
+            }
+        }
     }
 }
 
