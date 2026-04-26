@@ -39,7 +39,7 @@ object DailyLifeModule {
         @ApplicationContext context: Context,
         passphraseManager: DatabasePassphraseManager,
     ): DailyLifeDatabase {
-        val factory = SupportOpenHelperFactory(passphraseManager.getPassphrase())
+        val factory = SupportOpenHelperFactory(passphraseManager.getPassphrase(), null, false)
         return Room.databaseBuilder(
             context,
             DailyLifeDatabase::class.java,
