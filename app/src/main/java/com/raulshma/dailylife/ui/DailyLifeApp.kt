@@ -9,16 +9,16 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -61,6 +62,7 @@ import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Category
@@ -94,7 +96,6 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.foundation.Canvas
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Slider
 import kotlinx.coroutines.delay
 import androidx.compose.material3.AssistChip
@@ -123,14 +124,17 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.mapSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -151,8 +155,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.compose.runtime.remember
+import androidx.activity.compose.BackHandler
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.raulshma.dailylife.data.media.AudioWaveformGenerator
 import com.raulshma.dailylife.data.media.MediaThumbnailGenerator
 import com.raulshma.dailylife.data.security.MediaEncryptionManager
@@ -177,6 +182,11 @@ import com.raulshma.dailylife.ui.capture.SpeechTranscriber
 import com.raulshma.dailylife.ui.capture.hasAudioPermission
 import com.raulshma.dailylife.ui.capture.hasCameraPermission
 import com.raulshma.dailylife.ui.capture.rememberMediaCaptureLauncher
+import com.raulshma.dailylife.ui.components.AnimatedCounter
+import com.raulshma.dailylife.ui.components.PressableCard
+import com.raulshma.dailylife.ui.components.ShimmerBox
+import com.raulshma.dailylife.ui.detail.ItemDetailScreen
+import com.raulshma.dailylife.ui.theme.DailyLifeTween
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -186,7 +196,7 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 
-private val TimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+internal val TimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 internal val DateFormatter = DateTimeFormatter.ofPattern("EEE, MMM d")
 internal val FilterDateFormatter = DateTimeFormatter.ofPattern("MMM d")
 internal val TimestampFormatter = DateTimeFormatter.ofPattern("MMM d, HH:mm")
@@ -201,6 +211,14 @@ private enum class HomeTab(
     Collections(label = "Collections", icon = Icons.Filled.Category),
     Graph(label = "Graph", icon = Icons.Filled.AccountTree),
 }
+
+private sealed class Screen {
+    data class Main(val tab: HomeTab) : Screen()
+    data class Detail(val itemId: Long) : Screen()
+}
+
+internal val LocalSharedTransitionScope = staticCompositionLocalOf<SharedTransitionScope?> { null }
+internal val LocalAnimatedVisibilityScope = compositionLocalOf<AnimatedVisibilityScope?> { null }
 
 internal data class QuickAddDraft(
     val typeName: String = LifeItemType.Thought.name,
@@ -319,6 +337,8 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
         mutableStateOf(loadDraftFromPrefs(context))
     }
 
+    val screen = selectedItemId?.let { Screen.Detail(it) } ?: Screen.Main(selectedTab)
+
     LaunchedEffect(quickAddDraft) {
         saveDraftToPrefs(context, quickAddDraft)
     }
@@ -355,128 +375,76 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
         },
     )
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        contentWindowInsets = WindowInsets.safeDrawing,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Filled.PhotoLibrary,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(28.dp)
+    BackHandler(enabled = selectedItemId != null) {
+        selectedItemId = null
+    }
+
+    SharedTransitionLayout {
+        AnimatedContent(
+            targetState = screen,
+            transitionSpec = {
+                val isForward = targetState is Screen.Detail
+                if (isForward) {
+                    (fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { it / 6 })
+                        .togetherWith(fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { -it / 8 })
+                } else {
+                    (fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { -it / 8 })
+                        .togetherWith(fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { it / 6 })
+                }
+            },
+            label = "screenTransition"
+        ) { currentScreen ->
+            CompositionLocalProvider(
+                LocalSharedTransitionScope provides this@SharedTransitionLayout,
+                LocalAnimatedVisibilityScope provides this@AnimatedContent,
+            ) {
+                when (currentScreen) {
+                    is Screen.Main -> MainScaffold(
+                        state = state,
+                        selectedTab = selectedTab,
+                        onTabSelected = { selectedTabName = it.name },
+                        onItemSelected = { selectedItemId = it },
+                        onStorageErrorDismissed = viewModel::clearStorageError,
+                        onSearchChanged = viewModel::updateSearchQuery,
+                        onTypeSelected = viewModel::selectType,
+                        onTagSelected = viewModel::selectTag,
+                        onDateRangeChanged = viewModel::updateDateRange,
+                        onFavoritesOnlyToggled = viewModel::toggleFavoritesOnly,
+                        onClearFilters = viewModel::clearFilters,
+                        onFavoriteToggled = viewModel::toggleFavorite,
+                        onPinnedToggled = viewModel::togglePinned,
+                        onTaskStatusChanged = viewModel::updateTaskStatus,
+                        onCompleted = viewModel::markOccurrenceCompleted,
+                        onCollectionSelected = { items ->
+                            val first = items.firstOrNull() ?: return@MainScaffold
+                            selectedItemId = first.id
+                        },
+                        onShowQuickAdd = { showQuickAdd = true },
+                        onShowPreferences = { showPreferences = true },
+                        onShowS3Backup = { showS3BackupSettings = true },
+                        contentPadding = PaddingValues(),
+                    )
+
+                    is Screen.Detail -> selectedItem?.let { item ->
+                        ItemDetailScreen(
+                            item = item,
+                            globalSettings = state.notificationSettings,
+                            onBack = { selectedItemId = null },
+                            onFavoriteToggled = { viewModel.toggleFavorite(item.id) },
+                            onPinnedToggled = { viewModel.togglePinned(item.id) },
+                            onCompleted = { viewModel.markOccurrenceCompleted(item.id) },
+                            onNotificationsChanged = { viewModel.updateItemNotifications(item.id, it) },
                         )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = "DailyLife",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Medium,
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showS3BackupSettings = true }) {
-                        Icon(
-                            imageVector = Icons.Filled.CloudUpload,
-                            contentDescription = "Cloud backup settings",
-                        )
-                    }
-                    IconButton(
-                        onClick = { showPreferences = true },
-                        modifier = Modifier.padding(end = 8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer),
+                    } ?: run {
+                        // Fallback if item not found
+                        androidx.compose.foundation.layout.Box(
+                            modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = "U",
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                            Text("Item not found")
                         }
                     }
-                },
-            )
-        },
-        bottomBar = {
-            NavigationBar {
-                HomeTab.entries.forEach { tab ->
-                    NavigationBarItem(
-                        selected = selectedTab == tab,
-                        onClick = { selectedTabName = tab.name },
-                        icon = {
-                            Icon(
-                                imageVector = tab.icon,
-                                contentDescription = null,
-                            )
-                        },
-                        label = { Text(tab.label) },
-                    )
                 }
-            }
-        },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { showQuickAdd = true },
-                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                text = { Text("Add") },
-            )
-        },
-    ) { paddingValues ->
-        when (selectedTab) {
-            HomeTab.Photos -> {
-                PhotosMosaicScreen(
-                    state = state,
-                    contentPadding = paddingValues,
-                    onItemSelected = { selectedItemId = it },
-                    onStorageErrorDismissed = viewModel::clearStorageError,
-                )
-            }
-
-            HomeTab.Search -> {
-                TimelineScreen(
-                    state = state,
-                    contentPadding = paddingValues,
-                    onSearchChanged = viewModel::updateSearchQuery,
-                    onTypeSelected = viewModel::selectType,
-                    onTagSelected = viewModel::selectTag,
-                    onDateRangeChanged = viewModel::updateDateRange,
-                    onFavoritesOnlyToggled = viewModel::toggleFavoritesOnly,
-                    onClearFilters = viewModel::clearFilters,
-                    onItemSelected = { selectedItemId = it },
-                    onFavoriteToggled = viewModel::toggleFavorite,
-                    onPinnedToggled = viewModel::togglePinned,
-                    onTaskStatusChanged = viewModel::updateTaskStatus,
-                    onCompleted = viewModel::markOccurrenceCompleted,
-                    onStorageErrorDismissed = viewModel::clearStorageError,
-                )
-            }
-
-            HomeTab.Collections -> {
-                CollectionsScreen(
-                    state = state,
-                    contentPadding = paddingValues,
-                    onCollectionSelected = { items ->
-                        selectedTabName = HomeTab.Search.name
-                        val first = items.firstOrNull() ?: return@CollectionsScreen
-                        selectedItemId = first.id
-                    },
-                )
-            }
-
-            HomeTab.Graph -> {
-                GraphViewScreen(
-                    items = state.visibleItems,
-                    contentPadding = paddingValues,
-                    onItemSelected = { selectedItemId = it },
-                )
             }
         }
     }
@@ -491,34 +459,34 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
             modifier = Modifier.fillMaxSize()
         ) {
             QuickAddScreen(
-            draft = quickAddDraft,
-            onDraftChanged = { quickAddDraft = it },
-            onAdd = { draft ->
-                viewModel.addItem(draft)
-                showQuickAdd = false
-                quickAddDraft = QuickAddDraft()
-                clearDraftFromPrefs(context)
-            },
-            onAddAndContinue = { draft ->
-                viewModel.addItem(draft)
-                quickAddDraft = QuickAddDraft()
-                clearDraftFromPrefs(context)
-            },
-            onDismiss = {
-                showQuickAdd = false
-            },
-            onDiscardDraft = {
-                showQuickAdd = false
-                quickAddDraft = QuickAddDraft()
-                clearDraftFromPrefs(context)
-            },
-            mediaLauncher = mediaLauncher,
-            onShowLocationPicker = { onLocationSelected ->
-                quickAddLocationCallback = onLocationSelected
-                showLocationPicker = true
-            },
-            allTags = state.allTags,
-        )
+                draft = quickAddDraft,
+                onDraftChanged = { quickAddDraft = it },
+                onAdd = { draft ->
+                    viewModel.addItem(draft)
+                    showQuickAdd = false
+                    quickAddDraft = QuickAddDraft()
+                    clearDraftFromPrefs(context)
+                },
+                onAddAndContinue = { draft ->
+                    viewModel.addItem(draft)
+                    quickAddDraft = QuickAddDraft()
+                    clearDraftFromPrefs(context)
+                },
+                onDismiss = {
+                    showQuickAdd = false
+                },
+                onDiscardDraft = {
+                    showQuickAdd = false
+                    quickAddDraft = QuickAddDraft()
+                    clearDraftFromPrefs(context)
+                },
+                mediaLauncher = mediaLauncher,
+                onShowLocationPicker = { onLocationSelected ->
+                    quickAddLocationCallback = onLocationSelected
+                    showLocationPicker = true
+                },
+                allTags = state.allTags,
+            )
         }
     }
 
@@ -571,17 +539,152 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
             )
         }
     }
+}
 
-    selectedItem?.let { item ->
-        ItemDetailDialog(
-            item = item,
-            globalSettings = state.notificationSettings,
-            onDismiss = { selectedItemId = null },
-            onFavoriteToggled = { viewModel.toggleFavorite(item.id) },
-            onPinnedToggled = { viewModel.togglePinned(item.id) },
-            onCompleted = { viewModel.markOccurrenceCompleted(item.id) },
-            onNotificationsChanged = { viewModel.updateItemNotifications(item.id, it) },
-        )
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MainScaffold(
+    state: DailyLifeState,
+    selectedTab: HomeTab,
+    onTabSelected: (HomeTab) -> Unit,
+    onItemSelected: (Long) -> Unit,
+    onStorageErrorDismissed: () -> Unit,
+    onSearchChanged: (String) -> Unit,
+    onTypeSelected: (LifeItemType?) -> Unit,
+    onTagSelected: (String?) -> Unit,
+    onDateRangeChanged: (LocalDate?, LocalDate?) -> Unit,
+    onFavoritesOnlyToggled: () -> Unit,
+    onClearFilters: () -> Unit,
+    onFavoriteToggled: (Long) -> Unit,
+    onPinnedToggled: (Long) -> Unit,
+    onTaskStatusChanged: (Long, TaskStatus) -> Unit,
+    onCompleted: (Long) -> Unit,
+    onCollectionSelected: (List<LifeItem>) -> Unit,
+    onShowQuickAdd: () -> Unit,
+    onShowPreferences: () -> Unit,
+    onShowS3Backup: () -> Unit,
+    contentPadding: PaddingValues,
+) {
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        contentWindowInsets = WindowInsets.safeDrawing,
+        topBar = {
+            TopAppBar(
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Filled.PhotoLibrary,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "DailyLife",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onShowS3Backup) {
+                        Icon(
+                            imageVector = Icons.Filled.CloudUpload,
+                            contentDescription = "Cloud backup settings",
+                        )
+                    }
+                    IconButton(
+                        onClick = onShowPreferences,
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "U",
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                },
+            )
+        },
+        bottomBar = {
+            NavigationBar {
+                HomeTab.entries.forEach { tab ->
+                    NavigationBarItem(
+                        selected = selectedTab == tab,
+                        onClick = { onTabSelected(tab) },
+                        icon = {
+                            Icon(
+                                imageVector = tab.icon,
+                                contentDescription = null,
+                            )
+                        },
+                        label = { Text(tab.label) },
+                    )
+                }
+            }
+        },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = onShowQuickAdd,
+                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                text = { Text("Add") },
+            )
+        },
+    ) { paddingValues ->
+        when (selectedTab) {
+            HomeTab.Photos -> {
+                PhotosMosaicScreen(
+                    state = state,
+                    contentPadding = paddingValues,
+                    onItemSelected = onItemSelected,
+                    onStorageErrorDismissed = onStorageErrorDismissed,
+                )
+            }
+
+            HomeTab.Search -> {
+                TimelineScreen(
+                    state = state,
+                    contentPadding = paddingValues,
+                    onSearchChanged = onSearchChanged,
+                    onTypeSelected = onTypeSelected,
+                    onTagSelected = onTagSelected,
+                    onDateRangeChanged = onDateRangeChanged,
+                    onFavoritesOnlyToggled = onFavoritesOnlyToggled,
+                    onClearFilters = onClearFilters,
+                    onItemSelected = onItemSelected,
+                    onFavoriteToggled = onFavoriteToggled,
+                    onPinnedToggled = onPinnedToggled,
+                    onTaskStatusChanged = onTaskStatusChanged,
+                    onCompleted = onCompleted,
+                    onStorageErrorDismissed = onStorageErrorDismissed,
+                )
+            }
+
+            HomeTab.Collections -> {
+                CollectionsScreen(
+                    state = state,
+                    contentPadding = paddingValues,
+                    onCollectionSelected = onCollectionSelected,
+                )
+            }
+
+            HomeTab.Graph -> {
+                GraphViewScreen(
+                    items = state.visibleItems,
+                    contentPadding = paddingValues,
+                    onItemSelected = onItemSelected,
+                )
+            }
+        }
     }
 }
 
@@ -631,6 +734,7 @@ private fun PhotosMosaicScreen(
                     MediaMosaicTile(
                         item = item,
                         onClick = { onItemSelected(item.id) },
+                        modifier = Modifier.animateItem(),
                     )
                 }
             }
@@ -724,10 +828,9 @@ private fun CollectionCard(
     icon: ImageVector,
     onClick: () -> Unit,
 ) {
-    ElevatedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+    PressableCard(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.surface,
         ),
@@ -764,8 +867,8 @@ private fun CollectionCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Text(
-                text = count.toString(),
+            AnimatedCounter(
+                value = count,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
             )
@@ -777,12 +880,13 @@ private fun CollectionCard(
 private fun MediaMosaicTile(
     item: LifeItem,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    ElevatedCard(
-        modifier = Modifier
+    PressableCard(
+        onClick = onClick,
+        modifier = modifier
             .fillMaxWidth()
-            .height(item.inferMosaicHeight())
-            .clickable(onClick = onClick),
+            .height(item.inferMosaicHeight()),
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.surface,
         ),
@@ -817,7 +921,7 @@ private fun MediaMosaicTile(
 }
 
 @Composable
-private fun ItemPreview(item: LifeItem) {
+internal fun ItemPreview(item: LifeItem) {
     when (item.type) {
         LifeItemType.Photo -> ImagePreview(item = item)
         LifeItemType.Video -> VideoPreview(item = item)
@@ -837,7 +941,7 @@ private fun ItemPreview(item: LifeItem) {
 }
 
 @Composable
-private fun TextPreview(item: LifeItem) {
+internal fun TextPreview(item: LifeItem) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -869,13 +973,38 @@ private fun TextPreview(item: LifeItem) {
 }
 
 @Composable
-private fun ImagePreview(item: LifeItem) {
+internal fun ImagePreview(item: LifeItem) {
     val imageUrl = rememberDecryptedMediaUri(item.inferImagePreviewUrl())
     if (imageUrl != null) {
-        AsyncImage(
+        SubcomposeAsyncImage(
             model = imageUrl,
             contentDescription = "Image preview",
             modifier = Modifier.fillMaxSize(),
+            loading = {
+                ShimmerBox(modifier = Modifier.fillMaxSize())
+            },
+            error = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Filled.PhotoCamera,
+                            contentDescription = "Photo placeholder",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Photo",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
+                }
+            }
         )
     } else {
         Box(
@@ -902,7 +1031,7 @@ private fun ImagePreview(item: LifeItem) {
 }
 
 @Composable
-private fun VideoPreview(item: LifeItem) {
+internal fun VideoPreview(item: LifeItem) {
     val imageUrl = rememberDecryptedMediaUri(item.inferImagePreviewUrl())
     val thumbUrl = rememberVideoThumbnail(item)
     val displayUrl = imageUrl ?: thumbUrl
@@ -944,7 +1073,7 @@ private fun VideoPreview(item: LifeItem) {
 }
 
 @Composable
-private fun AudioPreview(item: LifeItem) {
+internal fun AudioPreview(item: LifeItem) {
     val waveform = rememberAudioWaveform(item)
     val barHeights = if (waveform.isNotEmpty()) {
         waveform.map { (16.dp + (it * 24).dp).coerceAtLeast(4.dp) }
@@ -1003,7 +1132,7 @@ private fun AudioPreview(item: LifeItem) {
 }
 
 @Composable
-private fun LocationPreview(item: LifeItem) {
+internal fun LocationPreview(item: LifeItem) {
     val location = item.inferLocationPreview()
     if (location != null) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -1043,7 +1172,7 @@ private fun LocationPreview(item: LifeItem) {
 }
 
 @Composable
-private fun OpenStreetMapPreview(
+internal fun OpenStreetMapPreview(
     latitude: Double,
     longitude: Double,
     modifier: Modifier = Modifier,
@@ -1129,28 +1258,28 @@ internal fun SnapshotRow(state: DailyLifeState) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        SnapshotPill(
+        AnimatedSnapshotPill(
             label = "Items",
-            value = state.items.size.toString(),
+            value = state.items.size,
             modifier = Modifier.weight(1f),
         )
-        SnapshotPill(
+        AnimatedSnapshotPill(
             label = "Tags",
-            value = state.allTags.size.toString(),
+            value = state.allTags.size,
             modifier = Modifier.weight(1f),
         )
-        SnapshotPill(
+        AnimatedSnapshotPill(
             label = "Done",
-            value = completionCount.toString(),
+            value = completionCount,
             modifier = Modifier.weight(1f),
         )
     }
 }
 
 @Composable
-internal fun SnapshotPill(
+internal fun AnimatedSnapshotPill(
     label: String,
-    value: String,
+    value: Int,
     modifier: Modifier = Modifier,
 ) {
     ElevatedCard(
@@ -1160,8 +1289,8 @@ internal fun SnapshotPill(
         ),
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
-            Text(
-                text = value,
+            AnimatedCounter(
+                value = value,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -1441,152 +1570,6 @@ private fun NotificationPreferencesSheet(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun ItemDetailDialog(
-    item: LifeItem,
-    globalSettings: NotificationSettings,
-    onDismiss: () -> Unit,
-    onFavoriteToggled: () -> Unit,
-    onPinnedToggled: () -> Unit,
-    onCompleted: () -> Unit,
-    onNotificationsChanged: (ItemNotificationSettings) -> Unit,
-) {
-    val occurrenceStats = item.occurrenceStats()
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = item.title,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-        text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TypeBadge(type = item.type)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text(item.type.label, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            item.createdAt.format(TimestampFormatter),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                    }
-                }
-
-                if (item.body.isNotBlank()) {
-                    Text(item.body)
-                }
-
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    item.tags.forEach { tag ->
-                        AssistChip(
-                            onClick = {},
-                            label = { Text("#$tag") },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Label,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            },
-                        )
-                    }
-                }
-
-                HorizontalDivider()
-
-                DetailLine("Favorite", if (item.isFavorite) "Yes" else "No")
-                DetailLine("Pinned", if (item.isPinned) "Yes" else "No")
-                item.taskStatus?.let { DetailLine("Task status", it.label) }
-                item.reminderAt?.let { DetailLine("Reminder", it.format(TimestampFormatter)) }
-                if (item.isRecurring) {
-                    DetailLine("Recurrence", item.recurrenceRule.frequency.label)
-                }
-                DetailLine("Completions", occurrenceStats.completedCount.toString())
-                if (item.isRecurring || occurrenceStats.missedCount > 0) {
-                    DetailLine("Missed", occurrenceStats.missedCount.toString())
-                    DetailLine("Current streak", occurrenceStats.currentStreak.toString())
-                }
-
-                val effectiveTime = item.notificationSettings.timeOverride
-                    ?: globalSettings.preferredTime
-                ToggleRow(
-                    icon = if (item.notificationSettings.enabled) {
-                        Icons.Filled.Notifications
-                    } else {
-                        Icons.Filled.NotificationsOff
-                    },
-                    label = "Item notifications at ${effectiveTime.format(TimeFormatter)}",
-                    checked = item.notificationSettings.enabled,
-                    onCheckedChange = {
-                        onNotificationsChanged(item.notificationSettings.copy(enabled = it))
-                    },
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Done")
-            }
-        },
-        dismissButton = {
-            Row {
-                IconButton(onClick = onPinnedToggled) {
-                    Icon(
-                        imageVector = Icons.Filled.PushPin,
-                        contentDescription = if (item.isPinned) "Unpin" else "Pin",
-                    )
-                }
-                IconButton(onClick = onFavoriteToggled) {
-                    Icon(
-                        imageVector = if (item.isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
-                        contentDescription = if (item.isFavorite) {
-                            "Remove favorite"
-                        } else {
-                            "Add favorite"
-                        },
-                    )
-                }
-                IconButton(onClick = onCompleted) {
-                    Icon(Icons.Filled.Done, contentDescription = "Mark complete")
-                }
-            }
-        },
-    )
-}
-
-@Composable
-private fun DetailLine(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelLarge,
-        )
-        Text(
-            text = value,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
 @Composable
 internal fun ToggleRow(
     icon: ImageVector,
@@ -1615,6 +1598,12 @@ internal fun ToggleRow(
 
 @Composable
 internal fun EmptyTimeline() {
+    val floatOffset by androidx.compose.animation.core.rememberInfiniteTransition(label = "emptyFloat").animateFloat(
+        initialValue = -4f,
+        targetValue = 4f,
+        animationSpec = com.raulshma.dailylife.ui.theme.DailyLifeRepeat.float<Float>(duration = 2200),
+        label = "float"
+    )
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1626,7 +1615,9 @@ internal fun EmptyTimeline() {
                 imageVector = Icons.Filled.Search,
                 contentDescription = "No results",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(42.dp),
+                modifier = Modifier
+                    .size(42.dp)
+                    .offset(y = floatOffset.dp),
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
@@ -1640,6 +1631,12 @@ internal fun EmptyTimeline() {
 
 @Composable
 internal fun EmptyPhotosScreen() {
+    val floatOffset by androidx.compose.animation.core.rememberInfiniteTransition(label = "emptyFloat").animateFloat(
+        initialValue = -6f,
+        targetValue = 6f,
+        animationSpec = com.raulshma.dailylife.ui.theme.DailyLifeRepeat.float<Float>(),
+        label = "float"
+    )
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1654,6 +1651,7 @@ internal fun EmptyPhotosScreen() {
             Box(
                 modifier = Modifier
                     .size(120.dp)
+                    .offset(y = floatOffset.dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center,
@@ -1726,7 +1724,7 @@ private val OsmMlatPattern =
     Regex("""[?&]mlat=([-+]?\d{1,2}(?:\.\d+)?).*?[?&]mlon=([-+]?\d{1,3}(?:\.\d+)?)""", RegexOption.IGNORE_CASE)
 
 @Composable
-private fun rememberDecryptedMediaUri(uriString: String?): String? {
+internal fun rememberDecryptedMediaUri(uriString: String?): String? {
     val context = LocalContext.current
     return remember(uriString) {
         if (uriString == null) return@remember null
@@ -1740,7 +1738,7 @@ private fun rememberDecryptedMediaUri(uriString: String?): String? {
 }
 
 @Composable
-private fun rememberVideoThumbnail(item: LifeItem): String? {
+internal fun rememberVideoThumbnail(item: LifeItem): String? {
     val context = LocalContext.current
     return remember(item.id, item.body) {
         val videoUrl = item.inferVideoPlaybackUrl()
@@ -1751,7 +1749,7 @@ private fun rememberVideoThumbnail(item: LifeItem): String? {
 }
 
 @Composable
-private fun rememberAudioWaveform(item: LifeItem): List<Float> {
+internal fun rememberAudioWaveform(item: LifeItem): List<Float> {
     return remember(item.id, item.body) {
         val audioUrl = item.inferVideoPlaybackUrl()
             ?: item.body.split(" ").firstOrNull { it.startsWith("content://") || it.startsWith("file://") }
@@ -1773,7 +1771,7 @@ private fun LifeItem.inferMosaicHeight(): Dp {
     }
 }
 
-private fun LifeItem.inferLocationPreview(): Pair<Double, Double>? {
+internal fun LifeItem.inferLocationPreview(): Pair<Double, Double>? {
     val source = listOf(title, body).joinToString(" ")
 
     val geoMatch = GeoPattern.find(source)

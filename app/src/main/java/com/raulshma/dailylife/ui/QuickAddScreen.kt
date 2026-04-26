@@ -6,6 +6,7 @@ import android.media.MediaPlayer
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -14,6 +15,9 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import com.raulshma.dailylife.ui.theme.DailyLifeDuration
+import com.raulshma.dailylife.ui.theme.DailyLifeEasing
+import com.raulshma.dailylife.ui.theme.DailyLifeSpring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -494,7 +498,13 @@ private fun QuickAddContent(
             }
 
             // Auto-detected type hint
-            AnimatedVisibility(visible = inferredType != null && inferredType != selectedType) {
+            AnimatedVisibility(
+                visible = inferredType != null && inferredType != selectedType,
+                enter = fadeIn(tween(DailyLifeDuration.SHORT, easing = DailyLifeEasing.Enter))
+                        + expandVertically(tween(DailyLifeDuration.MEDIUM, easing = DailyLifeEasing.Enter)),
+                exit = fadeOut(tween(DailyLifeDuration.SHORT, easing = DailyLifeEasing.Exit))
+                        + shrinkVertically(tween(DailyLifeDuration.MEDIUM, easing = DailyLifeEasing.Exit)),
+            ) {
                 Surface(
                     color = MaterialTheme.colorScheme.secondaryContainer,
                     shape = RoundedCornerShape(8.dp),
@@ -812,7 +822,13 @@ private fun QuickAddContent(
             }
 
             // Collapsible Reminder Section
-            AnimatedVisibility(visible = showReminderOptions) {
+            AnimatedVisibility(
+                visible = showReminderOptions,
+                enter = fadeIn(tween(DailyLifeDuration.SHORT, easing = DailyLifeEasing.Enter))
+                        + expandVertically(tween(DailyLifeDuration.MEDIUM, easing = DailyLifeEasing.Enter)),
+                exit = fadeOut(tween(DailyLifeDuration.SHORT, easing = DailyLifeEasing.Exit))
+                        + shrinkVertically(tween(DailyLifeDuration.MEDIUM, easing = DailyLifeEasing.Exit)),
+            ) {
                 ElevatedCard(
                     colors = CardDefaults.elevatedCardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
@@ -859,7 +875,13 @@ private fun QuickAddContent(
                             Text(if (showAdvanced) "Hide advanced options" else "Advanced options")
                         }
                         
-                        AnimatedVisibility(visible = showAdvanced) {
+                        AnimatedVisibility(
+                            visible = showAdvanced,
+                            enter = fadeIn(tween(DailyLifeDuration.SHORT, easing = DailyLifeEasing.Enter))
+                                    + expandVertically(tween(DailyLifeDuration.MEDIUM, easing = DailyLifeEasing.Enter)),
+                            exit = fadeOut(tween(DailyLifeDuration.SHORT, easing = DailyLifeEasing.Exit))
+                                    + shrinkVertically(tween(DailyLifeDuration.MEDIUM, easing = DailyLifeEasing.Exit)),
+                        ) {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 ToggleRow(
                                     icon = if (notificationsEnabled) Icons.Filled.Notifications else Icons.Filled.NotificationsOff,
@@ -997,6 +1019,52 @@ private fun QuickAddContent(
             },
             onDismiss = { showSketchCanvas = false }
         )
+    }
+}
+
+@Composable
+private fun AnimatedAudioWaveform(
+    amplitudeSamples: List<Float>,
+    modifier: Modifier = Modifier,
+) {
+    val maxBars = 48
+    val recordedCount = amplitudeSamples.size.coerceAtMost(maxBars)
+    val offset = maxBars - recordedCount
+
+    val paddedSamples = remember(amplitudeSamples) {
+        List(maxBars) { index ->
+            val sampleIndex = index - offset
+            if (sampleIndex >= 0) amplitudeSamples.getOrElse(sampleIndex) { 0f } else 0f
+        }
+    }
+
+    val animatedHeights = paddedSamples.map { amp ->
+        animateFloatAsState(
+            targetValue = amp,
+            animationSpec = DailyLifeSpring.Gentle,
+            label = "waveBar"
+        ).value
+    }
+
+    val waveColor = MaterialTheme.colorScheme.primary
+    val waveTrackColor = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.15f)
+
+    Canvas(modifier = modifier) {
+        val barWidth = (size.width / maxBars.toFloat()) * 0.65f
+        val gap = (size.width / maxBars.toFloat()) * 0.35f
+
+        animatedHeights.forEachIndexed { index, amp ->
+            val isRecorded = index >= offset
+            val barHeight = (amp * size.height * 0.85f).coerceAtLeast(4f)
+            val x = index * (barWidth + gap)
+            val y = (size.height - barHeight) / 2f
+            drawRoundRect(
+                color = if (isRecorded) waveColor else waveTrackColor,
+                topLeft = androidx.compose.ui.geometry.Offset(x, y),
+                size = androidx.compose.ui.geometry.Size(barWidth, barHeight),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f),
+            )
+        }
     }
 }
 
@@ -1166,7 +1234,7 @@ private fun AudioRecordingCard(
         initialValue = 0.4f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 800),
+            animation = tween(durationMillis = 1200, easing = com.raulshma.dailylife.ui.theme.DailyLifeEasing.Ambient),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "pulseAlpha",
@@ -1235,43 +1303,14 @@ private fun AudioRecordingCard(
             }
 
             if (isRecordingAudio) {
-                val waveColor = MaterialTheme.colorScheme.primary
-                val waveTrackColor = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.15f)
-                Canvas(
+                AnimatedAudioWaveform(
+                    amplitudeSamples = amplitudeSamples,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)),
-                ) {
-                    val barCount = amplitudeSamples.size.coerceAtLeast(1)
-                    val barWidth = (size.width / 48f) * 0.65f
-                    val gap = (size.width / 48f) * 0.35f
-                    val startX = size.width - (barCount * (barWidth + gap))
-                    amplitudeSamples.forEachIndexed { index, amp ->
-                        val barHeight = (amp * size.height * 0.85f).coerceAtLeast(4f)
-                        val x = startX + index * (barWidth + gap)
-                        val y = (size.height - barHeight) / 2f
-                        drawRoundRect(
-                            color = waveColor,
-                            topLeft = androidx.compose.ui.geometry.Offset(x, y),
-                            size = androidx.compose.ui.geometry.Size(barWidth, barHeight),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f),
-                        )
-                    }
-                    val emptyBars = 48 - barCount
-                    for (i in 0 until emptyBars) {
-                        val x = i * (barWidth + gap)
-                        val barH = 4f
-                        val y = (size.height - barH) / 2f
-                        drawRoundRect(
-                            color = waveTrackColor,
-                            topLeft = androidx.compose.ui.geometry.Offset(x, y),
-                            size = androidx.compose.ui.geometry.Size(barWidth, barH),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f),
-                        )
-                    }
-                }
+                )
             }
 
             if (isRecordingAudio) {

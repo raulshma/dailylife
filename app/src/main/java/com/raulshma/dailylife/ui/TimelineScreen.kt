@@ -99,7 +99,17 @@ fun TimelineScreen(
 
             if (groupedItems.isEmpty()) {
                 item {
-                    EmptyTimeline()
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = true,
+                        enter = androidx.compose.animation.fadeIn(
+                            com.raulshma.dailylife.ui.theme.DailyLifeTween.content<Float>()
+                        ) + androidx.compose.animation.slideInVertically(
+                            com.raulshma.dailylife.ui.theme.DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>(),
+                            initialOffsetY = { it / 4 }
+                        ),
+                    ) {
+                        EmptyTimeline()
+                    }
                 }
             } else {
                 groupedItems.forEach { (date, itemsForDate) ->
@@ -114,6 +124,7 @@ fun TimelineScreen(
                             onPinnedToggled = { onPinnedToggled(item.id) },
                             onTaskStatusChanged = { status -> onTaskStatusChanged(item.id, status) },
                             onCompleted = { onCompleted(item.id) },
+                            modifier = Modifier.animateItem(),
                         )
                     }
                 }
@@ -438,13 +449,13 @@ private fun LifeItemCard(
     onPinnedToggled: () -> Unit,
     onTaskStatusChanged: (TaskStatus) -> Unit,
     onCompleted: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val occurrenceStats = item.occurrenceStats()
 
-    ElevatedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+    com.raulshma.dailylife.ui.components.PressableCard(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.surface,
         ),
