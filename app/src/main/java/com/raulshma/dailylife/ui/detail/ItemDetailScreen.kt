@@ -219,6 +219,7 @@ private fun DetailContentSection(
                     Text(
                         text = item.type.label,
                         fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.bodyLarge,
                     )
                     Text(
@@ -361,6 +362,7 @@ private fun DetailContentSection(
                 Text(
                     text = "Item notifications at ${effectiveTime.format(com.raulshma.dailylife.ui.TimeFormatter)}",
                     modifier = Modifier.weight(1f),
+                    color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.bodyLarge,
                 )
                 Switch(
@@ -389,6 +391,7 @@ private fun DetailLine(label: String, value: String) {
         Text(
             text = value,
             fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
