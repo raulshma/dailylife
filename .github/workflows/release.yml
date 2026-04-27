@@ -67,6 +67,9 @@ jobs:
           echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
           echo "apk_version=$NEW_APK_VERSION" >> $GITHUB_OUTPUT
 
+      - name: Grant Execute Permission for Gradlew
+        run: chmod +x ./gradlew
+
       - name: Build Android App (Release)
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
