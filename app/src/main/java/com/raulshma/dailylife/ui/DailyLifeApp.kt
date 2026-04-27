@@ -94,6 +94,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
@@ -172,6 +173,7 @@ import androidx.compose.ui.layout.ContentScale
 import coil.compose.SubcomposeAsyncImage
 import com.raulshma.dailylife.data.media.AudioWaveformGenerator
 import com.raulshma.dailylife.data.media.MediaThumbnailGenerator
+import com.raulshma.dailylife.data.media.PdfThumbnailGenerator
 import com.raulshma.dailylife.data.security.MediaEncryptionManager
 import com.raulshma.dailylife.domain.DailyLifeFilters
 import com.raulshma.dailylife.domain.DailyLifeState
@@ -189,6 +191,7 @@ import com.raulshma.dailylife.domain.TaskStatus
 import com.raulshma.dailylife.domain.displayBody
 import com.raulshma.dailylife.domain.inferAudioUrl
 import com.raulshma.dailylife.domain.inferImagePreviewUrl
+import com.raulshma.dailylife.domain.inferPdfUrl
 import com.raulshma.dailylife.domain.inferTypeFromText
 import com.raulshma.dailylife.domain.inferVideoPlaybackUrl
 import com.raulshma.dailylife.ui.capture.AudioRecorder
@@ -352,6 +355,7 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
     val selectedItem = state.items.firstOrNull { it.id == selectedItemId }
     val s3Settings by viewModel.s3BackupSettings.collectAsStateWithLifecycle()
     val lastBackupResult by viewModel.lastBackupResult.collectAsStateWithLifecycle()
+    val encryptionProgress by viewModel.encryptionProgress.collectAsStateWithLifecycle()
     var quickAddDraft by rememberSaveable(stateSaver = QuickAddDraftSaver) {
         mutableStateOf(loadDraftFromPrefs(context))
     }
@@ -361,6 +365,8 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
         mutableStateOf(QuickAddDraft())
     }
     var completionHistoryItemId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var pendingQuickAddSave by remember { mutableStateOf(false) }
+    var pendingEditSave by remember { mutableStateOf(false) }
 
     val screen = when {
         completionHistoryItemId != null -> Screen.CompletionHistory(completionHistoryItemId!!)
@@ -647,6 +653,20 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
 
     val quickAddSheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    LaunchedEffect(encryptionProgress) {
+        if (encryptionProgress == null && pendingQuickAddSave) {
+            pendingQuickAddSave = false
+            showQuickAdd = false
+            quickAddDraft = QuickAddDraft()
+            clearDraftFromPrefs(context)
+        }
+        if (encryptionProgress == null && pendingEditSave) {
+            pendingEditSave = false
+            showEditSheet = false
+            editItemId = null
+        }
+    }
+
     if (showQuickAdd) {
         ModalBottomSheet(
             onDismissRequest = { showQuickAdd = false },
@@ -659,9 +679,7 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                 onDraftChanged = { quickAddDraft = it },
                 onAdd = { draft ->
                     viewModel.addItem(draft)
-                    showQuickAdd = false
-                    quickAddDraft = QuickAddDraft()
-                    clearDraftFromPrefs(context)
+                    pendingQuickAddSave = true
                 },
                 onAddAndContinue = { draft ->
                     viewModel.addItem(draft)
@@ -682,6 +700,7 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                     showLocationPicker = true
                 },
                 allTags = state.allTags,
+                encryptionProgress = encryptionProgress,
             )
         }
     }
@@ -720,9 +739,8 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                 onAdd = { draft ->
                     editItemId?.let { id ->
                         viewModel.updateItem(id, draft)
+                        pendingEditSave = true
                     }
-                    showEditSheet = false
-                    editItemId = null
                 },
                 onAddAndContinue = { _ -> },
                 onDismiss = {
@@ -740,6 +758,7 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                 },
                 allTags = state.allTags,
                 isEditMode = true,
+                encryptionProgress = encryptionProgress,
             )
         }
     }
@@ -987,6 +1006,9 @@ private fun CollectionsScreen(
     val videoItems = remember(state.visibleItems) {
         state.visibleItems.filter { it.type == LifeItemType.Video }
     }
+    val pdfItems = remember(state.visibleItems) {
+        state.visibleItems.filter { it.type == LifeItemType.Pdf || it.inferPdfUrl() != null }
+    }
     val placeItems = remember(state.visibleItems) {
         state.visibleItems.filter { it.type == LifeItemType.Location || it.inferLocationPreview() != null }
     }
@@ -999,10 +1021,11 @@ private fun CollectionsScreen(
         }
     }
 
-    val collectionsData = remember(favoriteItems.size, videoItems.size, placeItems.size, notes.size) {
+    val collectionsData = remember(favoriteItems.size, videoItems.size, pdfItems.size, placeItems.size, notes.size) {
         listOf(
             Triple("Favorites", "Pinned and loved memories", Icons.Filled.Star) to favoriteItems,
             Triple("Videos", "Tap to open playback items", Icons.Filled.Videocam) to videoItems,
+            Triple("PDFs", "Documents and scanned pages", Icons.Filled.PictureAsPdf) to pdfItems,
             Triple("Places", "Items with map context", Icons.Filled.LocationOn) to placeItems,
             Triple("Notes & Thoughts", "Text-first memories and reminders", Icons.Filled.EditNote) to notes,
         )
@@ -1168,9 +1191,11 @@ internal fun ItemPreview(item: LifeItem, autoplayVideo: Boolean = false) {
         LifeItemType.Video -> VideoPreview(item = item, autoplay = autoplayVideo)
         LifeItemType.Audio -> AudioPreview(item = item)
         LifeItemType.Location -> LocationPreview(item = item)
+        LifeItemType.Pdf -> PdfPreview(item = item)
         LifeItemType.Mixed -> {
             when {
                 item.inferImagePreviewUrl() != null -> ImagePreview(item = item)
+                item.inferPdfUrl() != null -> PdfPreview(item = item)
                 item.inferLocationPreview() != null -> LocationPreview(item = item)
                 item.inferVideoPlaybackUrl() != null -> VideoPreview(item = item, autoplay = autoplayVideo)
                 item.inferAudioUrl() != null -> AudioPreview(item = item)
@@ -1181,6 +1206,7 @@ internal fun ItemPreview(item: LifeItem, autoplayVideo: Boolean = false) {
         else -> {
             when {
                 item.inferImagePreviewUrl() != null -> ImagePreview(item = item)
+                item.inferPdfUrl() != null -> PdfPreview(item = item)
                 item.inferVideoPlaybackUrl() != null -> VideoPreview(item = item, autoplay = autoplayVideo)
                 item.inferAudioUrl() != null -> AudioPreview(item = item)
                 item.inferLocationPreview() != null -> LocationPreview(item = item)
@@ -1577,6 +1603,81 @@ internal fun LocationPreview(item: LifeItem) {
 }
 
 @Composable
+internal fun PdfPreview(item: LifeItem) {
+    val rawPdfUrl = item.inferPdfUrl()
+    val pdfUrl = rememberDecryptedMediaUri(rawPdfUrl)
+    val thumbhashPreview = remember(item.id, item.title, item.body) { item.thumbhashPreviewPalette() }
+    val thumbUrl = rememberPdfThumbnail(item)
+    val displayUrl = thumbUrl ?: pdfUrl
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (displayUrl != null) {
+            SubcomposeAsyncImage(
+                model = displayUrl,
+                contentDescription = "PDF preview",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                loading = {
+                    ThumbhashShimmerPlaceholder(
+                        preview = thumbhashPreview,
+                        isVideo = false,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                },
+            )
+        } else if (rawPdfUrl != null) {
+            ThumbhashShimmerPlaceholder(
+                preview = thumbhashPreview,
+                isVideo = false,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+            )
+        }
+        Column(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .background(Color.Black.copy(alpha = 0.55f), shape = RoundedCornerShape(14.dp))
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.PictureAsPdf,
+                contentDescription = "PDF document",
+                tint = Color.White,
+                modifier = Modifier.size(22.dp),
+            )
+            Text(
+                text = "View PDF",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White,
+            )
+        }
+    }
+}
+
+@Composable
+internal fun rememberPdfThumbnail(item: LifeItem): String? {
+    val context = LocalContext.current
+    val pdfUrl = rememberDecryptedMediaUri(item.inferPdfUrl())
+    return produceState<String?>(initialValue = null, key1 = item.id, key2 = pdfUrl) {
+        value = if (pdfUrl == null) {
+            null
+        } else {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val generator = PdfThumbnailGenerator(context)
+                generator.generatePdfThumbnail(android.net.Uri.parse(pdfUrl), context)?.toString()
+            }
+        }
+    }.value
+}
+
+@Composable
 internal fun OpenStreetMapPreview(
     latitude: Double,
     longitude: Double,
@@ -1967,6 +2068,7 @@ internal fun LifeItemType.icon(): ImageVector = when (this) {
     LifeItemType.Video -> Icons.Filled.Videocam
     LifeItemType.Audio -> Icons.Filled.Mic
     LifeItemType.Location -> Icons.Filled.LocationOn
+    LifeItemType.Pdf -> Icons.Filled.PictureAsPdf
     LifeItemType.Mixed -> Icons.Filled.Category
 }
 
@@ -1975,6 +2077,7 @@ internal fun LifeItemType.isMediaLike(): Boolean =
         this == LifeItemType.Video ||
         this == LifeItemType.Audio ||
         this == LifeItemType.Location ||
+        this == LifeItemType.Pdf ||
         this == LifeItemType.Mixed
 
 private val GeoPattern =
@@ -2042,12 +2145,14 @@ private fun LifeItem.inferMosaicHeight(): Dp {
         LifeItemType.Video -> if (bucket % 2L == 0L) 214.dp else 168.dp
         LifeItemType.Location -> 198.dp
         LifeItemType.Audio -> 156.dp
+        LifeItemType.Pdf -> 190.dp
         LifeItemType.Mixed -> if (bucket % 2L == 0L) 228.dp else 172.dp
         else -> {
             when {
                 inferImagePreviewUrl() != null -> if (bucket % 3L == 0L) 222.dp else 164.dp
                 inferVideoPlaybackUrl() != null -> if (bucket % 2L == 0L) 214.dp else 168.dp
                 inferAudioUrl() != null -> 156.dp
+                inferPdfUrl() != null -> 190.dp
                 inferLocationPreview() != null -> 198.dp
                 body.length > 120 -> 198.dp
                 else -> 152.dp

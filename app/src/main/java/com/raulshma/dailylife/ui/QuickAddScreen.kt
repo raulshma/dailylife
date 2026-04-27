@@ -71,6 +71,7 @@ import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Star
@@ -92,6 +93,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.InputChipDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
@@ -127,6 +129,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.raulshma.dailylife.data.media.MediaThumbnailGenerator
+import com.raulshma.dailylife.data.security.EncryptionProgress
 import com.raulshma.dailylife.domain.ItemNotificationSettings
 import com.raulshma.dailylife.domain.LifeItemDraft
 import com.raulshma.dailylife.domain.LifeItemType
@@ -154,6 +157,7 @@ internal fun QuickAddScreen(
     onShowLocationPicker: ((Double, Double) -> Unit) -> Unit,
     allTags: List<String> = emptyList(),
     isEditMode: Boolean = false,
+    encryptionProgress: EncryptionProgress? = null,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         QuickAddContent(
@@ -167,6 +171,7 @@ internal fun QuickAddScreen(
             onShowLocationPicker = onShowLocationPicker,
             allTags = allTags,
             isEditMode = isEditMode,
+            encryptionProgress = encryptionProgress,
         )
     }
 }
@@ -184,6 +189,7 @@ private fun QuickAddContent(
     onShowLocationPicker: ((Double, Double) -> Unit) -> Unit,
     allTags: List<String> = emptyList(),
     isEditMode: Boolean = false,
+    encryptionProgress: EncryptionProgress? = null,
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
@@ -993,34 +999,41 @@ private fun QuickAddContent(
                 HorizontalDivider()
                 
                 // Bottom Action Bar
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    if (!isEditMode) {
-                        OutlinedButton(
+                if (encryptionProgress != null) {
+                    EncryptionProgressBar(
+                        progress = encryptionProgress,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (!isEditMode) {
+                            OutlinedButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onAddAndContinue(buildDraftPayload())
+                                    resetLocalDraft()
+                                    titleFocusRequester.requestFocus()
+                                },
+                                enabled = canSave,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Save & New")
+                            }
+                        }
+                        
+                        Button(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onAddAndContinue(buildDraftPayload())
-                                resetLocalDraft()
-                                titleFocusRequester.requestFocus()
+                                onAdd(buildDraftPayload())
                             },
                             enabled = canSave,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(if (isEditMode) 1f else 1.5f)
                         ) {
-                            Text("Save & New")
+                            Text(if (isEditMode) "Save changes" else "Save Item")
                         }
-                    }
-                    
-                    Button(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onAdd(buildDraftPayload())
-                        },
-                        enabled = canSave,
-                        modifier = Modifier.weight(if (isEditMode) 1f else 1.5f)
-                    ) {
-                        Text(if (isEditMode) "Save changes" else "Save Item")
                     }
                 }
             }
@@ -1035,6 +1048,54 @@ private fun QuickAddContent(
             },
             onDismiss = { showSketchCanvas = false }
         )
+    }
+}
+
+@Composable
+private fun EncryptionProgressBar(
+    progress: EncryptionProgress,
+    modifier: Modifier = Modifier,
+) {
+    val fraction = if (progress.totalBytes > 0) {
+        (progress.bytesProcessed.toFloat() / progress.totalBytes.toFloat())
+            .coerceIn(0f, 1f)
+    } else {
+        val stepFraction = (progress.currentStep - 1).toFloat() / progress.totalSteps.toFloat()
+        stepFraction.coerceIn(0f, 1f)
+    }
+    Column(modifier = modifier) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            LinearProgressIndicator(
+                progress = { fraction },
+                modifier = Modifier.weight(1f).height(6.dp).clip(RoundedCornerShape(3.dp)),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.primaryContainer,
+            )
+            Text(
+                text = "${(fraction * 100).toInt()}%",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "Encrypting ${progress.fileName}...",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (progress.totalSteps > 1) {
+            Text(
+                text = "File ${progress.currentStep} of ${progress.totalSteps}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            )
+        }
     }
 }
 
@@ -1085,7 +1146,7 @@ private fun AnimatedAudioWaveform(
 }
 
 private enum class AttachmentType {
-    Image, Video, Audio, Location, Other
+    Image, Video, Audio, Pdf, Location, Other
 }
 
 @Composable
@@ -1100,12 +1161,14 @@ private fun AttachmentPreviewCard(
             LifeItemType.Photo -> AttachmentType.Image
             LifeItemType.Video -> AttachmentType.Video
             LifeItemType.Audio -> AttachmentType.Audio
+            LifeItemType.Pdf -> AttachmentType.Pdf
             LifeItemType.Location -> AttachmentType.Location
             else -> {
                 when {
                     uriStr.contains("image", ignoreCase = true) -> AttachmentType.Image
                     uriStr.contains("video", ignoreCase = true) -> AttachmentType.Video
                     uriStr.contains("audio", ignoreCase = true) -> AttachmentType.Audio
+                    uriStr.contains("pdf", ignoreCase = true) -> AttachmentType.Pdf
                     else -> null
                 }
             }
@@ -1119,6 +1182,7 @@ private fun AttachmentPreviewCard(
                 mimeType?.startsWith("image/") == true -> AttachmentType.Image
                 mimeType?.startsWith("video/") == true -> AttachmentType.Video
                 mimeType?.startsWith("audio/") == true -> AttachmentType.Audio
+                mimeType == "application/pdf" -> AttachmentType.Pdf
                 else -> AttachmentType.Other
             }
         } else {
@@ -1202,6 +1266,26 @@ private fun AttachmentPreviewCard(
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "Audio",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+                AttachmentType.Pdf -> {
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PictureAsPdf,
+                            contentDescription = "PDF",
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "PDF",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSecondaryContainer
                         )

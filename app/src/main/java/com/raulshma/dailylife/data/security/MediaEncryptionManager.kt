@@ -13,6 +13,14 @@ import javax.crypto.Cipher
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
+data class EncryptionProgress(
+    val currentStep: Int,
+    val totalSteps: Int,
+    val fileName: String,
+    val bytesProcessed: Long,
+    val totalBytes: Long,
+)
+
 /**
  * Encrypts and decrypts media files using AES/GCM with a key stored in Android Keystore.
  * Encrypted files are stored with a .enc extension. Temporary decrypted copies are placed
@@ -124,6 +132,98 @@ class MediaEncryptionManager(context: Context) {
             val uri = Uri.parse(uriString)
             val encryptedUri = encryptFile(uri, context)
             encryptedUri?.toString() ?: uriString
+        }
+    }
+
+    /**
+     * Scans [text] for local media URIs, encrypts the referenced files with progress reporting,
+     * and returns updated text with encrypted file URIs.
+     */
+    fun encryptMediaInTextWithProgress(
+        text: String,
+        context: Context,
+        onProgress: (EncryptionProgress) -> Unit,
+    ): String {
+        val uriPattern = Regex("""(?:content|file)://[^\s\"'<>]+""")
+        val uris = uriPattern.findAll(text).map { it.value }
+            .filter { !it.endsWith(".enc", ignoreCase = true) }
+            .toList()
+
+        if (uris.isEmpty()) {
+            return text
+        }
+
+        var currentText = text
+        uris.forEachIndexed { index, uriString ->
+            val uri = Uri.parse(uriString)
+            val sourceFile = uri.toFile(context)
+            val totalBytes = sourceFile?.length() ?: 0L
+
+            onProgress(
+                EncryptionProgress(
+                    currentStep = index + 1,
+                    totalSteps = uris.size,
+                    fileName = sourceFile?.name ?: uriString,
+                    bytesProcessed = 0L,
+                    totalBytes = totalBytes,
+                )
+            )
+
+            val encryptedUri = encryptFileWithProgress(uri, context) { bytesWritten, _ ->
+                onProgress(
+                    EncryptionProgress(
+                        currentStep = index + 1,
+                        totalSteps = uris.size,
+                        fileName = sourceFile?.name ?: uriString,
+                        bytesProcessed = bytesWritten,
+                        totalBytes = totalBytes,
+                    )
+                )
+            }
+
+            if (encryptedUri != null) {
+                currentText = currentText.replace(uriString, encryptedUri.toString())
+            }
+        }
+
+        return currentText
+    }
+
+    private fun encryptFileWithProgress(
+        sourceUri: Uri,
+        context: Context,
+        onChunk: (bytesProcessed: Long, totalBytes: Long) -> Unit,
+    ): Uri? {
+        return try {
+            val sourceFile = sourceUri.toFile(context) ?: return null
+            val totalBytes = sourceFile.length()
+            val encryptedFile = File(encryptedDir, "${sourceFile.name}.enc")
+            val key = getOrCreateMediaKey()
+            val cipher = Cipher.getInstance(TRANSFORMATION).apply {
+                init(Cipher.ENCRYPT_MODE, key)
+            }
+            var bytesReadTotal = 0L
+            FileInputStream(sourceFile).use { fis ->
+                FileOutputStream(encryptedFile).use { fos ->
+                    fos.write(cipher.iv)
+                    val buffer = ByteArray(BUFFER_SIZE)
+                    var bytesRead: Int
+                    while (fis.read(buffer).also { bytesRead = it } != -1) {
+                        cipher.update(buffer, 0, bytesRead)?.let { output ->
+                            if (output.isNotEmpty()) fos.write(output)
+                        }
+                        bytesReadTotal += bytesRead
+                        onChunk(bytesReadTotal, totalBytes)
+                    }
+                    cipher.doFinal()?.let { finalBytes ->
+                        if (finalBytes.isNotEmpty()) fos.write(finalBytes)
+                    }
+                }
+            }
+            sourceFile.delete()
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", encryptedFile)
+        } catch (e: Exception) {
+            null
         }
     }
 

@@ -280,7 +280,7 @@ private fun QuickFiltersCarousel(
             )
         }
 
-        val quickTypes = listOf(LifeItemType.Note, LifeItemType.Task, LifeItemType.Photo, LifeItemType.Location)
+        val quickTypes = listOf(LifeItemType.Note, LifeItemType.Task, LifeItemType.Photo, LifeItemType.Pdf, LifeItemType.Location)
         items(quickTypes) { type ->
             FilterChip(
                 selected = filters.selectedType == type,
@@ -588,6 +588,7 @@ private fun LifeItemCard(
                 item.inferImagePreviewUrl() != null ||
                 item.inferVideoPlaybackUrl() != null ||
                 item.inferAudioUrl() != null ||
+                item.inferPdfUrl() != null ||
                 item.inferLocationPreview() != null
             if (hasMediaContent) {
                 Box(

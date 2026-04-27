@@ -5,8 +5,10 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.Drawable
+import android.graphics.pdf.PdfRenderer
 import android.media.MediaPlayer
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import android.util.Base64
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -21,6 +23,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -48,6 +51,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -70,6 +75,7 @@ import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
@@ -97,6 +103,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -124,6 +131,7 @@ import com.raulshma.dailylife.domain.OccurrenceStats
 import com.raulshma.dailylife.domain.displayBody
 import com.raulshma.dailylife.domain.inferAudioUrl
 import com.raulshma.dailylife.domain.inferImagePreviewUrl
+import com.raulshma.dailylife.domain.inferPdfUrl
 import com.raulshma.dailylife.domain.inferVideoPlaybackUrl
 import com.raulshma.dailylife.ui.LocalAnimatedVisibilityScope
 import com.raulshma.dailylife.ui.LocalSharedTransitionScope
@@ -777,11 +785,13 @@ private fun AttachmentHeroSection(
     val imageUrl = item.inferImagePreviewUrl()
     val videoUrl = item.inferVideoPlaybackUrl()
     val audioUrl = item.inferAudioUrl()
+    val pdfUrl = item.inferPdfUrl()
     val location = item.inferLocationPreview()
 
     val decryptedImage = rememberDecryptedMediaUri(imageUrl)
     val decryptedVideo = rememberDecryptedMediaUri(videoUrl)
     val decryptedAudio = rememberDecryptedMediaUri(audioUrl)
+    val decryptedPdf = rememberDecryptedMediaUri(pdfUrl)
     val thumbhashPreview = remember(item.id, item.title, item.body) {
         item.thumbhashPreview()
     }
@@ -789,7 +799,7 @@ private fun AttachmentHeroSection(
         decryptedImage == null &&
         decryptedVideo == null
 
-    val hasVisual = decryptedImage != null || decryptedVideo != null || location != null
+    val hasVisual = decryptedImage != null || decryptedVideo != null || location != null || decryptedPdf != null
     val displayBody = item.displayBody()
     val hasText = displayBody.isNotBlank()
 
@@ -924,6 +934,31 @@ private fun AttachmentHeroSection(
                     }
                 }
 
+                decryptedPdf != null -> {
+                    onVisualBrightnessMeasured(0.62f)
+                    if (heavyReady) {
+                        PdfDetailViewer(
+                            pdfUrl = decryptedPdf,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        ThumbhashLoadingPlaceholder(
+                            preview = thumbhashPreview,
+                            isVideo = false,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+
+                pdfUrl != null -> {
+                    onVisualBrightnessMeasured(thumbhashPreview?.luminance ?: 0.58f)
+                    ThumbhashLoadingPlaceholder(
+                        preview = thumbhashPreview,
+                        isVideo = false,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+
                 else -> {
                     onVisualBrightnessMeasured(0.62f)
                     Column(
@@ -959,6 +994,79 @@ private fun AttachmentHeroSection(
             }
         }
     }
+}
+
+@Composable
+private fun PdfDetailViewer(pdfUrl: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    var pageBitmaps by remember(pdfUrl) { mutableStateOf<List<Bitmap>>(emptyList()) }
+
+    DisposableEffect(pdfUrl) {
+        val job = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            val pfd = openPdfDescriptor(context, pdfUrl) ?: return@launch
+            try {
+                val renderer = PdfRenderer(pfd)
+                val bitmaps = mutableListOf<Bitmap>()
+                val pageCount = renderer.pageCount.coerceAtMost(50)
+                for (i in 0 until pageCount) {
+                    val page = renderer.openPage(i)
+                    val bitmap = Bitmap.createBitmap(page.width, page.height, Bitmap.Config.ARGB_8888)
+                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                    page.close()
+                    bitmaps.add(bitmap)
+                }
+                renderer.close()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    pageBitmaps = bitmaps
+                }
+            } catch (_: Throwable) {
+            } finally {
+                runCatching { pfd.close() }
+            }
+        }
+        onDispose {
+            job.cancel()
+            pageBitmaps.forEach { runCatching { it.recycle() } }
+            pageBitmaps = emptyList()
+        }
+    }
+
+    if (pageBitmaps.isEmpty()) {
+        Box(modifier = modifier.background(Color.Black), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = Color.White.copy(alpha = 0.7f))
+        }
+    } else {
+        LazyColumn(
+            modifier = modifier.background(Color.Black),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item { Spacer(modifier = Modifier.height(16.dp)) }
+            items(pageBitmaps, key = { it.hashCode() }) { bitmap ->
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = "PDF page",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    contentScale = ContentScale.FillWidth,
+                )
+            }
+            item { Spacer(modifier = Modifier.height(16.dp)) }
+        }
+    }
+}
+
+private fun openPdfDescriptor(context: Context, pdfUrl: String): ParcelFileDescriptor? {
+    return runCatching {
+        val uri = Uri.parse(pdfUrl)
+        when (uri.scheme) {
+            "content" -> context.contentResolver.openFileDescriptor(uri, "r")
+            "file" -> uri.path?.let { File(it) }?.let {
+                ParcelFileDescriptor.open(it, ParcelFileDescriptor.MODE_READ_ONLY)
+            }
+            else -> null
+        }
+    }.getOrNull()
 }
 
 private data class ThumbhashPreview(

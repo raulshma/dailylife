@@ -13,6 +13,7 @@ enum class LifeItemType(val label: String) {
     Video("Video"),
     Audio("Audio"),
     Location("Location"),
+    Pdf("PDF"),
     Mixed("Mixed"),
 }
 
@@ -192,6 +193,10 @@ private val AudioUrlPattern =
     Regex("""https?://\S+\.(?:mp3|aac|wav|ogg|m4a|flac)(?:\?\S*)?""", RegexOption.IGNORE_CASE)
 private val ContentAudioPattern =
     Regex("""(?:content|file)://\S+\.(?:mp3|aac|wav|ogg|m4a|flac)(?:\.enc)?""", RegexOption.IGNORE_CASE)
+private val PdfUrlPattern =
+    Regex("""https?://\S+\.(?:pdf)(?:\?\S*)?""", RegexOption.IGNORE_CASE)
+private val ContentPdfPattern =
+    Regex("""(?:content|file)://\S+\.(?:pdf)(?:\.enc)?""", RegexOption.IGNORE_CASE)
 private val AnyContentUriPattern =
     Regex("""(?:content|file)://\S+""")
 
@@ -200,9 +205,10 @@ private val AllMediaPatterns by lazy {
         ImageUrlPattern, ContentImagePattern,
         VideoUrlPattern, ContentVideoPattern,
         AudioUrlPattern, ContentAudioPattern,
+        PdfUrlPattern, ContentPdfPattern,
         AnyContentUriPattern,
         GeoPattern,
-        Regex("""https?://\S+\.(?:png|jpe?g|webp|gif|bmp|avif|mp4|m4v|webm|mkv|mov|mp3|aac|wav|ogg|m4a|flac)\S*""", RegexOption.IGNORE_CASE),
+        Regex("""https?://\S+\.(?:png|jpe?g|webp|gif|bmp|avif|mp4|m4v|webm|mkv|mov|mp3|aac|wav|ogg|m4a|flac|pdf)\S*""", RegexOption.IGNORE_CASE),
     )
 }
 
@@ -238,6 +244,16 @@ fun LifeItem.inferAudioUrl(): String? {
     val source = listOf(title, body).joinToString(" ")
     return firstInferredUriByType(source, LifeItemType.Audio)
         ?: if (type == LifeItemType.Audio) {
+            firstInferredUri(source)
+        } else {
+            null
+        }
+}
+
+fun LifeItem.inferPdfUrl(): String? {
+    val source = listOf(title, body).joinToString(" ")
+    return firstInferredUriByType(source, LifeItemType.Pdf)
+        ?: if (type == LifeItemType.Pdf) {
             firstInferredUri(source)
         } else {
             null

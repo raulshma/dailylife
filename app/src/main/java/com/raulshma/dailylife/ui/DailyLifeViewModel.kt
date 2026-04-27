@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import com.raulshma.dailylife.data.DailyLifeRepository
 import com.raulshma.dailylife.data.backup.S3BackupRepository
 import com.raulshma.dailylife.data.RoomDailyLifeStore
+import com.raulshma.dailylife.data.security.EncryptionProgress
 import com.raulshma.dailylife.data.security.MediaEncryptionManager
 import com.raulshma.dailylife.domain.CompletionRecord
 import com.raulshma.dailylife.domain.BackupResult
@@ -30,10 +31,13 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.Instant
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @HiltViewModel
 class DailyLifeViewModel @Inject constructor(
@@ -52,6 +56,11 @@ class DailyLifeViewModel @Inject constructor(
     private val _lastBackupResult = MutableStateFlow<BackupResult?>(null)
     val lastBackupResult: StateFlow<BackupResult?> = _lastBackupResult.asStateFlow()
 
+    private val _encryptionProgress = MutableStateFlow<EncryptionProgress?>(null)
+    val encryptionProgress: StateFlow<EncryptionProgress?> = _encryptionProgress.asStateFlow()
+
+    private var saveJob: Job? = null
+
     init {
         repository.rolloverMissedOccurrences()
         syncReminderSchedule()
@@ -59,10 +68,19 @@ class DailyLifeViewModel @Inject constructor(
     }
 
     fun addItem(draft: LifeItemDraft) {
-        val encryptedBody = mediaEncryptionManager.encryptMediaInText(draft.body, context)
-        val encryptedDraft = draft.copy(body = encryptedBody)
-        repository.addItem(encryptedDraft)
-        syncReminderSchedule()
+        saveJob?.cancel()
+        saveJob = viewModelScope.launch {
+            val encryptedBody = withContext(Dispatchers.IO) {
+                mediaEncryptionManager.encryptMediaInTextWithProgress(
+                    draft.body, context,
+                    onProgress = { progress -> _encryptionProgress.value = progress },
+                )
+            }
+            val encryptedDraft = draft.copy(body = encryptedBody)
+            repository.addItem(encryptedDraft)
+            syncReminderSchedule()
+            _encryptionProgress.value = null
+        }
     }
 
     fun updateSearchQuery(query: String) {
@@ -192,10 +210,19 @@ class DailyLifeViewModel @Inject constructor(
     }
 
     fun updateItem(itemId: Long, draft: LifeItemDraft) {
-        val encryptedBody = mediaEncryptionManager.encryptMediaInText(draft.body, context)
-        val encryptedDraft = draft.copy(body = encryptedBody)
-        repository.updateItem(encryptedDraft, itemId)
-        syncReminderSchedule()
+        saveJob?.cancel()
+        saveJob = viewModelScope.launch {
+            val encryptedBody = withContext(Dispatchers.IO) {
+                mediaEncryptionManager.encryptMediaInTextWithProgress(
+                    draft.body, context,
+                    onProgress = { progress -> _encryptionProgress.value = progress },
+                )
+            }
+            val encryptedDraft = draft.copy(body = encryptedBody)
+            repository.updateItem(encryptedDraft, itemId)
+            syncReminderSchedule()
+            _encryptionProgress.value = null
+        }
     }
 
     fun deleteItem(itemId: Long) {

@@ -15,6 +15,7 @@ private val OsmMlatMlonPattern =
 private val ImageExtensionPattern = Regex("""\.(?:png|jpe?g|webp|gif|bmp|avif)(?:\.enc)?$""", RegexOption.IGNORE_CASE)
 private val VideoExtensionPattern = Regex("""\.(?:mp4|m4v|webm|mkv|mov|m3u8)(?:\.enc)?$""", RegexOption.IGNORE_CASE)
 private val AudioExtensionPattern = Regex("""\.(?:mp3|aac|wav|ogg|m4a|flac)(?:\.enc)?$""", RegexOption.IGNORE_CASE)
+private val PdfExtensionPattern = Regex("""\.(?:pdf)(?:\.enc)?$""", RegexOption.IGNORE_CASE)
 
 internal fun inferTypeFromText(text: String): LifeItemType? {
     val source = text.trim()
@@ -99,10 +100,14 @@ private fun inferTypeFromUriToken(rawToken: String): LifeItemType? {
     val hasAudioExtension = AudioExtensionPattern.containsMatchIn(path) ||
         AudioExtensionPattern.containsMatchIn(lastSegment) ||
         AudioExtensionPattern.containsMatchIn(plainToken)
+    val hasPdfExtension = PdfExtensionPattern.containsMatchIn(path) ||
+        PdfExtensionPattern.containsMatchIn(lastSegment) ||
+        PdfExtensionPattern.containsMatchIn(plainToken)
 
     if (hasImageExtension) return LifeItemType.Photo
     if (hasVideoExtension) return LifeItemType.Video
     if (hasAudioExtension) return LifeItemType.Audio
+    if (hasPdfExtension) return LifeItemType.Pdf
 
     if (analysisInput.contains("youtube.com") || analysisInput.contains("youtu.be") || analysisInput.contains("vimeo.com")) {
         return LifeItemType.Video
@@ -117,10 +122,12 @@ private fun inferTypeFromUriToken(rawToken: String): LifeItemType? {
         if (analysisInput.contains("mimetype=image") || analysisInput.contains("type=image")) return LifeItemType.Photo
         if (analysisInput.contains("mimetype=video") || analysisInput.contains("type=video")) return LifeItemType.Video
         if (analysisInput.contains("mimetype=audio") || analysisInput.contains("type=audio")) return LifeItemType.Audio
+        if (analysisInput.contains("mimetype=application/pdf") || analysisInput.contains("type=pdf")) return LifeItemType.Pdf
 
         if (analysisInput.contains("/images/") || analysisInput.contains("/image/")) return LifeItemType.Photo
         if (analysisInput.contains("/videos/") || analysisInput.contains("/video/")) return LifeItemType.Video
         if (analysisInput.contains("/audio/") || analysisInput.contains("/audios/")) return LifeItemType.Audio
+        if (analysisInput.contains("/pdf/") || analysisInput.contains("/pdfs/")) return LifeItemType.Pdf
     }
 
     return null

@@ -20,6 +20,7 @@ class MediaCaptureLauncher(
     var onPhotoPicked: ((Uri) -> Unit)? = null
     var onVideoPicked: ((Uri) -> Unit)? = null
     var onFilePicked: ((Uri) -> Unit)? = null
+    var onPdfPicked: ((Uri) -> Unit)? = null
     var onCameraPermissionResult: ((Boolean) -> Unit)? = null
     var onAudioPermissionResult: ((Boolean) -> Unit)? = null
 
@@ -33,6 +34,7 @@ class MediaCaptureLauncher(
     private var pickPhotoCallback: (() -> Unit)? = null
     private var pickVideoCallback: (() -> Unit)? = null
     private var pickFileCallback: (() -> Unit)? = null
+    private var pickPdfCallback: (() -> Unit)? = null
 
     internal fun registerTakePicture(callback: (Uri) -> Unit) {
         takePictureCallback = callback
@@ -60,6 +62,10 @@ class MediaCaptureLauncher(
 
     internal fun registerPickFile(callback: () -> Unit) {
         pickFileCallback = callback
+    }
+
+    internal fun registerPickPdf(callback: () -> Unit) {
+        pickPdfCallback = callback
     }
 
     fun launchCamera() {
