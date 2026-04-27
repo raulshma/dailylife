@@ -10,6 +10,7 @@ import com.raulshma.dailylife.data.backup.S3BackupRepository
 import com.raulshma.dailylife.data.db.DailyLifeDatabase
 import com.raulshma.dailylife.data.db.DatabasePassphraseManager
 import com.raulshma.dailylife.data.db.MIGRATION_1_2
+import com.raulshma.dailylife.data.db.MIGRATION_2_3
 import com.raulshma.dailylife.data.media.AudioWaveformGenerator
 import com.raulshma.dailylife.data.media.MediaThumbnailGenerator
 import com.raulshma.dailylife.data.security.BackupEncryptionManager
@@ -50,7 +51,7 @@ object DailyLifeModule {
                 DatabaseName,
             )
                 .openHelperFactory(factory)
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
         }
 

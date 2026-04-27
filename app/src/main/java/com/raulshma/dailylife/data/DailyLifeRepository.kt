@@ -38,6 +38,10 @@ interface DailyLifeRepository {
         itemId: Long,
         occurrenceDate: LocalDate = LocalDate.now(),
         completedAt: LocalDateTime = LocalDateTime.now(),
+        latitude: Double? = null,
+        longitude: Double? = null,
+        batteryLevel: Int? = null,
+        appVersion: String? = null,
     )
 
     fun updateNotificationSettings(settings: NotificationSettings)

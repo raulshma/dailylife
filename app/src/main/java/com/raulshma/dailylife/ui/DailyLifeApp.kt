@@ -222,6 +222,7 @@ private enum class HomeTab(
 private sealed class Screen {
     data class Main(val tab: HomeTab) : Screen()
     data class Detail(val itemId: Long) : Screen()
+    data class CompletionHistory(val itemId: Long) : Screen()
 }
 
 internal val LocalSharedTransitionScope = staticCompositionLocalOf<SharedTransitionScope?> { null }
@@ -348,8 +349,21 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
     var editDraft by rememberSaveable(stateSaver = QuickAddDraftSaver) {
         mutableStateOf(QuickAddDraft())
     }
+    var completionHistoryItemId by rememberSaveable { mutableStateOf<Long?>(null) }
 
-    val screen = selectedItemId?.let { Screen.Detail(it) } ?: Screen.Main(selectedTab)
+    val screen = when {
+        completionHistoryItemId != null -> Screen.CompletionHistory(completionHistoryItemId!!)
+        selectedItemId != null -> Screen.Detail(selectedItemId!!)
+        else -> Screen.Main(selectedTab)
+    }
+
+    BackHandler(enabled = completionHistoryItemId != null || selectedItemId != null) {
+        if (completionHistoryItemId != null) {
+            completionHistoryItemId = null
+        } else {
+            selectedItemId = null
+        }
+    }
 
     LaunchedEffect(quickAddDraft) {
         saveDraftToPrefs(context, quickAddDraft)
@@ -431,10 +445,6 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
         },
     )
 
-    BackHandler(enabled = selectedItemId != null) {
-        selectedItemId = null
-    }
-
     val visibleItemIds = remember(state.visibleItems) { state.visibleItems.map { it.id } }
     SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
         AnimatedContent(
@@ -446,6 +456,14 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                 val enter: EnterTransition
                 val exit: ExitTransition
                 when {
+                    initial is Screen.CompletionHistory && target is Screen.Detail -> {
+                        enter = fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { -it / 8 }
+                        exit = fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { it / 6 }
+                    }
+                    target is Screen.CompletionHistory -> {
+                        enter = fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { it / 6 }
+                        exit = fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { -it / 8 }
+                    }
                     initial is Screen.Detail && target is Screen.Detail -> {
                         val initialIndex = visibleItemIds.indexOf(initial.itemId)
                         val targetIndex = visibleItemIds.indexOf(target.itemId)
@@ -539,14 +557,21 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                                 selectedItemId = null
                             },
                             onNavigateToItem = { selectedItemId = it },
+                            onViewHistory = { completionHistoryItemId = item.id },
                         )
                     } ?: run {
-                        // Fallback if item not found
-                        androidx.compose.foundation.layout.Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("Item not found")
+                        selectedItemId = null
+                    }
+
+                    is Screen.CompletionHistory -> {
+                        val historyItem = state.items.firstOrNull { it.id == currentScreen.itemId }
+                        if (historyItem != null) {
+                            com.raulshma.dailylife.ui.detail.CompletionHistoryScreen(
+                                item = historyItem,
+                                onBack = { completionHistoryItemId = null },
+                            )
+                        } else {
+                            completionHistoryItemId = null
                         }
                     }
                 }

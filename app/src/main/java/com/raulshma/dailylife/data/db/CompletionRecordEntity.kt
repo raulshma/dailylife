@@ -11,4 +11,9 @@ data class CompletionRecordEntity(
     val occurrenceDate: String,
     val completedAt: String,
     val missed: Boolean,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val batteryLevel: Int? = null,
+    val appVersion: String? = null,
+    val note: String? = null,
 )

@@ -15,6 +15,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -129,9 +130,12 @@ import com.raulshma.dailylife.ui.theme.DailyLifeEasing
 import com.raulshma.dailylife.ui.theme.DailyLifeTween
 import com.raulshma.dailylife.ui.theme.staggerDelay
 import java.io.File
+import java.time.format.DateTimeFormatter
 import kotlin.math.abs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+private val CompletionTimeFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy 'at' h:mm a")
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
@@ -147,6 +151,7 @@ fun ItemDetailScreen(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onNavigateToItem: (Long) -> Unit = {},
+    onViewHistory: () -> Unit = {},
 ) {
     val haptic = LocalHapticFeedback.current
     val occurrenceStats = item.occurrenceStats()
@@ -171,6 +176,7 @@ fun ItemDetailScreen(
     var totalDy by remember { mutableStateOf(0f) }
     var dragAxisLocked by remember { mutableStateOf(false) }
     var isHorizontalDrag by remember { mutableStateOf(false) }
+    var justCompleted by remember { mutableStateOf(false) }
     val sharedTransitionScope = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalAnimatedVisibilityScope.current
 
@@ -534,8 +540,37 @@ fun ItemDetailScreen(
                         IconButton(onClick = {
                             registerChromeInteraction()
                             onCompleted()
+                            justCompleted = true
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         }) {
-                            Icon(Icons.Filled.Done, contentDescription = "Mark complete", tint = Color.White)
+                            val checkScale by animateFloatAsState(
+                                targetValue = if (justCompleted) 1.35f else 1f,
+                                animationSpec = com.raulshma.dailylife.ui.theme.DailyLifeSpring.Bouncy,
+                                label = "completeScale",
+                            )
+                            val checkTint by animateColorAsState(
+                                targetValue = if (justCompleted) Color(0xFF4CAF50) else Color.White,
+                                animationSpec = tween(durationMillis = 300),
+                                label = "completeTint",
+                            )
+                            Icon(
+                                Icons.Filled.Done,
+                                contentDescription = "Mark complete",
+                                tint = checkTint,
+                                modifier = Modifier
+                                    .graphicsLayer {
+                                        scaleX = checkScale
+                                        scaleY = checkScale
+                                    }
+                                    .size(24.dp),
+                            )
+                        }
+
+                        LaunchedEffect(justCompleted) {
+                            if (justCompleted) {
+                                delay(800L)
+                                justCompleted = false
+                            }
                         }
                     }
 
@@ -633,6 +668,7 @@ fun ItemDetailScreen(
                     globalSettings = globalSettings,
                     contentVisible = contentVisible,
                     onNotificationsChanged = onNotificationsChanged,
+                    onViewHistory = onViewHistory,
                 )
             }
         }
@@ -1198,6 +1234,7 @@ private fun DetailContentSection(
     globalSettings: NotificationSettings,
     contentVisible: Boolean,
     onNotificationsChanged: (ItemNotificationSettings) -> Unit,
+    onViewHistory: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier.padding(horizontal = 20.dp),
@@ -1367,6 +1404,105 @@ private fun DetailContentSection(
                         onNotificationsChanged(item.notificationSettings.copy(enabled = it))
                     }
                 )
+            }
+        }
+
+        if (item.completionHistory.isNotEmpty()) {
+            HorizontalDivider()
+
+            AnimatedVisibility(
+                visible = contentVisible,
+                enter = fadeIn(DailyLifeTween.fade<Float>()) + slideInVertically(
+                    DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>(),
+                    initialOffsetY = { it / 3 }
+                ),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "Completion History",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+
+                    item.completionHistory
+                        .sortedByDescending { it.completedAt }
+                        .take(3)
+                        .forEach { record ->
+                            ElevatedCard(
+                                colors = CardDefaults.elevatedCardColors(
+                                    containerColor = if (record.missed) {
+                                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                                    } else {
+                                        MaterialTheme.colorScheme.surface
+                                    },
+                                ),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = if (record.missed) "Missed" else "Completed",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (record.missed) {
+                                                MaterialTheme.colorScheme.error
+                                            } else {
+                                                MaterialTheme.colorScheme.primary
+                                            },
+                                        )
+                                        Text(
+                                            text = record.completedAt.format(CompletionTimeFormatter),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        if (record.latitude != null && record.longitude != null) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.LocationOn,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(14.dp),
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                                Text(
+                                                    text = "%.2f, %.2f".format(record.latitude, record.longitude),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                            }
+                                        }
+                                        if (record.batteryLevel != null) {
+                                            Text(
+                                                text = "Battery: ${record.batteryLevel}%",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                    if (item.completionHistory.size > 3) {
+                        TextButton(
+                            onClick = onViewHistory,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("View all ${item.completionHistory.size} entries")
+                        }
+                    }
+                }
             }
         }
     }

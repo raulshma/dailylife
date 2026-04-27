@@ -106,12 +106,20 @@ class InMemoryDailyLifeRepository(
         itemId: Long,
         occurrenceDate: LocalDate,
         completedAt: LocalDateTime,
+        latitude: Double?,
+        longitude: Double?,
+        batteryLevel: Int?,
+        appVersion: String?,
     ) {
         updateItem(itemId) { item ->
             val record = CompletionRecord(
                 itemId = item.id,
                 occurrenceDate = occurrenceDate,
                 completedAt = completedAt,
+                latitude = latitude,
+                longitude = longitude,
+                batteryLevel = batteryLevel,
+                appVersion = appVersion,
             )
             item.copy(
                 taskStatus = if (item.type == LifeItemType.Task) TaskStatus.Done else item.taskStatus,
@@ -123,11 +131,19 @@ class InMemoryDailyLifeRepository(
     fun markOccurrenceCompleted(
         itemId: Long,
         occurrenceDate: LocalDate = LocalDate.now(),
+        latitude: Double? = null,
+        longitude: Double? = null,
+        batteryLevel: Int? = null,
+        appVersion: String? = null,
     ) {
         markOccurrenceCompleted(
             itemId = itemId,
             occurrenceDate = occurrenceDate,
             completedAt = LocalDateTime.now(),
+            latitude = latitude,
+            longitude = longitude,
+            batteryLevel = batteryLevel,
+            appVersion = appVersion,
         )
     }
 

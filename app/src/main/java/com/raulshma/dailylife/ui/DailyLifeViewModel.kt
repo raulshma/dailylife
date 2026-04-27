@@ -1,6 +1,11 @@
 package com.raulshma.dailylife.ui
 
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.location.LocationManager
+import android.os.BatteryManager
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.raulshma.dailylife.data.DailyLifeRepository
@@ -95,8 +100,52 @@ class DailyLifeViewModel @Inject constructor(
     }
 
     fun markOccurrenceCompleted(itemId: Long) {
-        repository.markOccurrenceCompleted(itemId, LocalDate.now())
+        val location = lastKnownLocation()
+        val batteryLevel = currentBatteryLevel()
+        val appVersion = currentAppVersion()
+        repository.markOccurrenceCompleted(
+            itemId = itemId,
+            occurrenceDate = LocalDate.now(),
+            latitude = location?.first,
+            longitude = location?.second,
+            batteryLevel = batteryLevel,
+            appVersion = appVersion,
+        )
         syncReminderSchedule()
+    }
+
+    private fun lastKnownLocation(): Pair<Double, Double>? {
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.ACCESS_COARSE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.ACCESS_FINE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!hasPermission) return null
+
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
+        var bestLocation: android.location.Location? = null
+        for (provider in locationManager.getProviders(true)) {
+            try {
+                val loc = locationManager.getLastKnownLocation(provider) ?: continue
+                if (bestLocation == null || loc.accuracy < bestLocation.accuracy) {
+                    bestLocation = loc
+                }
+            } catch (_: SecurityException) {}
+        }
+        return bestLocation?.let { Pair(it.latitude, it.longitude) }
+    }
+
+    private fun currentBatteryLevel(): Int? {
+        val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager ?: return null
+        return bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+            .takeIf { it in 0..100 }
+    }
+
+    private fun currentAppVersion(): String? {
+        return runCatching {
+            val pi = context.packageManager.getPackageInfo(context.packageName, 0)
+            pi.versionName
+        }.getOrNull()
     }
 
     fun updateNotificationSettings(settings: NotificationSettings) {

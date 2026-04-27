@@ -95,6 +95,11 @@ class RoomDailyLifeStore(
         completedAt = runCatching { LocalDateTime.parse(completedAt) }.getOrNull()
             ?: LocalDateTime.now(),
         missed = missed,
+        latitude = latitude,
+        longitude = longitude,
+        batteryLevel = batteryLevel,
+        appVersion = appVersion,
+        note = note,
     )
 
     private fun LifeItem.toEntity(): LifeItemEntity = LifeItemEntity(
@@ -121,6 +126,11 @@ class RoomDailyLifeStore(
         occurrenceDate = occurrenceDate.toString(),
         completedAt = completedAt.toString(),
         missed = missed,
+        latitude = latitude,
+        longitude = longitude,
+        batteryLevel = batteryLevel,
+        appVersion = appVersion,
+        note = note,
     )
 
     private fun NotificationSettings.toEntity(): NotificationSettingsEntity =

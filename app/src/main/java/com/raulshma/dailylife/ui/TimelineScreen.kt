@@ -2,6 +2,9 @@ package com.raulshma.dailylife.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,7 +22,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -456,6 +462,8 @@ private fun LifeItemCard(
     val occurrenceStats = item.occurrenceStats()
     val sharedTransitionScope = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalAnimatedVisibilityScope.current
+    val haptic = LocalHapticFeedback.current
+    var justCompleted by remember { mutableStateOf(false) }
 
     val mediaSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
         with(sharedTransitionScope) {
@@ -623,15 +631,41 @@ private fun LifeItemCard(
                         }
                     }
                     IconButton(
-                        onClick = onCompleted,
+                        onClick = {
+                            onCompleted()
+                            justCompleted = true
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        },
                         modifier = Modifier.size(28.dp)
                     ) {
+                        val checkScale by animateFloatAsState(
+                            targetValue = if (justCompleted) 1.5f else 1f,
+                            animationSpec = com.raulshma.dailylife.ui.theme.DailyLifeSpring.Bouncy,
+                            label = "completeScale",
+                        )
+                        val checkTint by animateColorAsState(
+                            targetValue = if (justCompleted) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary,
+                            animationSpec = tween(durationMillis = 300),
+                            label = "completeTint",
+                        )
                         Icon(
                             imageVector = Icons.Filled.Done,
                             contentDescription = "Complete",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp),
+                            tint = checkTint,
+                            modifier = Modifier
+                                .graphicsLayer {
+                                    scaleX = checkScale
+                                    scaleY = checkScale
+                                }
+                                .size(18.dp),
                         )
+                    }
+
+                    LaunchedEffect(justCompleted) {
+                        if (justCompleted) {
+                            kotlinx.coroutines.delay(800L)
+                            justCompleted = false
+                        }
                     }
                 }
             }

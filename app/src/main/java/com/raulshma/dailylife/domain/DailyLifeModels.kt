@@ -65,6 +65,11 @@ data class CompletionRecord(
     val occurrenceDate: LocalDate,
     val completedAt: LocalDateTime,
     val missed: Boolean = false,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val batteryLevel: Int? = null,
+    val appVersion: String? = null,
+    val note: String? = null,
 )
 
 data class OccurrenceStats(
