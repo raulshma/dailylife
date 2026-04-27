@@ -73,6 +73,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -265,6 +266,7 @@ private fun AttachmentHeroSection(item: LifeItem) {
                     model = decryptedImage,
                     contentDescription = "Image preview",
                     modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
                 )
                 Box(
                     modifier = Modifier

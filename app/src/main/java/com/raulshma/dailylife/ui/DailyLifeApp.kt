@@ -158,6 +158,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import com.raulshma.dailylife.data.media.AudioWaveformGenerator
@@ -353,6 +354,7 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
     }
 
     var quickAddLocationCallback by remember { mutableStateOf<((Double, Double) -> Unit)?>(null) }
+    var editLocationCallback by remember { mutableStateOf<((Double, Double) -> Unit)?>(null) }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -363,24 +365,67 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
     val mediaLauncher = rememberMediaCaptureLauncher(
         context = context,
         onPhotoCaptured = { uri ->
-            quickAddDraft = quickAddDraft.copy(body = if (quickAddDraft.body.isBlank()) uri.toString() else "${quickAddDraft.body}\n$uri")
+            quickAddDraft = quickAddDraft.copy(
+                typeName = LifeItemType.Photo.name,
+                body = if (quickAddDraft.body.isBlank()) uri.toString() else "${quickAddDraft.body}\n$uri",
+            )
             showQuickAdd = true
         },
         onVideoCaptured = { uri ->
-            quickAddDraft = quickAddDraft.copy(body = if (quickAddDraft.body.isBlank()) uri.toString() else "${quickAddDraft.body}\n$uri")
+            quickAddDraft = quickAddDraft.copy(
+                typeName = LifeItemType.Video.name,
+                body = if (quickAddDraft.body.isBlank()) uri.toString() else "${quickAddDraft.body}\n$uri",
+            )
             showQuickAdd = true
         },
         onPhotoPicked = { uri ->
-            quickAddDraft = quickAddDraft.copy(body = if (quickAddDraft.body.isBlank()) uri.toString() else "${quickAddDraft.body}\n$uri")
+            quickAddDraft = quickAddDraft.copy(
+                typeName = LifeItemType.Photo.name,
+                body = if (quickAddDraft.body.isBlank()) uri.toString() else "${quickAddDraft.body}\n$uri",
+            )
             showQuickAdd = true
         },
         onVideoPicked = { uri ->
-            quickAddDraft = quickAddDraft.copy(body = if (quickAddDraft.body.isBlank()) uri.toString() else "${quickAddDraft.body}\n$uri")
+            quickAddDraft = quickAddDraft.copy(
+                typeName = LifeItemType.Video.name,
+                body = if (quickAddDraft.body.isBlank()) uri.toString() else "${quickAddDraft.body}\n$uri",
+            )
             showQuickAdd = true
         },
         onFilePicked = { uri ->
             quickAddDraft = quickAddDraft.copy(body = if (quickAddDraft.body.isBlank()) uri.toString() else "${quickAddDraft.body}\n$uri")
             showQuickAdd = true
+        },
+    )
+
+    val editMediaLauncher = rememberMediaCaptureLauncher(
+        context = context,
+        onPhotoCaptured = { uri ->
+            editDraft = editDraft.copy(
+                typeName = LifeItemType.Photo.name,
+                body = if (editDraft.body.isBlank()) uri.toString() else "${editDraft.body}\n$uri",
+            )
+        },
+        onVideoCaptured = { uri ->
+            editDraft = editDraft.copy(
+                typeName = LifeItemType.Video.name,
+                body = if (editDraft.body.isBlank()) uri.toString() else "${editDraft.body}\n$uri",
+            )
+        },
+        onPhotoPicked = { uri ->
+            editDraft = editDraft.copy(
+                typeName = LifeItemType.Photo.name,
+                body = if (editDraft.body.isBlank()) uri.toString() else "${editDraft.body}\n$uri",
+            )
+        },
+        onVideoPicked = { uri ->
+            editDraft = editDraft.copy(
+                typeName = LifeItemType.Video.name,
+                body = if (editDraft.body.isBlank()) uri.toString() else "${editDraft.body}\n$uri",
+            )
+        },
+        onFilePicked = { uri ->
+            editDraft = editDraft.copy(body = if (editDraft.body.isBlank()) uri.toString() else "${editDraft.body}\n$uri")
         },
     )
 
@@ -524,11 +569,14 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
         LocationPickerSheet(
             onLocationSelected = { lat, lon ->
                 quickAddLocationCallback?.invoke(lat, lon)
+                editLocationCallback?.invoke(lat, lon)
                 quickAddLocationCallback = null
+                editLocationCallback = null
                 showLocationPicker = false
             },
             onDismiss = {
                 quickAddLocationCallback = null
+                editLocationCallback = null
                 showLocationPicker = false
             },
         )
@@ -537,25 +585,40 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
     if (showEditSheet && editItemId != null) {
         val editSheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(
-            onDismissRequest = { showEditSheet = false },
+            onDismissRequest = {
+                showEditSheet = false
+                editItemId = null
+            },
             sheetState = editSheetState,
             dragHandle = { androidx.compose.material3.BottomSheetDefaults.DragHandle() },
             modifier = Modifier.fillMaxSize()
         ) {
-            EditItemSheet(
-                initialDraft = editDraft,
-                allTags = state.allTags,
-                onSave = { draft ->
+            QuickAddScreen(
+                draft = editDraft,
+                onDraftChanged = { editDraft = it },
+                onAdd = { draft ->
                     editItemId?.let { id ->
                         viewModel.updateItem(id, draft)
                     }
                     showEditSheet = false
                     editItemId = null
                 },
+                onAddAndContinue = { _ -> },
                 onDismiss = {
                     showEditSheet = false
                     editItemId = null
                 },
+                onDiscardDraft = {
+                    showEditSheet = false
+                    editItemId = null
+                },
+                mediaLauncher = editMediaLauncher,
+                onShowLocationPicker = { onLocationSelected ->
+                    editLocationCallback = onLocationSelected
+                    showLocationPicker = true
+                },
+                allTags = state.allTags,
+                isEditMode = true,
             )
         }
     }
@@ -1046,6 +1109,7 @@ internal fun ImagePreview(item: LifeItem) {
             model = imageUrl,
             contentDescription = "Image preview",
             modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
             loading = {
                 ShimmerBox(modifier = Modifier.fillMaxSize())
             },
@@ -1845,8 +1909,8 @@ internal fun rememberDecryptedMediaUri(uriString: String?): String? {
 @Composable
 internal fun rememberVideoThumbnail(item: LifeItem): String? {
     val context = LocalContext.current
-    return remember(item.id, item.body) {
-        val videoUrl = item.inferVideoPlaybackUrl()
+    val videoUrl = rememberDecryptedMediaUri(item.inferVideoPlaybackUrl())
+    return remember(item.id, item.body, videoUrl) {
         if (videoUrl == null) return@remember null
         val generator = MediaThumbnailGenerator(context)
         generator.generateVideoThumbnail(android.net.Uri.parse(videoUrl), context)?.toString()
@@ -1933,250 +1997,6 @@ internal fun parseReminderDateTime(dateInput: String, timeInput: String): LocalD
     val date = parseDateOrNull(dateInput) ?: return null
     val time = parseTimeOrNull(timeInput) ?: DefaultReminderTime
     return LocalDateTime.of(date, time)
-}
-
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
-@Composable
-private fun EditItemSheet(
-    initialDraft: QuickAddDraft,
-    allTags: List<String>,
-    onSave: (LifeItemDraft) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val context = LocalContext.current
-    val haptic = LocalHapticFeedback.current
-
-    var selectedType by rememberSaveable { mutableStateOf(
-        LifeItemType.entries.firstOrNull { it.name == initialDraft.typeName } ?: LifeItemType.Thought
-    ) }
-    var title by rememberSaveable { mutableStateOf(initialDraft.title) }
-    var body by rememberSaveable { mutableStateOf(initialDraft.body) }
-    var tags by rememberSaveable { mutableStateOf(initialDraft.tags) }
-    var favorite by rememberSaveable { mutableStateOf(initialDraft.favorite) }
-    var pinned by rememberSaveable { mutableStateOf(initialDraft.pinned) }
-    var reminderDate by rememberSaveable { mutableStateOf(initialDraft.reminderDate) }
-    var reminderTime by rememberSaveable { mutableStateOf(initialDraft.reminderTime) }
-    var notificationsEnabled by rememberSaveable { mutableStateOf(initialDraft.notificationsEnabled) }
-    var overrideTime by rememberSaveable { mutableStateOf(initialDraft.overrideTime) }
-    var recurring by rememberSaveable { mutableStateOf(initialDraft.recurring) }
-    var showReminderOptions by rememberSaveable { mutableStateOf(initialDraft.showReminderOptions) }
-
-    val canSave = title.isNotBlank() || body.isNotBlank()
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Text(
-            text = "Edit item",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            LifeItemType.entries.forEach { type ->
-                FilterChip(
-                    selected = selectedType == type,
-                    onClick = { selectedType = type },
-                    label = { Text(type.label) },
-                    leadingIcon = {
-                        Icon(imageVector = type.icon(), contentDescription = null, modifier = Modifier.size(18.dp))
-                    },
-                    colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                )
-            }
-        }
-
-        OutlinedTextField(
-            value = title,
-            onValueChange = { if (it.length <= 120) title = it },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            label = { Text("Title") },
-        )
-
-        OutlinedTextField(
-            value = body,
-            onValueChange = { if (it.length <= 2000) body = it },
-            modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp),
-            label = { Text("Body") },
-            maxLines = 8,
-        )
-
-        OutlinedTextField(
-            value = tags,
-            onValueChange = { tags = it },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            label = { Text("Tags (comma separated)") },
-            leadingIcon = { Icon(Icons.AutoMirrored.Filled.Label, contentDescription = null) },
-        )
-
-        val currentTagSet = parseTags(tags)
-        val suggestions = remember(allTags, currentTagSet) {
-            allTags.filter { it !in currentTagSet }.take(6)
-        }
-        if (suggestions.isNotEmpty()) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                suggestions.forEach { tag ->
-                    AssistChip(
-                        onClick = { tags = if (tags.isBlank()) tag else "$tags, $tag" },
-                        label = { Text("+$tag") }
-                    )
-                }
-            }
-        }
-
-        HorizontalDivider()
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            FilterChip(
-                selected = favorite,
-                onClick = { favorite = !favorite },
-                label = { Text("Favorite") },
-                leadingIcon = {
-                    Icon(
-                        imageVector = if (favorite) Icons.Filled.Star else Icons.Filled.StarBorder,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            )
-            FilterChip(
-                selected = pinned,
-                onClick = { pinned = !pinned },
-                label = { Text("Pin") },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Filled.PushPin,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            )
-            Spacer(modifier = Modifier.weight(1f))
-            TextButton(onClick = { showReminderOptions = !showReminderOptions }) {
-                Icon(Icons.Filled.Alarm, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(if (showReminderOptions) "Hide reminder" else "Reminder")
-            }
-        }
-
-        AnimatedVisibility(visible = showReminderOptions) {
-            ElevatedCard(
-                colors = CardDefaults.elevatedCardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                ),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    ReminderDateTimeRow(
-                        reminderDate = parseDateOrNull(reminderDate),
-                        reminderTime = parseTimeOrNull(reminderTime),
-                        onDateClick = {
-                            showDatePicker(
-                                context = context,
-                                initialDate = parseDateOrNull(reminderDate) ?: LocalDate.now(),
-                                onDateSelected = { selected ->
-                                    reminderDate = selected.toString()
-                                    if (reminderTime.isBlank()) reminderTime = "09:00"
-                                }
-                            )
-                        },
-                        onTimeClick = {
-                            showTimePicker(
-                                context = context,
-                                initialTime = parseTimeOrNull(reminderTime) ?: LocalTime.of(9, 0),
-                                onTimeSelected = { selected ->
-                                    reminderTime = selected.format(TimeFormatter)
-                                }
-                            )
-                        },
-                        onClear = { reminderDate = ""; reminderTime = "" }
-                    )
-                    ToggleRow(
-                        icon = if (notificationsEnabled) Icons.Filled.Notifications else Icons.Filled.NotificationsOff,
-                        label = "Notifications",
-                        checked = notificationsEnabled,
-                        onCheckedChange = { notificationsEnabled = it }
-                    )
-                    if (notificationsEnabled) {
-                        OutlinedTextField(
-                            value = overrideTime,
-                            onValueChange = { overrideTime = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            label = { Text("Time override, HH:mm") },
-                            leadingIcon = { Icon(Icons.Filled.AccessTime, contentDescription = null) }
-                        )
-                    }
-                    ToggleRow(
-                        icon = Icons.Filled.EventRepeat,
-                        label = "Daily recurrence",
-                        checked = recurring,
-                        onCheckedChange = { recurring = it }
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
-        ) {
-            OutlinedButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-            Button(
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onSave(
-                        LifeItemDraft(
-                            type = selectedType,
-                            title = title,
-                            body = body,
-                            tags = parseTags(tags),
-                            isFavorite = favorite,
-                            isPinned = pinned,
-                            taskStatus = if (selectedType == LifeItemType.Task) TaskStatus.Open else null,
-                            reminderAt = parseReminderDateTime(reminderDate, reminderTime),
-                            recurrenceRule = if (recurring) RecurrenceRule(RecurrenceFrequency.Daily) else RecurrenceRule(),
-                            notificationSettings = ItemNotificationSettings(
-                                enabled = notificationsEnabled,
-                                timeOverride = parseTimeOrNull(overrideTime),
-                            ),
-                        )
-                    )
-                },
-                enabled = canSave,
-            ) {
-                Text("Save changes")
-            }
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
-    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)

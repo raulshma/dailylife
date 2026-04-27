@@ -153,6 +153,7 @@ internal fun QuickAddScreen(
     mediaLauncher: com.raulshma.dailylife.ui.capture.MediaCaptureLauncher,
     onShowLocationPicker: ((Double, Double) -> Unit) -> Unit,
     allTags: List<String> = emptyList(),
+    isEditMode: Boolean = false,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         QuickAddContent(
@@ -165,6 +166,7 @@ internal fun QuickAddScreen(
             mediaLauncher = mediaLauncher,
             onShowLocationPicker = onShowLocationPicker,
             allTags = allTags,
+            isEditMode = isEditMode,
         )
     }
 }
@@ -181,6 +183,7 @@ private fun QuickAddContent(
     mediaLauncher: com.raulshma.dailylife.ui.capture.MediaCaptureLauncher,
     onShowLocationPicker: ((Double, Double) -> Unit) -> Unit,
     allTags: List<String> = emptyList(),
+    isEditMode: Boolean = false,
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
@@ -214,6 +217,7 @@ private fun QuickAddContent(
 
     val titleFocusRequester = remember { FocusRequester() }
     val bodyFocusRequester = remember { FocusRequester() }
+    val inferredType = remember(body) { inferTypeFromBody(body) }
 
     fun currentDraftSnapshot(): QuickAddDraft = QuickAddDraft(
         typeName = selectedType.name,
@@ -232,7 +236,7 @@ private fun QuickAddContent(
     )
 
     fun buildDraftPayload(): LifeItemDraft = LifeItemDraft(
-        type = selectedType,
+        type = inferredType ?: selectedType,
         title = title,
         body = body,
         tags = parseTags(tags),
@@ -340,12 +344,19 @@ private fun QuickAddContent(
         audioRecorder.clearLastRecordingReference()
     }
 
-    val inferredType = remember(body) { inferTypeFromBody(body) }
     val canSave = title.isNotBlank() || body.isNotBlank()
 
     LaunchedEffect(initialDraft.body) {
         if (body != initialDraft.body) {
             body = initialDraft.body
+        }
+    }
+
+    LaunchedEffect(initialDraft.typeName) {
+        val draftType = LifeItemType.entries.firstOrNull { it.name == initialDraft.typeName }
+            ?: LifeItemType.Thought
+        if (selectedType != draftType) {
+            selectedType = draftType
         }
     }
 
@@ -375,62 +386,71 @@ private fun QuickAddContent(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Today, ${LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (isEditMode) {
+                    Text(
+                        text = "Edit item",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                } else {
+                    Text(
+                        text = "Today, ${LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Templates Button
-                    var showTemplates by remember { mutableStateOf(false) }
-                    Box {
-                        TextButton(onClick = { showTemplates = true }) {
-                            Icon(Icons.Filled.Lightbulb, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Templates")
+                    if (!isEditMode) {
+                        var showTemplates by remember { mutableStateOf(false) }
+                        Box {
+                            TextButton(onClick = { showTemplates = true }) {
+                                Icon(Icons.Filled.Lightbulb, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Templates")
+                            }
+                            DropdownMenu(
+                                expanded = showTemplates,
+                                onDismissRequest = { showTemplates = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Daily Reflection") },
+                                    onClick = {
+                                        selectedType = LifeItemType.Note
+                                        title = "Daily Reflection"
+                                        body = "1. What went well today?\n2. What could be improved?\n3. What am I grateful for?"
+                                        showTemplates = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Meeting Notes") },
+                                    onClick = {
+                                        selectedType = LifeItemType.Note
+                                        title = "Meeting: "
+                                        body = "Attendees:\n\nAgenda:\n- \n\nAction Items:\n- [ ] "
+                                        showTemplates = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Quick Task") },
+                                    onClick = {
+                                        selectedType = LifeItemType.Task
+                                        title = "Task"
+                                        body = "Details: "
+                                        showTemplates = false
+                                    }
+                                )
+                            }
                         }
-                        DropdownMenu(
-                            expanded = showTemplates,
-                            onDismissRequest = { showTemplates = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Daily Reflection") },
-                                onClick = {
-                                    selectedType = LifeItemType.Note
-                                    title = "Daily Reflection"
-                                    body = "1. What went well today?\n2. What could be improved?\n3. What am I grateful for?"
-                                    showTemplates = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Meeting Notes") },
-                                onClick = {
-                                    selectedType = LifeItemType.Note
-                                    title = "Meeting: "
-                                    body = "Attendees:\n\nAgenda:\n- \n\nAction Items:\n- [ ] "
-                                    showTemplates = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Quick Task") },
-                                onClick = {
-                                    selectedType = LifeItemType.Task
-                                    title = "Task"
-                                    body = "Details: "
-                                    showTemplates = false
-                                }
-                            )
-                        }
+                        
+                        Box(modifier = Modifier.height(20.dp).width(1.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)))
                     }
                     
-                    Box(modifier = Modifier.height(20.dp).width(1.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)))
-                    
                     TextButton(onClick = onDiscardDraft) {
-                        Text("Discard")
+                        Text(if (isEditMode) "Cancel" else "Discard")
                     }
                 }
             }
@@ -989,17 +1009,19 @@ private fun QuickAddContent(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    OutlinedButton(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onAddAndContinue(buildDraftPayload())
-                            resetLocalDraft()
-                            titleFocusRequester.requestFocus()
-                        },
-                        enabled = canSave,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Save & New")
+                    if (!isEditMode) {
+                        OutlinedButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onAddAndContinue(buildDraftPayload())
+                                resetLocalDraft()
+                                titleFocusRequester.requestFocus()
+                            },
+                            enabled = canSave,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Save & New")
+                        }
                     }
                     
                     Button(
@@ -1008,9 +1030,9 @@ private fun QuickAddContent(
                             onAdd(buildDraftPayload())
                         },
                         enabled = canSave,
-                        modifier = Modifier.weight(1.5f)
+                        modifier = Modifier.weight(if (isEditMode) 1f else 1.5f)
                     ) {
-                        Text("Save Item")
+                        Text(if (isEditMode) "Save changes" else "Save Item")
                     }
                 }
             }
@@ -1085,7 +1107,8 @@ private fun AttachmentPreviewCard(
 ) {
     val context = LocalContext.current
     val attachmentType = remember(uriStr) {
-        when (inferTypeFromBody(uriStr)) {
+        // First try inferring from the URI string patterns
+        val inferred = when (inferTypeFromBody(uriStr)) {
             LifeItemType.Photo -> AttachmentType.Image
             LifeItemType.Video -> AttachmentType.Video
             LifeItemType.Audio -> AttachmentType.Audio
@@ -1095,9 +1118,23 @@ private fun AttachmentPreviewCard(
                     uriStr.contains("image", ignoreCase = true) -> AttachmentType.Image
                     uriStr.contains("video", ignoreCase = true) -> AttachmentType.Video
                     uriStr.contains("audio", ignoreCase = true) -> AttachmentType.Audio
-                    else -> AttachmentType.Other
+                    else -> null
                 }
             }
+        }
+        // If type is unknown and it's a content URI, ask the ContentResolver for MIME type
+        inferred ?: if (uriStr.startsWith("content://") || uriStr.startsWith("file://")) {
+            val mimeType = runCatching {
+                context.contentResolver.getType(Uri.parse(uriStr))
+            }.getOrNull()
+            when {
+                mimeType?.startsWith("image/") == true -> AttachmentType.Image
+                mimeType?.startsWith("video/") == true -> AttachmentType.Video
+                mimeType?.startsWith("audio/") == true -> AttachmentType.Audio
+                else -> AttachmentType.Other
+            }
+        } else {
+            AttachmentType.Other
         }
     }
 

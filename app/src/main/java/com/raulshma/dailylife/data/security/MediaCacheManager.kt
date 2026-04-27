@@ -9,7 +9,7 @@ import java.io.File
  */
 class MediaCacheManager(context: Context) {
 
-    private val cacheDir: File = File(context.cacheDir, "media_decrypted").apply { mkdirs() }
+    private val cacheDir: File = File(context.cacheDir, "media/decrypted").apply { mkdirs() }
 
     /**
      * Returns a cache file for the given [key]. If it already exists, its last-modified

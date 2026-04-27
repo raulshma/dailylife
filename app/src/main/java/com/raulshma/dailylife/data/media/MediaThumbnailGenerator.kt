@@ -34,7 +34,7 @@ class MediaThumbnailGenerator(context: Context) {
 
         val retriever = MediaMetadataRetriever()
         return try {
-            retriever.setDataSource(context, videoUri)
+            retriever.setDataSource(videoFile.absolutePath)
             val bitmap = retriever.frameAtTime
                 ?: retriever.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
 
@@ -57,22 +57,60 @@ class MediaThumbnailGenerator(context: Context) {
         return when (scheme) {
             "file" -> path?.let { File(it) }
             "content" -> {
-                val projection = arrayOf(android.provider.MediaStore.MediaColumns.DATA)
-                context.contentResolver.query(this, projection, null, null, null)?.use { cursor ->
-                    if (cursor.moveToFirst()) {
-                        val path = cursor.getString(0)
-                        if (path != null) return File(path)
+                runCatching {
+                    val projection = arrayOf(android.provider.MediaStore.MediaColumns.DATA)
+                    context.contentResolver.query(this, projection, null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val path = cursor.getString(0)
+                            if (path != null) {
+                                val file = File(path)
+                                if (file.exists()) return file
+                            }
+                        }
                     }
                 }
                 val segments = pathSegments
                 if (segments.isNotEmpty()) {
                     val possiblePath = segments.joinToString("/")
+                    val cacheFile = File(context.cacheDir, possiblePath)
+                    if (cacheFile.exists()) return cacheFile
+
                     val file = File(context.filesDir, possiblePath)
                     if (file.exists()) return file
                 }
-                null
+                copyContentUriToInternal(this, context)
             }
             else -> null
+        }
+    }
+
+    private fun copyContentUriToInternal(uri: Uri, context: Context): File? {
+        return try {
+            val mimeType = context.contentResolver.getType(uri)
+            val extension = mimeType?.let { mime ->
+                when {
+                    mime.startsWith("video/") -> mime.substringAfter("video/").let {
+                        when (it) { "mp4" -> "mp4"; "webm" -> "webm"; "3gpp" -> "3gp"; else -> "mp4" }
+                    }
+                    mime.startsWith("image/") -> mime.substringAfter("image/").let {
+                        when (it) { "jpeg" -> "jpg"; "png" -> "png"; "webp" -> "webp"; "gif" -> "gif"; else -> "jpg" }
+                    }
+                    else -> "bin"
+                }
+            } ?: "bin"
+
+            val importDir = File(context.filesDir, "media/imported").apply { mkdirs() }
+            val destFile = File(importDir, "${System.currentTimeMillis()}.$extension")
+
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(destFile).use { output ->
+                    input.copyTo(output, 8192)
+                }
+            } ?: return null
+
+            if (destFile.length() > 0) destFile else { destFile.delete(); null }
+        } catch (_: Exception) {
+            null
         }
     }
 

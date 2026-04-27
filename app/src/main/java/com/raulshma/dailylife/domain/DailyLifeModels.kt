@@ -208,10 +208,18 @@ fun LifeItem.inferImagePreviewUrl(): String? {
     val source = listOf(title, body).joinToString(" ")
     return ImageUrlPattern.find(source)?.value
         ?: ContentImagePattern.find(source)?.value
+        ?: AnyContentUriPattern.find(source)?.value?.takeIf { uri ->
+            uri.contains("image", ignoreCase = true)
+        }
         ?: Regex("""https?://\S+""").find(source)?.value?.takeIf { url ->
             url.contains("picsum", ignoreCase = true) ||
                 url.contains("unsplash", ignoreCase = true) ||
                 url.contains("images", ignoreCase = true)
+        }
+        ?: if (type == LifeItemType.Photo || type == LifeItemType.Mixed) {
+            AnyContentUriPattern.find(source)?.value
+        } else {
+            null
         }
 }
 
@@ -219,6 +227,14 @@ fun LifeItem.inferVideoPlaybackUrl(): String? {
     val source = listOf(title, body).joinToString(" ")
     return VideoUrlPattern.find(source)?.value
         ?: ContentVideoPattern.find(source)?.value
+        ?: AnyContentUriPattern.find(source)?.value?.takeIf { uri ->
+            uri.contains("video", ignoreCase = true)
+        }
+        ?: if (type == LifeItemType.Video) {
+            AnyContentUriPattern.find(source)?.value
+        } else {
+            null
+        }
 }
 
 fun LifeItem.inferAudioUrl(): String? {

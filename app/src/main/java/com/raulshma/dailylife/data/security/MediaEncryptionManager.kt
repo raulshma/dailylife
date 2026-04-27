@@ -46,9 +46,13 @@ class MediaEncryptionManager(context: Context) {
                     val buffer = ByteArray(BUFFER_SIZE)
                     var bytesRead: Int
                     while (fis.read(buffer).also { bytesRead = it } != -1) {
-                        fos.write(cipher.update(buffer, 0, bytesRead))
+                        cipher.update(buffer, 0, bytesRead)?.let { output ->
+                            if (output.isNotEmpty()) fos.write(output)
+                        }
                     }
-                    fos.write(cipher.doFinal())
+                    cipher.doFinal()?.let { finalBytes ->
+                        if (finalBytes.isNotEmpty()) fos.write(finalBytes)
+                    }
                 }
             }
             sourceFile.delete()
@@ -93,9 +97,13 @@ class MediaEncryptionManager(context: Context) {
                     val buffer = ByteArray(BUFFER_SIZE)
                     var bytesRead: Int
                     while (fis.read(buffer).also { bytesRead = it } != -1) {
-                        fos.write(cipher.update(buffer, 0, bytesRead))
+                        cipher.update(buffer, 0, bytesRead)?.let { output ->
+                            if (output.isNotEmpty()) fos.write(output)
+                        }
                     }
-                    fos.write(cipher.doFinal())
+                    cipher.doFinal()?.let { finalBytes ->
+                        if (finalBytes.isNotEmpty()) fos.write(finalBytes)
+                    }
                 }
             }
             cacheManager.enforceSizeLimit()
@@ -151,12 +159,19 @@ class MediaEncryptionManager(context: Context) {
         return when (scheme) {
             "file" -> path?.let { File(it) }
             "content" -> {
-                // Attempt to resolve content URI to a file in our private storage
-                val projection = arrayOf(android.provider.MediaStore.MediaColumns.DATA)
-                context.contentResolver.query(this, projection, null, null, null)?.use { cursor ->
-                    if (cursor.moveToFirst()) {
-                        val path = cursor.getString(0)
-                        if (path != null) return File(path)
+                // Attempt to resolve content URI to a direct file path only if the provider supports it.
+                // Modern photo picker URIs often do not expose DATA and may throw, so query failures
+                // must not abort the fallback copy path.
+                runCatching {
+                    val projection = arrayOf(android.provider.MediaStore.MediaColumns.DATA)
+                    context.contentResolver.query(this, projection, null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val path = cursor.getString(0)
+                            if (path != null) {
+                                val f = File(path)
+                                if (f.exists()) return f
+                            }
+                        }
                     }
                 }
                 // Fallback: try to find by path segments for FileProvider URIs
@@ -166,9 +181,48 @@ class MediaEncryptionManager(context: Context) {
                     val file = File(context.filesDir, possiblePath)
                     if (file.exists()) return file
                 }
-                null
+                // Last resort: copy content URI to internal storage (handles photo picker URIs, etc.)
+                copyContentUriToInternal(this, context)
             }
             else -> null
+        }
+    }
+
+    /**
+     * Copies a content URI's data to internal storage. This is necessary for URIs from
+     * the photo picker and other providers that grant only temporary read permission.
+     * The file is saved with an appropriate extension based on its MIME type.
+     */
+    private fun copyContentUriToInternal(uri: Uri, context: Context): File? {
+        return try {
+            val mimeType = context.contentResolver.getType(uri)
+            val extension = mimeType?.let { mime ->
+                when {
+                    mime.startsWith("image/") -> mime.substringAfter("image/").let {
+                        when (it) { "jpeg" -> "jpg"; "png" -> "png"; "webp" -> "webp"; "gif" -> "gif"; else -> "jpg" }
+                    }
+                    mime.startsWith("video/") -> mime.substringAfter("video/").let {
+                        when (it) { "mp4" -> "mp4"; "webm" -> "webm"; "3gpp" -> "3gp"; else -> "mp4" }
+                    }
+                    mime.startsWith("audio/") -> mime.substringAfter("audio/").let {
+                        when (it) { "mpeg" -> "mp3"; "mp4" -> "m4a"; "wav" -> "wav"; "ogg" -> "ogg"; else -> "m4a" }
+                    }
+                    else -> "bin"
+                }
+            } ?: "bin"
+
+            val importDir = File(context.filesDir, "media/imported").apply { mkdirs() }
+            val destFile = File(importDir, "${System.currentTimeMillis()}.$extension")
+
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(destFile).use { output ->
+                    input.copyTo(output, BUFFER_SIZE)
+                }
+            } ?: return null
+
+            if (destFile.length() > 0) destFile else { destFile.delete(); null }
+        } catch (e: Exception) {
+            null
         }
     }
 
