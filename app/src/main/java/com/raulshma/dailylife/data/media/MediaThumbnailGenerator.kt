@@ -75,6 +75,12 @@ class MediaThumbnailGenerator(context: Context) {
                     val cacheFile = File(context.cacheDir, possiblePath)
                     if (cacheFile.exists()) return cacheFile
 
+                    if (segments.first() == "cache_media") {
+                        val relative = segments.drop(1).joinToString("/")
+                        val mappedCacheFile = File(context.cacheDir, "media/$relative")
+                        if (mappedCacheFile.exists()) return mappedCacheFile
+                    }
+
                     val file = File(context.filesDir, possiblePath)
                     if (file.exists()) return file
                 }

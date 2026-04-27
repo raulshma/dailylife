@@ -104,6 +104,7 @@ import com.raulshma.dailylife.ui.theme.DailyLifeDuration
 import com.raulshma.dailylife.ui.theme.DailyLifeEasing
 import com.raulshma.dailylife.ui.theme.DailyLifeTween
 import com.raulshma.dailylife.ui.theme.staggerDelay
+import java.io.File
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -367,6 +368,8 @@ private fun AttachmentHeroSection(item: LifeItem) {
 private fun DetailVideoPlayer(videoUrl: String) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val parsedVideoUri = remember(videoUrl) { Uri.parse(videoUrl) }
+    val localVideoFile = remember(videoUrl) { resolveLocalMediaFile(context, parsedVideoUri) }
     var videoView by remember { mutableStateOf<android.widget.VideoView?>(null) }
     var isPlaying by remember { mutableStateOf(true) }
 
@@ -382,7 +385,11 @@ private fun DetailVideoPlayer(videoUrl: String) {
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
                 android.widget.VideoView(ctx).apply {
-                    setVideoURI(Uri.parse(videoUrl))
+                    if (localVideoFile != null && localVideoFile.exists()) {
+                        setVideoPath(localVideoFile.absolutePath)
+                    } else {
+                        setVideoURI(parsedVideoUri)
+                    }
                     setOnPreparedListener { mp ->
                         mp.isLooping = true
                         mp.setVolume(1f, 1f)
@@ -484,6 +491,46 @@ private fun DetailVideoPlayer(videoUrl: String) {
                 videoView?.stopPlayback()
             }
         }
+    }
+}
+
+private fun resolveLocalMediaFile(context: android.content.Context, uri: Uri): File? {
+    return when (uri.scheme) {
+        "file" -> uri.path?.let { File(it) }?.takeIf { it.exists() }
+        "content" -> {
+            runCatching {
+                val projection = arrayOf(android.provider.MediaStore.MediaColumns.DATA)
+                context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val path = cursor.getString(0)
+                        if (path != null) {
+                            val f = File(path)
+                            if (f.exists()) return f
+                        }
+                    }
+                }
+            }
+
+            val segments = uri.pathSegments
+            if (segments.isNotEmpty()) {
+                val possiblePath = segments.joinToString("/")
+
+                val cacheFile = File(context.cacheDir, possiblePath)
+                if (cacheFile.exists()) return cacheFile
+
+                if (segments.first() == "cache_media") {
+                    val relative = segments.drop(1).joinToString("/")
+                    val mappedCacheFile = File(context.cacheDir, "media/$relative")
+                    if (mappedCacheFile.exists()) return mappedCacheFile
+                }
+
+                val filesFile = File(context.filesDir, possiblePath)
+                if (filesFile.exists()) return filesFile
+            }
+
+            null
+        }
+        else -> null
     }
 }
 

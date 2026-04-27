@@ -121,6 +121,9 @@ class MediaEncryptionManager(context: Context) {
         val uriPattern = Regex("""(?:content|file)://[^\s\"'<>]+""")
         return uriPattern.replace(text) { matchResult ->
             val uriString = matchResult.value
+            if (uriString.endsWith(".enc", ignoreCase = true)) {
+                return@replace uriString
+            }
             val uri = Uri.parse(uriString)
             val encryptedUri = encryptFile(uri, context)
             encryptedUri?.toString() ?: uriString
