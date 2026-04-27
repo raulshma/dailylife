@@ -1,5 +1,6 @@
 package com.raulshma.dailylife.ui.detail
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -7,8 +8,6 @@ import android.graphics.drawable.Drawable
 import android.media.MediaPlayer
 import android.net.Uri
 import android.util.Base64
-import android.view.ViewGroup
-import android.widget.FrameLayout
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.core.Animatable
@@ -24,7 +23,9 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -90,6 +91,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
@@ -185,6 +187,7 @@ fun ItemDetailScreen(
     var dragAxisLocked by remember { mutableStateOf(false) }
     var isHorizontalDrag by remember { mutableStateOf(false) }
     var justCompleted by remember { mutableStateOf(false) }
+    var isZoomedIn by remember { mutableStateOf(false) }
     val sharedTransitionScope = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalAnimatedVisibilityScope.current
 
@@ -301,15 +304,87 @@ fun ItemDetailScreen(
             .fillMaxSize()
             .background(Color.Black)
             .pointerInput(showDetailsSheet) {
-                detectDragGestures(
-                    onDragStart = {
-                        dragAxisLocked = false
-                        isHorizontalDrag = false
-                        dragAccumulator = 0f
-                        totalDx = 0f
-                        totalDy = 0f
-                    },
-                    onDrag = { change, dragAmount ->
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    dragAxisLocked = false
+                    isHorizontalDrag = false
+                    dragAccumulator = 0f
+                    totalDx = 0f
+                    totalDy = 0f
+
+                    val pointerId = down.id
+                    var previousPosition = down.position
+
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val activePointers =
+                            event.changes.count { it.pressed }
+
+                        if (activePointers >= 2 || isZoomedIn) {
+                            // multi-touch (pinch-to-zoom) or zoomed-in pan:
+                            // pass events through, don't consume
+                            continue
+                        }
+
+                        val change =
+                            event.changes.firstOrNull { it.id == pointerId }
+
+                        if (change == null || !change.pressed) {
+                            // pointer up — handle drag end
+                            if (isHorizontalDrag) {
+                                val swipeThreshold =
+                                    size.width * 0.25f
+                                val currentIndex =
+                                    navigableItemIds.indexOf(item.id)
+                                val navigateTo = when {
+                                    horizontalDragOffset < -swipeThreshold && currentIndex != -1 && currentIndex < navigableItemIds.lastIndex -> navigableItemIds[currentIndex + 1]
+                                    horizontalDragOffset > swipeThreshold && currentIndex != -1 && currentIndex > 0 -> navigableItemIds[currentIndex - 1]
+                                    else -> null
+                                }
+                                if (navigateTo != null) {
+                                    onNavigateToItem(navigateTo)
+                                } else {
+                                    scope.launch {
+                                        Animatable(horizontalDragOffset).animateTo(
+                                            targetValue = 0f,
+                                            animationSpec = tween(
+                                                durationMillis = 220,
+                                                easing = LinearOutSlowInEasing,
+                                            ),
+                                        ) {
+                                            horizontalDragOffset = value
+                                        }
+                                    }
+                                }
+                            } else {
+                                when {
+                                    dragAccumulator <= -120f && !showDetailsSheet -> {
+                                        showDetailsSheet = true
+                                        chromeVisible = true
+                                        dragVisualOffsetPx = 0f
+                                    }
+
+                                    dragAccumulator >= 220f && !showDetailsSheet && !chromeVisible -> {
+                                        onBack()
+                                    }
+
+                                    abs(dragAccumulator) >= 24f && !showDetailsSheet -> {
+                                        chromeVisible =
+                                            dragAccumulator < 0f
+                                        chromeInteractionTick += 1
+                                    }
+                                }
+                                dragAccumulator = 0f
+                                dragVisualOffsetPx = 0f
+                            }
+                            dragAxisLocked = false
+                            break
+                        }
+
+                        val dragAmount =
+                            change.position - previousPosition
+                        previousPosition = change.position
+
                         if (!dragAxisLocked) {
                             totalDx += dragAmount.x
                             totalDy += dragAmount.y
@@ -333,72 +408,17 @@ fun ItemDetailScreen(
                                 }
                                 if (!showDetailsSheet) {
                                     if (dragAmount.y > 0f && !chromeVisible) {
-                                        dragVisualOffsetPx = (dragVisualOffsetPx + (dragAmount.y * 0.9f)).coerceAtMost(360f)
+                                        dragVisualOffsetPx =
+                                            (dragVisualOffsetPx + (dragAmount.y * 0.9f)).coerceAtMost(360f)
                                     } else if (dragAmount.y < 0f) {
-                                        dragVisualOffsetPx = (dragVisualOffsetPx + (dragAmount.y * 0.6f)).coerceAtLeast(0f)
+                                        dragVisualOffsetPx =
+                                            (dragVisualOffsetPx + (dragAmount.y * 0.6f)).coerceAtLeast(0f)
                                     }
                                 }
                             }
                         }
-                    },
-                    onDragEnd = {
-                        if (isHorizontalDrag) {
-                            val swipeThreshold = size.width * 0.25f
-                            val currentIndex = navigableItemIds.indexOf(item.id)
-                            val navigateTo = when {
-                                horizontalDragOffset < -swipeThreshold && currentIndex != -1 && currentIndex < navigableItemIds.lastIndex -> navigableItemIds[currentIndex + 1]
-                                horizontalDragOffset > swipeThreshold && currentIndex != -1 && currentIndex > 0 -> navigableItemIds[currentIndex - 1]
-                                else -> null
-                            }
-                            if (navigateTo != null) {
-                                onNavigateToItem(navigateTo)
-                            } else {
-                                scope.launch {
-                                    Animatable(horizontalDragOffset).animateTo(
-                                        targetValue = 0f,
-                                        animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing),
-                                    ) {
-                                        horizontalDragOffset = value
-                                    }
-                                }
-                            }
-                        } else {
-                            when {
-                                dragAccumulator <= -120f && !showDetailsSheet -> {
-                                    showDetailsSheet = true
-                                    chromeVisible = true
-                                    dragVisualOffsetPx = 0f
-                                }
-                                dragAccumulator >= 220f && !showDetailsSheet && !chromeVisible -> {
-                                    onBack()
-                                }
-                                abs(dragAccumulator) >= 24f && !showDetailsSheet -> {
-                                    chromeVisible = dragAccumulator < 0f
-                                    chromeInteractionTick += 1
-                                }
-                            }
-                            dragAccumulator = 0f
-                            dragVisualOffsetPx = 0f
-                        }
-                        dragAxisLocked = false
-                    },
-                    onDragCancel = {
-                        if (isHorizontalDrag) {
-                            scope.launch {
-                                Animatable(horizontalDragOffset).animateTo(
-                                    targetValue = 0f,
-                                    animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing),
-                                ) {
-                                    horizontalDragOffset = value
-                                }
-                            }
-                        } else {
-                            dragAccumulator = 0f
-                            dragVisualOffsetPx = 0f
-                        }
-                        dragAxisLocked = false
-                    },
-                )
+                    }
+                }
             }
             .graphicsLayer {
                 translationX = horizontalDragOffset
@@ -410,6 +430,7 @@ fun ItemDetailScreen(
                 visualBrightnessHint = measured
             },
             heavyReady = heavyReady,
+            onZoomChanged = { zoomed -> isZoomedIn = zoomed },
             modifier = Modifier
                 .then(mediaSharedModifier)
                 .fillMaxSize()
@@ -692,6 +713,7 @@ private fun AttachmentHeroSection(
     item: LifeItem,
     onVisualBrightnessMeasured: (Float?) -> Unit,
     heavyReady: Boolean,
+    onZoomChanged: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val imageUrl = item.inferImagePreviewUrl()
@@ -745,15 +767,39 @@ private fun AttachmentHeroSection(
                 }
 
                 decryptedImage != null -> {
+                    var scale by remember(decryptedImage) { mutableStateOf(1f) }
+                    var offset by remember(decryptedImage) { mutableStateOf(Offset.Zero) }
+
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Color.Black),
+                            .background(Color.Black)
+                            .pointerInput(decryptedImage) {
+                                detectTransformGestures { _, pan, zoom, _ ->
+                                    val newScale = (scale * zoom).coerceIn(1f, 5f)
+                                    val zoomed = newScale > 1.05f
+                                    onZoomChanged(zoomed)
+                                    if (!zoomed) {
+                                        scale = 1f
+                                        offset = Offset.Zero
+                                    } else {
+                                        scale = newScale
+                                        offset += pan
+                                    }
+                                }
+                            },
                     ) {
                         SubcomposeAsyncImage(
                             model = decryptedImage,
                             contentDescription = "Image preview",
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    scaleX = scale
+                                    scaleY = scale
+                                    translationX = offset.x
+                                    translationY = offset.y
+                                },
                             contentScale = ContentScale.Fit,
                             loading = {
                                 ThumbhashLoadingPlaceholder(
@@ -777,6 +823,7 @@ private fun AttachmentHeroSection(
                     if (heavyReady) {
                         DetailVideoPlayer(
                             videoUrl = decryptedVideo,
+                            onZoomChanged = onZoomChanged,
                             modifier = Modifier.fillMaxSize(),
                         )
                     } else {
@@ -988,7 +1035,7 @@ private fun drawableBrightnessLuminance(drawable: Drawable): Float? {
 }
 
 @Composable
-private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
+private fun DetailVideoPlayer(videoUrl: String, onZoomChanged: (Boolean) -> Unit = {}, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val parsedVideoUri = remember(videoUrl) { Uri.parse(videoUrl) }
@@ -1000,6 +1047,8 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
     var positionMs by remember { mutableStateOf(0L) }
     var isSeeking by remember { mutableStateOf(false) }
     var seekPositionMs by remember { mutableStateOf(0L) }
+    var scale by remember(videoUrl) { mutableStateOf(1f) }
+    var offset by remember(videoUrl) { mutableStateOf(Offset.Zero) }
 
     val mediaUri = remember(localVideoFile, parsedVideoUri) {
         localVideoFile?.let(Uri::fromFile) ?: parsedVideoUri
@@ -1080,18 +1129,44 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
         modifier = modifier
             .background(Color.Black),
     ) {
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    useController = false
-                    playerView = this
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(videoUrl) {
+                    detectTransformGestures { _, pan, zoom, _ ->
+                        val newScale = (scale * zoom).coerceIn(1f, 5f)
+                        val zoomed = newScale > 1.05f
+                        onZoomChanged(zoomed)
+                        if (!zoomed) {
+                            scale = 1f
+                            offset = Offset.Zero
+                        } else {
+                            scale = newScale
+                            offset += pan
+                        }
+                    }
+                },
+        ) {
+            AndroidView(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        translationX = offset.x
+                        translationY = offset.y
+                    },
+                factory = { ctx ->
+                    PlayerView(ctx).apply {
+                        useController = false
+                        playerView = this
+                    }
+                },
+                update = { view ->
+                    view.player = exoPlayer
                 }
-            },
-            update = { view ->
-                view.player = exoPlayer
-            }
-        )
+            )
+        }
 
         if (hadPlaybackError) {
             Box(
