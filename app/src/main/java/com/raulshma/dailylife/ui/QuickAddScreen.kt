@@ -52,6 +52,7 @@ import androidx.compose.material.icons.filled.Create
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Label
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
@@ -61,12 +62,10 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.EventRepeat
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Mood
-import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Pause
@@ -117,6 +116,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -455,70 +455,60 @@ private fun QuickAddContent(
                 }
             }
 
-            // Smart Type Selector (4 Pills + More)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val topTypes = listOf(LifeItemType.Thought, LifeItemType.Note, LifeItemType.Task, LifeItemType.Photo)
-                
-                topTypes.forEach { type ->
-                    val isSelected = selectedType == type
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = {
-                            if (selectedType != type) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            selectedType = type
-                        },
-                        label = { Text(type.label) },
-                        leadingIcon = {
-                            Icon(imageVector = type.icon(), contentDescription = null, modifier = Modifier.size(18.dp))
-                        },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+            // Type Selector (all badges, horizontally scrollable)
+            val typeScrollState = rememberScrollState()
+            val showTypeScrollCue = typeScrollState.maxValue > 0 && typeScrollState.value < typeScrollState.maxValue
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(typeScrollState)
+                        .padding(end = 24.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    LifeItemType.entries.forEach { type ->
+                        val isSelected = selectedType == type
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = {
+                                if (selectedType != type) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                selectedType = type
+                            },
+                            label = { Text(type.label) },
+                            leadingIcon = {
+                                Icon(imageVector = type.icon(), contentDescription = null, modifier = Modifier.size(18.dp))
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
                         )
-                    )
+                    }
                 }
 
-                // More dropdown for other types
-                var showMoreTypes by remember { mutableStateOf(false) }
-                val isOtherTypeSelected = selectedType !in topTypes
-                
-                Box {
-                    FilterChip(
-                        selected = isOtherTypeSelected,
-                        onClick = { showMoreTypes = true },
-                        label = { Text(if (isOtherTypeSelected) selectedType.label else "More") },
-                        leadingIcon = {
-                            if (isOtherTypeSelected) {
-                                Icon(imageVector = selectedType.icon(), contentDescription = null, modifier = Modifier.size(18.dp))
-                            } else {
-                                Icon(imageVector = Icons.Filled.MoreHoriz, contentDescription = null, modifier = Modifier.size(18.dp))
-                            }
-                        },
-                        trailingIcon = {
-                            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, modifier = Modifier.size(16.dp))
-                        }
-                    )
-                    
-                    DropdownMenu(
-                        expanded = showMoreTypes,
-                        onDismissRequest = { showMoreTypes = false }
-                    ) {
-                        LifeItemType.entries.filter { it !in topTypes }.forEach { type ->
-                            DropdownMenuItem(
-                                text = { Text(type.label) },
-                                leadingIcon = {
-                                    Icon(imageVector = type.icon(), contentDescription = null)
-                                },
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    selectedType = type
-                                    showMoreTypes = false
-                                }
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = showTypeScrollCue,
+                    modifier = Modifier.align(Alignment.CenterEnd),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .background(
+                                brush = Brush.horizontalGradient(
+                                    colors = listOf(
+                                        Color.Transparent,
+                                        MaterialTheme.colorScheme.surface,
+                                    ),
+                                ),
                             )
-                        }
+                            .padding(start = 18.dp, end = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = "More types",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            modifier = Modifier.size(18.dp),
+                        )
                     }
                 }
             }
