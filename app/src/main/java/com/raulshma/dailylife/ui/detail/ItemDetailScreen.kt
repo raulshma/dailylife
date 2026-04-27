@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.drawable.Drawable
 import android.media.MediaPlayer
 import android.net.Uri
+import android.util.Base64
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.animation.AnimatedVisibility
@@ -126,6 +127,7 @@ import com.raulshma.dailylife.ui.TimestampFormatter
 import com.raulshma.dailylife.ui.TypeBadge
 import com.raulshma.dailylife.ui.components.SharedElementKeys
 import com.raulshma.dailylife.ui.components.CompletionRipple
+import com.raulshma.dailylife.ui.components.ShimmerBox
 import com.raulshma.dailylife.ui.inferLocationPreview
 import com.raulshma.dailylife.ui.rememberDecryptedMediaUri
 import com.raulshma.dailylife.data.media.AudioWaveformGenerator
@@ -163,6 +165,7 @@ fun ItemDetailScreen(
     val hasVisualMedia = item.inferImagePreviewUrl() != null ||
         item.inferVideoPlaybackUrl() != null ||
         item.inferLocationPreview() != null
+    val hasVideoMedia = item.inferVideoPlaybackUrl() != null
     val hasAudioMedia = item.inferAudioUrl() != null
 
     var contentVisible by remember { mutableStateOf(false) }
@@ -606,7 +609,7 @@ fun ItemDetailScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
-                    .padding(bottom = 10.dp),
+                    .padding(bottom = if (hasVideoMedia) 84.dp else 10.dp),
             ) {
                 Row(
                     modifier = Modifier
@@ -699,6 +702,12 @@ private fun AttachmentHeroSection(
     val decryptedImage = rememberDecryptedMediaUri(imageUrl)
     val decryptedVideo = rememberDecryptedMediaUri(videoUrl)
     val decryptedAudio = rememberDecryptedMediaUri(audioUrl)
+    val thumbhashPreview = remember(item.id, item.title, item.body) {
+        item.thumbhashPreview()
+    }
+    val waitingForVisualMedia = (imageUrl != null || videoUrl != null) &&
+        decryptedImage == null &&
+        decryptedVideo == null
 
     val hasVisual = decryptedImage != null || decryptedVideo != null || location != null
     val displayBody = item.displayBody()
@@ -726,6 +735,15 @@ private fun AttachmentHeroSection(
             contentAlignment = Alignment.Center,
         ) {
             when {
+                waitingForVisualMedia -> {
+                    onVisualBrightnessMeasured(thumbhashPreview?.luminance ?: 0.58f)
+                    ThumbhashLoadingPlaceholder(
+                        preview = thumbhashPreview,
+                        isVideo = videoUrl != null,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+
                 decryptedImage != null -> {
                     Box(
                         modifier = Modifier
@@ -737,6 +755,13 @@ private fun AttachmentHeroSection(
                             contentDescription = "Image preview",
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Fit,
+                            loading = {
+                                ThumbhashLoadingPlaceholder(
+                                    preview = thumbhashPreview,
+                                    isVideo = false,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            },
                             onSuccess = { state ->
                                 onVisualBrightnessMeasured(drawableBrightnessLuminance(state.result.drawable))
                             },
@@ -748,26 +773,18 @@ private fun AttachmentHeroSection(
                 }
 
                 decryptedVideo != null -> {
-                    onVisualBrightnessMeasured(null)
+                    onVisualBrightnessMeasured(thumbhashPreview?.luminance)
                     if (heavyReady) {
                         DetailVideoPlayer(
                             videoUrl = decryptedVideo,
                             modifier = Modifier.fillMaxSize(),
                         )
                     } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color.Black),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Videocam,
-                                contentDescription = null,
-                                tint = Color.White.copy(alpha = 0.5f),
-                                modifier = Modifier.size(48.dp),
-                            )
-                        }
+                        ThumbhashLoadingPlaceholder(
+                            preview = thumbhashPreview,
+                            isVideo = true,
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
                 }
 
@@ -837,6 +854,103 @@ private fun AttachmentHeroSection(
             }
         }
     }
+}
+
+private data class ThumbhashPreview(
+    val colors: List<Color>,
+    val luminance: Float,
+)
+
+@Composable
+private fun ThumbhashLoadingPlaceholder(
+    preview: ThumbhashPreview?,
+    isVideo: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val fallbackColors = if (isVideo) {
+        listOf(
+            Color(0xFF0F1114),
+            Color(0xFF171A20),
+            Color(0xFF0F1114),
+        )
+    } else {
+        listOf(
+            Color(0xFF171717),
+            Color(0xFF222222),
+            Color(0xFF171717),
+        )
+    }
+    val colors = preview?.colors?.takeIf { it.size >= 3 } ?: fallbackColors
+
+    Box(
+        modifier = modifier.background(
+            Brush.linearGradient(
+                colors = colors,
+            )
+        ),
+        contentAlignment = Alignment.Center,
+    ) {
+        ShimmerBox(
+            modifier = Modifier.fillMaxSize(),
+            shape = RoundedCornerShape(0.dp),
+            baseColor = Color.Transparent,
+            highlightColor = Color.White.copy(alpha = 0.12f),
+        )
+
+        if (isVideo) {
+            Icon(
+                imageVector = Icons.Filled.Videocam,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.6f),
+                modifier = Modifier.size(46.dp),
+            )
+        }
+    }
+}
+
+private fun LifeItem.thumbhashPreview(): ThumbhashPreview? {
+    val token = extractThumbhashToken() ?: return null
+    val bytes = decodeThumbhashBytes(token) ?: return null
+    if (bytes.isEmpty()) return null
+
+    fun channelAt(index: Int): Float =
+        (bytes[index % bytes.size].toInt() and 0xFF) / 255f
+
+    val c1 = Color(channelAt(0), channelAt(1), channelAt(2), 1f)
+    val c2 = Color(channelAt(3), channelAt(4), channelAt(5), 1f)
+    val c3 = Color(channelAt(6), channelAt(7), channelAt(8), 1f)
+    val luma = ((0.2126f * c1.red) + (0.7152f * c1.green) + (0.0722f * c1.blue))
+        .coerceIn(0f, 1f)
+
+    return ThumbhashPreview(
+        colors = listOf(c1, c2, c3),
+        luminance = luma,
+    )
+}
+
+private fun LifeItem.extractThumbhashToken(): String? {
+    val source = listOf(title, body).joinToString(" ")
+    val queryPattern = Regex("""(?:[?&]|\b)(?:thumbhash|thumb_hash|thumb)=(?<value>[^&#\s]+)""", RegexOption.IGNORE_CASE)
+    val inlinePattern = Regex("""\bthumbhash\s*[:=]\s*(?<value>[A-Za-z0-9_\-+/=]+)""", RegexOption.IGNORE_CASE)
+    val queryMatch = queryPattern.find(source)?.groups?.get("value")?.value
+    if (!queryMatch.isNullOrBlank()) return queryMatch
+    val inlineMatch = inlinePattern.find(source)?.groups?.get("value")?.value
+    return inlineMatch?.takeIf { it.isNotBlank() }
+}
+
+private fun decodeThumbhashBytes(raw: String): ByteArray? {
+    val normalized = raw.trim()
+        .replace('-', '+')
+        .replace('_', '/')
+        .replace("%2B", "+", ignoreCase = true)
+        .replace("%2F", "/", ignoreCase = true)
+    if (normalized.isBlank()) return null
+    val padded = when (normalized.length % 4) {
+        2 -> "$normalized=="
+        3 -> "$normalized="
+        else -> normalized
+    }
+    return runCatching { Base64.decode(padded, Base64.DEFAULT) }.getOrNull()
 }
 
 private fun drawableBrightnessLuminance(drawable: Drawable): Float? {
@@ -1053,33 +1167,13 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
             }
         }
 
-        Box(
+        Row(
             modifier = Modifier
-                .align(Alignment.BottomEnd)
+                .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(8.dp),
-        ) {
-            FilledTonalIconButton(
-                onClick = {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(videoUrl))
-                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    runCatching { context.startActivity(intent) }
-                },
-                modifier = Modifier.size(30.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Fullscreen,
-                    contentDescription = "Fullscreen",
-                    modifier = Modifier.size(16.dp),
-                )
-            }
-        }
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .navigationBarsPadding()
-                .padding(8.dp),
+                .padding(bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             FilledTonalIconButton(
                 onClick = {
@@ -1097,6 +1191,21 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     contentDescription = if (isPlaying) "Pause" else "Play",
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+
+            FilledTonalIconButton(
+                onClick = {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(videoUrl))
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    runCatching { context.startActivity(intent) }
+                },
+                modifier = Modifier.size(30.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Fullscreen,
+                    contentDescription = "Fullscreen",
                     modifier = Modifier.size(16.dp),
                 )
             }

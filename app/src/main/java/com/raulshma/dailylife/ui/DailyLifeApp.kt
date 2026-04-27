@@ -9,6 +9,7 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.util.Base64
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SharedTransitionLayout
@@ -168,7 +169,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.layout.ContentScale
-import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import com.raulshma.dailylife.data.media.AudioWaveformGenerator
 import com.raulshma.dailylife.data.media.MediaThumbnailGenerator
@@ -1224,7 +1224,9 @@ internal fun TextPreview(item: LifeItem) {
 
 @Composable
 internal fun ImagePreview(item: LifeItem) {
-    val imageUrl = rememberDecryptedMediaUri(item.inferImagePreviewUrl())
+    val rawImageUrl = item.inferImagePreviewUrl()
+    val imageUrl = rememberDecryptedMediaUri(rawImageUrl)
+    val thumbhashPreview = remember(item.id, item.title, item.body) { item.thumbhashPreviewPalette() }
     if (imageUrl != null) {
         SubcomposeAsyncImage(
             model = imageUrl,
@@ -1232,7 +1234,11 @@ internal fun ImagePreview(item: LifeItem) {
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop,
             loading = {
-                ShimmerBox(modifier = Modifier.fillMaxSize())
+                ThumbhashShimmerPlaceholder(
+                    preview = thumbhashPreview,
+                    isVideo = false,
+                    modifier = Modifier.fillMaxSize(),
+                )
             },
             error = {
                 Box(
@@ -1256,6 +1262,12 @@ internal fun ImagePreview(item: LifeItem) {
                     }
                 }
             }
+        )
+    } else if (rawImageUrl != null) {
+        ThumbhashShimmerPlaceholder(
+            preview = thumbhashPreview,
+            isVideo = false,
+            modifier = Modifier.fillMaxSize(),
         )
     } else {
         Box(
@@ -1283,7 +1295,9 @@ internal fun ImagePreview(item: LifeItem) {
 
 @Composable
 internal fun VideoPreview(item: LifeItem, autoplay: Boolean = false) {
-    val videoUrl = rememberDecryptedMediaUri(item.inferVideoPlaybackUrl())
+    val rawVideoUrl = item.inferVideoPlaybackUrl()
+    val videoUrl = rememberDecryptedMediaUri(rawVideoUrl)
+    val thumbhashPreview = remember(item.id, item.title, item.body) { item.thumbhashPreviewPalette() }
 
     if (autoplay && videoUrl != null) {
         val context = LocalContext.current
@@ -1325,10 +1339,23 @@ internal fun VideoPreview(item: LifeItem, autoplay: Boolean = false) {
         val thumbUrl = rememberVideoThumbnail(item)
         val displayUrl = imageUrl ?: thumbUrl
         Box(modifier = Modifier.fillMaxSize()) {
-            if (displayUrl != null) {
-                AsyncImage(
+            if (displayUrl != null && videoUrl != null) {
+                SubcomposeAsyncImage(
                     model = displayUrl,
                     contentDescription = "Video preview",
+                    modifier = Modifier.fillMaxSize(),
+                    loading = {
+                        ThumbhashShimmerPlaceholder(
+                            preview = thumbhashPreview,
+                            isVideo = true,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    },
+                )
+            } else if (rawVideoUrl != null) {
+                ThumbhashShimmerPlaceholder(
+                    preview = thumbhashPreview,
+                    isVideo = true,
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
@@ -1360,6 +1387,87 @@ internal fun VideoPreview(item: LifeItem, autoplay: Boolean = false) {
             }
         }
     }
+}
+
+private data class ThumbhashPreviewPalette(
+    val colors: List<Color>,
+)
+
+@Composable
+private fun ThumbhashShimmerPlaceholder(
+    preview: ThumbhashPreviewPalette?,
+    isVideo: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val fallbackColors = if (isVideo) {
+        listOf(
+            Color(0xFF1B2231),
+            Color(0xFF242E44),
+            Color(0xFF1B2231),
+        )
+    } else {
+        listOf(
+            MaterialTheme.colorScheme.primaryContainer,
+            MaterialTheme.colorScheme.secondaryContainer,
+            MaterialTheme.colorScheme.primaryContainer,
+        )
+    }
+    val colors = preview?.colors?.takeIf { it.size >= 3 } ?: fallbackColors
+
+    Box(
+        modifier = modifier
+            .background(
+                brush = Brush.linearGradient(colors = colors),
+            )
+    ) {
+        ShimmerBox(
+            modifier = Modifier.fillMaxSize(),
+            shape = RectangleShape,
+            baseColor = Color.Transparent,
+            highlightColor = Color.White.copy(alpha = 0.14f),
+        )
+    }
+}
+
+private fun LifeItem.thumbhashPreviewPalette(): ThumbhashPreviewPalette? {
+    val token = extractThumbhashToken() ?: return null
+    val bytes = decodeThumbhashBytes(token) ?: return null
+    if (bytes.isEmpty()) return null
+
+    fun channelAt(index: Int): Float =
+        (bytes[index % bytes.size].toInt() and 0xFF) / 255f
+
+    val c1 = Color(channelAt(0), channelAt(1), channelAt(2), 1f)
+    val c2 = Color(channelAt(3), channelAt(4), channelAt(5), 1f)
+    val c3 = Color(channelAt(6), channelAt(7), channelAt(8), 1f)
+
+    return ThumbhashPreviewPalette(colors = listOf(c1, c2, c3))
+}
+
+private fun LifeItem.extractThumbhashToken(): String? {
+    val source = listOf(title, body).joinToString(" ")
+    val queryPattern = Regex("""(?:[?&]|\b)(?:thumbhash|thumb_hash|thumb)=(?<value>[^&#\s]+)""", RegexOption.IGNORE_CASE)
+    val inlinePattern = Regex("""\bthumbhash\s*[:=]\s*(?<value>[A-Za-z0-9_\-+/=]+)""", RegexOption.IGNORE_CASE)
+    val queryMatch = queryPattern.find(source)?.groups?.get("value")?.value
+    if (!queryMatch.isNullOrBlank()) return queryMatch
+    val inlineMatch = inlinePattern.find(source)?.groups?.get("value")?.value
+    return inlineMatch?.takeIf { it.isNotBlank() }
+}
+
+private fun decodeThumbhashBytes(raw: String): ByteArray? {
+    val normalized = raw.trim()
+        .replace('-', '+')
+        .replace('_', '/')
+        .replace("%2B", "+", ignoreCase = true)
+        .replace("%2F", "/", ignoreCase = true)
+    if (normalized.isBlank()) return null
+
+    val padded = when (normalized.length % 4) {
+        2 -> "$normalized=="
+        3 -> "$normalized="
+        else -> normalized
+    }
+    return runCatching { Base64.decode(padded, Base64.DEFAULT) }.getOrNull()
 }
 
 @Composable
