@@ -54,6 +54,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -376,6 +377,10 @@ private fun DetailVideoPlayer(videoUrl: String) {
     val localVideoFile = remember(videoUrl) { resolveLocalMediaFile(context, parsedVideoUri) }
     var isPlaying by remember { mutableStateOf(false) }
     var hadPlaybackError by remember { mutableStateOf(false) }
+    var durationMs by remember { mutableStateOf(0L) }
+    var positionMs by remember { mutableStateOf(0L) }
+    var isSeeking by remember { mutableStateOf(false) }
+    var seekPositionMs by remember { mutableStateOf(0L) }
 
     val mediaUri = remember(localVideoFile, parsedVideoUri) {
         localVideoFile?.let(Uri::fromFile) ?: parsedVideoUri
@@ -397,9 +402,31 @@ private fun DetailVideoPlayer(videoUrl: String) {
                     hadPlaybackError = true
                     isPlaying = false
                 }
+
+                override fun onPlaybackStateChanged(state: Int) {
+                    durationMs = duration.coerceAtLeast(0L)
+                    if (!isSeeking) {
+                        positionMs = currentPosition.coerceAtLeast(0L)
+                        seekPositionMs = positionMs
+                    }
+                }
             })
         }
     }
+
+    LaunchedEffect(exoPlayer, isSeeking) {
+        while (true) {
+            durationMs = exoPlayer.duration.coerceAtLeast(0L)
+            if (!isSeeking) {
+                positionMs = exoPlayer.currentPosition.coerceAtLeast(0L)
+                seekPositionMs = positionMs
+            }
+            delay(250L)
+        }
+    }
+
+    val sliderMax = remember(durationMs) { durationMs.coerceAtLeast(1L).toFloat() }
+    val sliderValue = if (isSeeking) seekPositionMs.toFloat() else positionMs.toFloat().coerceAtMost(sliderMax)
 
     Box(
         modifier = Modifier
@@ -437,6 +464,46 @@ private fun DetailVideoPlayer(videoUrl: String) {
             }
         }
 
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(start = 40.dp, end = 40.dp, bottom = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp),
+        ) {
+            Slider(
+                modifier = Modifier.height(18.dp),
+                value = sliderValue,
+                onValueChange = { value ->
+                    isSeeking = true
+                    seekPositionMs = value.toLong().coerceIn(0L, durationMs.coerceAtLeast(0L))
+                },
+                onValueChangeFinished = {
+                    val target = seekPositionMs.coerceIn(0L, durationMs.coerceAtLeast(0L))
+                    exoPlayer.seekTo(target)
+                    positionMs = target
+                    isSeeking = false
+                },
+                valueRange = 0f..sliderMax,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = formatPlaybackTime((if (isSeeking) seekPositionMs else positionMs) / 1000L),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.88f),
+                )
+                Text(
+                    text = formatPlaybackTime(durationMs / 1000L),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.88f),
+                )
+            }
+        }
+
         if (!isPlaying) {
             FilledTonalIconButton(
                 onClick = {
@@ -444,12 +511,12 @@ private fun DetailVideoPlayer(videoUrl: String) {
                 },
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .size(56.dp),
+                    .size(44.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.PlayArrow,
                     contentDescription = "Play video",
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier.size(24.dp),
                 )
             }
         }
@@ -457,7 +524,7 @@ private fun DetailVideoPlayer(videoUrl: String) {
         Box(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(12.dp),
+                .padding(8.dp),
         ) {
             FilledTonalIconButton(
                 onClick = {
@@ -465,12 +532,12 @@ private fun DetailVideoPlayer(videoUrl: String) {
                     intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     runCatching { context.startActivity(intent) }
                 },
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(30.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.Fullscreen,
                     contentDescription = "Fullscreen",
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(16.dp),
                 )
             }
         }
@@ -478,7 +545,7 @@ private fun DetailVideoPlayer(videoUrl: String) {
         Box(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(12.dp),
+                .padding(8.dp),
         ) {
             FilledTonalIconButton(
                 onClick = {
@@ -490,12 +557,12 @@ private fun DetailVideoPlayer(videoUrl: String) {
                         isPlaying = true
                     }
                 },
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(30.dp),
             ) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     contentDescription = if (isPlaying) "Pause" else "Play",
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(16.dp),
                 )
             }
         }
@@ -523,6 +590,13 @@ private fun DetailVideoPlayer(videoUrl: String) {
             }
         }
     }
+}
+
+private fun formatPlaybackTime(totalSeconds: Long): String {
+    val seconds = totalSeconds.coerceAtLeast(0L)
+    val minutesPart = seconds / 60L
+    val secondsPart = seconds % 60L
+    return "$minutesPart:${secondsPart.toString().padStart(2, '0')}"
 }
 
 private fun resolveLocalMediaFile(context: android.content.Context, uri: Uri): File? {
