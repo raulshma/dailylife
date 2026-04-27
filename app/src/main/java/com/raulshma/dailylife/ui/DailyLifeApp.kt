@@ -20,6 +20,7 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
@@ -228,7 +229,7 @@ private enum class HomeTab(
 }
 
 private sealed class Screen {
-    data class Main(val tab: HomeTab) : Screen()
+    data object Main : Screen()
     data class Detail(val itemId: Long) : Screen()
     data class CompletionHistory(val itemId: Long) : Screen()
 }
@@ -362,7 +363,7 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
     val screen = when {
         completionHistoryItemId != null -> Screen.CompletionHistory(completionHistoryItemId!!)
         selectedItemId != null -> Screen.Detail(selectedItemId!!)
-        else -> Screen.Main(selectedTab)
+        else -> Screen.Main
     }
 
     BackHandler(enabled = completionHistoryItemId != null || selectedItemId != null) {
@@ -828,9 +829,11 @@ private fun MainScaffold(
             }
         },
     ) { paddingValues ->
-        androidx.compose.animation.Crossfade(
+        AnimatedContent(
             targetState = selectedTab,
-            animationSpec = DailyLifeTween.content(),
+            transitionSpec = {
+                fadeIn(DailyLifeTween.tab<Float>()) togetherWith fadeOut(DailyLifeTween.tab<Float>())
+            },
             label = "tabTransition",
         ) { currentTab ->
             when (currentTab) {

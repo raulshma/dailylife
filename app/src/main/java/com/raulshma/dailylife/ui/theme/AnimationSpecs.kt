@@ -92,6 +92,12 @@ object DailyLifeTween {
         durationMillis = DailyLifeDuration.LONG,
         easing = DailyLifeEasing.Ambient
     )
+
+    /** Tab switch — snappy crossfade for bottom nav */
+    fun <T> tab(): FiniteAnimationSpec<T> = tween(
+        durationMillis = DailyLifeDuration.INSTANT,
+        easing = DailyLifeEasing.Enter
+    )
 }
 
 object DailyLifeRepeat {

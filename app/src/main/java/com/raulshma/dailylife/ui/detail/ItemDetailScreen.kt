@@ -859,6 +859,7 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
     val parsedVideoUri = remember(videoUrl) { Uri.parse(videoUrl) }
     val localVideoFile = remember(videoUrl) { resolveLocalMediaFile(context, parsedVideoUri) }
     var isPlaying by remember { mutableStateOf(false) }
+    var userPaused by remember { mutableStateOf(false) }
     var hadPlaybackError by remember { mutableStateOf(false) }
     var durationMs by remember { mutableStateOf(0L) }
     var positionMs by remember { mutableStateOf(0L) }
@@ -869,8 +870,10 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
         localVideoFile?.let(Uri::fromFile) ?: parsedVideoUri
     }
 
-    var exoPlayer by remember(mediaUri) { mutableStateOf<ExoPlayer?>(null) }
-    LaunchedEffect(mediaUri) {
+    var playerView by remember { mutableStateOf<PlayerView?>(null) }
+    var exoPlayer by remember { mutableStateOf<ExoPlayer?>(null) }
+
+    DisposableEffect(mediaUri, lifecycleOwner) {
         val player = ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(mediaUri))
             repeatMode = Player.REPEAT_MODE_ONE
@@ -885,6 +888,7 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                     hadPlaybackError = true
                     isPlaying = false
+                    userPaused = false
                 }
 
                 override fun onPlaybackStateChanged(state: Int) {
@@ -897,6 +901,29 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
             })
         }
         exoPlayer = player
+        playerView?.player = player
+
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> {
+                    player.pause()
+                    isPlaying = false
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    if (!hadPlaybackError && !userPaused) {
+                        player.playWhenReady = true
+                    }
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            playerView?.player = null
+            exoPlayer = null
+            player.release()
+        }
     }
 
     LaunchedEffect(exoPlayer, isSeeking) {
@@ -923,6 +950,7 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     useController = false
+                    playerView = this
                 }
             },
             update = { view ->
@@ -989,6 +1017,7 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
             FilledTonalIconButton(
                 onClick = {
                     exoPlayer?.playWhenReady = true
+                    userPaused = false
                 },
                 modifier = Modifier
                     .align(Alignment.Center)
@@ -1033,10 +1062,10 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
                     val player = exoPlayer ?: return@FilledTonalIconButton
                     if (player.isPlaying) {
                         player.pause()
-                        isPlaying = false
+                        userPaused = true
                     } else {
                         player.play()
-                        isPlaying = true
+                        userPaused = false
                     }
                 },
                 modifier = Modifier.size(30.dp),
@@ -1046,30 +1075,6 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
                     contentDescription = if (isPlaying) "Pause" else "Play",
                     modifier = Modifier.size(16.dp),
                 )
-            }
-        }
-
-        DisposableEffect(exoPlayer, lifecycleOwner) {
-            val player = exoPlayer ?: return@DisposableEffect onDispose { }
-            val observer = LifecycleEventObserver { _, event ->
-                when (event) {
-                    Lifecycle.Event.ON_PAUSE -> {
-                        player.pause()
-                        isPlaying = false
-                    }
-                    Lifecycle.Event.ON_RESUME -> {
-                        if (!hadPlaybackError) {
-                            player.playWhenReady = true
-                            isPlaying = player.isPlaying
-                        }
-                    }
-                    else -> {}
-                }
-            }
-            lifecycleOwner.lifecycle.addObserver(observer)
-            onDispose {
-                lifecycleOwner.lifecycle.removeObserver(observer)
-                player.release()
             }
         }
     }
@@ -1130,7 +1135,7 @@ private fun DetailAudioPlayer(audioUrl: String, title: String, modifier: Modifie
     var currentPosition by remember { mutableStateOf(0) }
     var duration by remember { mutableStateOf(0) }
 
-    LaunchedEffect(audioUrl) {
+    DisposableEffect(audioUrl) {
         val mp = MediaPlayer()
         try {
             mp.setDataSource(context, Uri.parse(audioUrl))
@@ -1140,14 +1145,15 @@ private fun DetailAudioPlayer(audioUrl: String, title: String, modifier: Modifie
         } catch (_: Exception) {
             mp.release()
         }
-    }
-
-    DisposableEffect(Unit) {
         onDispose {
             mediaPlayer?.apply {
                 if (isPlaying) stop()
                 release()
             }
+            mediaPlayer = null
+            duration = 0
+            currentPosition = 0
+            isPlaying = false
         }
     }
 
