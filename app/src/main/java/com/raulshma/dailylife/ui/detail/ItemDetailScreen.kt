@@ -81,6 +81,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import coil.compose.SubcomposeAsyncImage
@@ -370,8 +374,32 @@ private fun DetailVideoPlayer(videoUrl: String) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val parsedVideoUri = remember(videoUrl) { Uri.parse(videoUrl) }
     val localVideoFile = remember(videoUrl) { resolveLocalMediaFile(context, parsedVideoUri) }
-    var videoView by remember { mutableStateOf<android.widget.VideoView?>(null) }
-    var isPlaying by remember { mutableStateOf(true) }
+    var isPlaying by remember { mutableStateOf(false) }
+    var hadPlaybackError by remember { mutableStateOf(false) }
+
+    val mediaUri = remember(localVideoFile, parsedVideoUri) {
+        localVideoFile?.let(Uri::fromFile) ?: parsedVideoUri
+    }
+
+    val exoPlayer = remember(mediaUri) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(mediaUri))
+            repeatMode = Player.REPEAT_MODE_ONE
+            volume = 1f
+            prepare()
+            playWhenReady = true
+            addListener(object : Player.Listener {
+                override fun onIsPlayingChanged(playing: Boolean) {
+                    isPlaying = playing
+                }
+
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                    hadPlaybackError = true
+                    isPlaying = false
+                }
+            })
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -384,29 +412,35 @@ private fun DetailVideoPlayer(videoUrl: String) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
-                android.widget.VideoView(ctx).apply {
-                    if (localVideoFile != null && localVideoFile.exists()) {
-                        setVideoPath(localVideoFile.absolutePath)
-                    } else {
-                        setVideoURI(parsedVideoUri)
-                    }
-                    setOnPreparedListener { mp ->
-                        mp.isLooping = true
-                        mp.setVolume(1f, 1f)
-                        start()
-                        isPlaying = true
-                    }
-                    setOnErrorListener { _, _, _ -> true }
-                    videoView = this
+                PlayerView(ctx).apply {
+                    player = exoPlayer
+                    useController = false
                 }
+            },
+            update = { view ->
+                view.player = exoPlayer
             }
         )
+
+        if (hadPlaybackError) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.55f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "Playback unavailable",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
 
         if (!isPlaying) {
             FilledTonalIconButton(
                 onClick = {
-                    videoView?.start()
-                    isPlaying = true
+                    exoPlayer.playWhenReady = true
                 },
                 modifier = Modifier
                     .align(Alignment.Center)
@@ -448,12 +482,11 @@ private fun DetailVideoPlayer(videoUrl: String) {
         ) {
             FilledTonalIconButton(
                 onClick = {
-                    val vv = videoView
-                    if (vv != null && vv.isPlaying) {
-                        vv.pause()
+                    if (exoPlayer.isPlaying) {
+                        exoPlayer.pause()
                         isPlaying = false
                     } else {
-                        vv?.start()
+                        exoPlayer.play()
                         isPlaying = true
                     }
                 },
@@ -467,19 +500,17 @@ private fun DetailVideoPlayer(videoUrl: String) {
             }
         }
 
-        DisposableEffect(videoView, lifecycleOwner) {
+        DisposableEffect(exoPlayer, lifecycleOwner) {
             val observer = LifecycleEventObserver { _, event ->
                 when (event) {
                     Lifecycle.Event.ON_PAUSE -> {
-                        videoView?.pause()
-                        isPlaying = videoView?.isPlaying == true
+                        exoPlayer.pause()
+                        isPlaying = false
                     }
                     Lifecycle.Event.ON_RESUME -> {
-                        videoView?.let {
-                            if (!it.isPlaying) {
-                                it.start()
-                                isPlaying = true
-                            }
+                        if (!hadPlaybackError) {
+                            exoPlayer.playWhenReady = true
+                            isPlaying = exoPlayer.isPlaying
                         }
                     }
                     else -> {}
@@ -488,7 +519,7 @@ private fun DetailVideoPlayer(videoUrl: String) {
             lifecycleOwner.lifecycle.addObserver(observer)
             onDispose {
                 lifecycleOwner.lifecycle.removeObserver(observer)
-                videoView?.stopPlayback()
+                exoPlayer.release()
             }
         }
     }

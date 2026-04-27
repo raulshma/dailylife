@@ -84,6 +84,8 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     implementation(libs.sqlcipher.android)
     implementation(libs.okhttp)
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
