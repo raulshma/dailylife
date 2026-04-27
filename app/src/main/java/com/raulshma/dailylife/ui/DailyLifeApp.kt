@@ -1574,7 +1574,7 @@ internal fun inferTypeFromBody(body: String): LifeItemType? {
                 Regex("\\.(png|jpe?g|webp|gif|bmp|avif)(\\.enc)?$", RegexOption.IGNORE_CASE).containsMatchIn(trimmed) -> LifeItemType.Photo
                 Regex("\\.(mp4|m4v|webm|mkv|mov)(\\.enc)?$", RegexOption.IGNORE_CASE).containsMatchIn(trimmed) -> LifeItemType.Video
                 Regex("\\.(mp3|aac|wav|ogg|m4a|flac)(\\.enc)?$", RegexOption.IGNORE_CASE).containsMatchIn(trimmed) -> LifeItemType.Audio
-                else -> LifeItemType.Mixed
+                else -> null
             }
         }
         else -> null
