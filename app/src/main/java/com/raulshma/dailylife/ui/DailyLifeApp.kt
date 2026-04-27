@@ -34,8 +34,6 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -82,7 +80,6 @@ import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.EventRepeat
@@ -192,6 +189,7 @@ import com.raulshma.dailylife.domain.TaskStatus
 import com.raulshma.dailylife.domain.displayBody
 import com.raulshma.dailylife.domain.inferAudioUrl
 import com.raulshma.dailylife.domain.inferImagePreviewUrl
+import com.raulshma.dailylife.domain.inferTypeFromText
 import com.raulshma.dailylife.domain.inferVideoPlaybackUrl
 import com.raulshma.dailylife.ui.capture.AudioRecorder
 import com.raulshma.dailylife.ui.capture.LocationPickerSheet
@@ -236,6 +234,7 @@ private sealed class Screen {
     data object Main : Screen()
     data class Detail(val itemId: Long) : Screen()
     data class CompletionHistory(val itemId: Long) : Screen()
+    data object Settings : Screen()
 }
 
 internal val LocalSharedTransitionScope = staticCompositionLocalOf<SharedTransitionScope?> { null }
@@ -345,8 +344,7 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showQuickAdd by rememberSaveable { mutableStateOf(false) }
-    var showPreferences by rememberSaveable { mutableStateOf(false) }
-    var showS3BackupSettings by rememberSaveable { mutableStateOf(false) }
+    var showSettings by rememberSaveable { mutableStateOf(false) }
     var showLocationPicker by rememberSaveable { mutableStateOf(false) }
     var selectedItemId by rememberSaveable { mutableStateOf<Long?>(null) }
     var selectedTabName by rememberSaveable { mutableStateOf(HomeTab.Photos.name) }
@@ -367,16 +365,17 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
     val screen = when {
         completionHistoryItemId != null -> Screen.CompletionHistory(completionHistoryItemId!!)
         selectedItemId != null -> Screen.Detail(selectedItemId!!)
+        showSettings -> Screen.Settings
         else -> Screen.Main
     }
 
     var skipStaggerAnimation by remember { mutableStateOf(false) }
 
-    BackHandler(enabled = completionHistoryItemId != null || selectedItemId != null) {
-        if (completionHistoryItemId != null) {
-            completionHistoryItemId = null
-        } else {
-            selectedItemId = null
+    BackHandler(enabled = completionHistoryItemId != null || selectedItemId != null || showSettings) {
+        when {
+            completionHistoryItemId != null -> completionHistoryItemId = null
+            selectedItemId != null -> selectedItemId = null
+            showSettings -> showSettings = false
         }
     }
 
@@ -506,7 +505,19 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                         enter = fadeIn(DailyLifeTween.content<Float>())
                         exit = fadeOut(DailyLifeTween.fade<Float>())
                     }
+                    initial is Screen.Main && target is Screen.Settings -> {
+                        enter = fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { it / 6 }
+                        exit = fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { -it / 8 }
+                    }
+                    initial is Screen.Settings && target is Screen.Main -> {
+                        enter = fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { -it / 8 }
+                        exit = fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { it / 6 }
+                    }
                     target is Screen.Detail -> {
+                        enter = fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { it / 6 }
+                        exit = fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { -it / 8 }
+                    }
+                    target is Screen.Settings -> {
                         enter = fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { it / 6 }
                         exit = fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { -it / 8 }
                     }
@@ -552,8 +563,7 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                             selectedItemId = first.id
                         },
                         onShowQuickAdd = { showQuickAdd = true },
-                        onShowPreferences = { showPreferences = true },
-                        onShowS3Backup = { showS3BackupSettings = true },
+                        onShowSettings = { showSettings = true },
                         contentPadding = PaddingValues(),
                     )
 
@@ -612,6 +622,23 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                         } else {
                             completionHistoryItemId = null
                         }
+                    }
+
+                    is Screen.Settings -> {
+                        SettingsScreen(
+                            notificationSettings = state.notificationSettings,
+                            s3Settings = s3Settings,
+                            lastBackupResult = lastBackupResult,
+                            onSaveNotifications = {
+                                viewModel.updateNotificationSettings(it)
+                            },
+                            onSaveS3 = {
+                                viewModel.updateS3BackupSettings(it)
+                            },
+                            onBackupNow = { viewModel.performS3Backup() },
+                            onClearResult = { viewModel.clearBackupResult() },
+                            onBack = { showSettings = false },
+                        )
                     }
                 }
             }
@@ -717,41 +744,6 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
         }
     }
 
-    if (showPreferences) {
-        val prefsSheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ModalBottomSheet(
-            onDismissRequest = { showPreferences = false },
-            sheetState = prefsSheetState
-        ) {
-            NotificationPreferencesSheet(
-                settings = state.notificationSettings,
-                onSave = {
-                    viewModel.updateNotificationSettings(it)
-                    showPreferences = false
-                },
-                onDismiss = { showPreferences = false },
-            )
-        }
-    }
-
-    if (showS3BackupSettings) {
-        val s3SheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ModalBottomSheet(
-            onDismissRequest = { showS3BackupSettings = false },
-            sheetState = s3SheetState
-        ) {
-            S3BackupSettingsSheet(
-                settings = s3Settings,
-                lastResult = lastBackupResult,
-                onSave = {
-                    viewModel.updateS3BackupSettings(it)
-                },
-                onBackup = { viewModel.performS3Backup() },
-                onClearResult = { viewModel.clearBackupResult() },
-                onDismiss = { showS3BackupSettings = false },
-            )
-        }
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -777,8 +769,7 @@ private fun MainScaffold(
     onCompleted: (Long) -> Unit,
     onCollectionSelected: (List<LifeItem>) -> Unit,
     onShowQuickAdd: () -> Unit,
-    onShowPreferences: () -> Unit,
-    onShowS3Backup: () -> Unit,
+    onShowSettings: () -> Unit,
     contentPadding: PaddingValues,
 ) {
     Scaffold(
@@ -794,30 +785,14 @@ private fun MainScaffold(
                     )
                 },
                 actions = {
-                    IconButton(onClick = onShowS3Backup) {
-                        Icon(
-                            imageVector = Icons.Filled.CloudUpload,
-                            contentDescription = "Cloud backup settings",
-                        )
-                    }
                     IconButton(
-                        onClick = onShowPreferences,
+                        onClick = onShowSettings,
                         modifier = Modifier.padding(end = 8.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "U",
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = "Settings",
+                        )
                     }
                 },
             )
@@ -1723,179 +1698,7 @@ internal fun ReminderDateTimeRow(
 }
 
 internal fun inferTypeFromBody(body: String): LifeItemType? {
-    val trimmed = body.trim().lowercase()
-    return when {
-        trimmed.startsWith("geo:") -> LifeItemType.Location
-        trimmed.startsWith("http") && Regex("\\.(png|jpe?g|webp|gif|bmp|avif)(\\?\\S*)?$", RegexOption.IGNORE_CASE).containsMatchIn(trimmed) -> LifeItemType.Photo
-        trimmed.startsWith("http") && Regex("\\.(mp4|m4v|webm|mkv|mov|m3u8)(\\?\\S*)?$", RegexOption.IGNORE_CASE).containsMatchIn(trimmed) -> LifeItemType.Video
-        trimmed.startsWith("content://") || trimmed.startsWith("file://") -> {
-            when {
-                Regex("\\.(png|jpe?g|webp|gif|bmp|avif)(\\.enc)?$", RegexOption.IGNORE_CASE).containsMatchIn(trimmed) -> LifeItemType.Photo
-                Regex("\\.(mp4|m4v|webm|mkv|mov)(\\.enc)?$", RegexOption.IGNORE_CASE).containsMatchIn(trimmed) -> LifeItemType.Video
-                Regex("\\.(mp3|aac|wav|ogg|m4a|flac)(\\.enc)?$", RegexOption.IGNORE_CASE).containsMatchIn(trimmed) -> LifeItemType.Audio
-                else -> null
-            }
-        }
-        else -> null
-    }
-}
-
-@Composable
-private fun NotificationPreferencesSheet(
-    settings: NotificationSettings,
-    onSave: (NotificationSettings) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    var globalEnabled by rememberSaveable(settings) { mutableStateOf(settings.globalEnabled) }
-    var preferredTime by rememberSaveable(settings) {
-        mutableStateOf(settings.preferredTime.format(TimeFormatter))
-    }
-    var flexibleWindow by rememberSaveable(settings) {
-        mutableStateOf(settings.flexibleWindowMinutes.toString())
-    }
-    var snooze by rememberSaveable(settings) {
-        mutableStateOf(settings.defaultSnoozeMinutes.toString())
-    }
-    var batchNotifications by rememberSaveable(settings) { mutableStateOf(settings.batchNotifications) }
-    var respectDnd by rememberSaveable(settings) { mutableStateOf(settings.respectDoNotDisturb) }
-    var canScheduleExactAlarms by remember { mutableStateOf(context.canScheduleExactAlarms()) }
-
-    androidx.compose.runtime.DisposableEffect(lifecycleOwner, context) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                canScheduleExactAlarms = context.canScheduleExactAlarms()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Text(
-            text = "Notification preferences",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-
-        ToggleRow(
-            icon = if (globalEnabled) Icons.Filled.Notifications else Icons.Filled.NotificationsOff,
-            label = "Global notifications",
-            checked = globalEnabled,
-            onCheckedChange = { globalEnabled = it },
-        )
-        OutlinedTextField(
-            value = preferredTime,
-            onValueChange = { preferredTime = it },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            label = { Text("Preferred time, HH:mm") },
-            leadingIcon = { Icon(Icons.Filled.AccessTime, contentDescription = null) },
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedTextField(
-                value = flexibleWindow,
-                onValueChange = { flexibleWindow = it },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-                label = { Text("Window min") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            )
-            OutlinedTextField(
-                value = snooze,
-                onValueChange = { snooze = it },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-                label = { Text("Snooze min") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            )
-        }
-        ToggleRow(
-            icon = Icons.Filled.Category,
-            label = "Batch reminders",
-            checked = batchNotifications,
-            onCheckedChange = { batchNotifications = it },
-        )
-        ToggleRow(
-            icon = Icons.Filled.CheckCircle,
-            label = "Respect Do Not Disturb",
-            checked = respectDnd,
-            onCheckedChange = { respectDnd = it },
-        )
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            ElevatedCard(
-                colors = CardDefaults.elevatedCardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                ),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Text(
-                        text = "Exact alarm access",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = if (canScheduleExactAlarms) {
-                            "Enabled. Reminders can run at exact times when no flexible window is used."
-                        } else {
-                            "Not enabled. DailyLife will still schedule reminders, but the system may delay delivery."
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    OutlinedButton(onClick = { context.openExactAlarmSettings() }) {
-                        Icon(
-                            imageVector = Icons.Filled.AccessTime,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Manage exact alarm access")
-                    }
-                }
-            }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
-        ) {
-            OutlinedButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-            Button(
-                onClick = {
-                    onSave(
-                        NotificationSettings(
-                            globalEnabled = globalEnabled,
-                            preferredTime = parseTimeOrNull(preferredTime) ?: settings.preferredTime,
-                            flexibleWindowMinutes = flexibleWindow.toIntOrNull()?.coerceAtLeast(0)
-                                ?: settings.flexibleWindowMinutes,
-                            defaultSnoozeMinutes = snooze.toIntOrNull()?.coerceAtLeast(1)
-                                ?: settings.defaultSnoozeMinutes,
-                            batchNotifications = batchNotifications,
-                            respectDoNotDisturb = respectDnd,
-                        ),
-                    )
-                },
-            ) {
-                Text("Save")
-            }
-        }
-    }
+    return inferTypeFromText(body)
 }
 
 @Composable
@@ -2193,204 +1996,6 @@ internal fun parseReminderDateTime(dateInput: String, timeInput: String): LocalD
     return LocalDateTime.of(date, time)
 }
 
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun S3BackupSettingsSheet(
-    settings: S3BackupSettings,
-    lastResult: com.raulshma.dailylife.domain.BackupResult?,
-    onSave: (S3BackupSettings) -> Unit,
-    onBackup: () -> Unit,
-    onClearResult: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var enabled by rememberSaveable(settings) { mutableStateOf(settings.enabled) }
-    var endpoint by rememberSaveable(settings) { mutableStateOf(settings.endpoint) }
-    var bucketName by rememberSaveable(settings) { mutableStateOf(settings.bucketName) }
-    var region by rememberSaveable(settings) { mutableStateOf(settings.region) }
-    var accessKeyId by rememberSaveable(settings) { mutableStateOf(settings.accessKeyId) }
-    var secretAccessKey by rememberSaveable(settings) { mutableStateOf(settings.secretAccessKey) }
-    var pathPrefix by rememberSaveable(settings) { mutableStateOf(settings.pathPrefix) }
-    var autoBackup by rememberSaveable(settings) { mutableStateOf(settings.autoBackup) }
-    var backupFrequencyHours by rememberSaveable(settings) {
-        mutableStateOf(settings.backupFrequencyHours.toString())
-    }
-    var encryptBackups by rememberSaveable(settings) { mutableStateOf(settings.encryptBackups) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Text(
-            text = "Cloud backup (BYOK S3)",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-
-        ToggleRow(
-            icon = Icons.Filled.CloudUpload,
-            label = "Enable S3 backup",
-            checked = enabled,
-            onCheckedChange = { enabled = it },
-        )
-
-        OutlinedTextField(
-            value = endpoint,
-            onValueChange = { endpoint = it },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            label = { Text("S3 endpoint URL") },
-            placeholder = { Text("https://s3.amazonaws.com") },
-        )
-
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedTextField(
-                value = bucketName,
-                onValueChange = { bucketName = it },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-                label = { Text("Bucket") },
-            )
-            OutlinedTextField(
-                value = region,
-                onValueChange = { region = it },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-                label = { Text("Region") },
-            )
-        }
-
-        OutlinedTextField(
-            value = accessKeyId,
-            onValueChange = { accessKeyId = it },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            label = { Text("Access key ID") },
-        )
-
-        OutlinedTextField(
-            value = secretAccessKey,
-            onValueChange = { secretAccessKey = it },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            label = { Text("Secret access key") },
-            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-        )
-
-        OutlinedTextField(
-            value = pathPrefix,
-            onValueChange = { pathPrefix = it },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            label = { Text("Path prefix") },
-        )
-
-        ToggleRow(
-            icon = Icons.Filled.EventRepeat,
-            label = "Auto-backup",
-            checked = autoBackup,
-            onCheckedChange = { autoBackup = it },
-        )
-
-        if (autoBackup) {
-            OutlinedTextField(
-                value = backupFrequencyHours,
-                onValueChange = { backupFrequencyHours = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                label = { Text("Frequency (hours)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            )
-        }
-
-        ToggleRow(
-            icon = Icons.Filled.CheckCircle,
-            label = "Encrypt backups",
-            checked = encryptBackups,
-            onCheckedChange = { encryptBackups = it },
-        )
-
-        lastResult?.let { result ->
-            ElevatedCard(
-                colors = CardDefaults.elevatedCardColors(
-                    containerColor = when (result) {
-                        is com.raulshma.dailylife.domain.BackupResult.Success ->
-                            MaterialTheme.colorScheme.primaryContainer
-                        is com.raulshma.dailylife.domain.BackupResult.Failure ->
-                            MaterialTheme.colorScheme.errorContainer
-                    },
-                ),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(
-                        text = when (result) {
-                            is com.raulshma.dailylife.domain.BackupResult.Success -> "Backup started"
-                            is com.raulshma.dailylife.domain.BackupResult.Failure -> "Backup failed"
-                        },
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = when (result) {
-                            is com.raulshma.dailylife.domain.BackupResult.Success ->
-                                "${result.itemsBackedUp} items, ${result.mediaFilesBackedUp} media files queued."
-                            is com.raulshma.dailylife.domain.BackupResult.Failure -> result.reason
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    TextButton(onClick = onClearResult) {
-                        Text("Dismiss")
-                    }
-                }
-            }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
-        ) {
-            OutlinedButton(onClick = onDismiss) {
-                Text("Close")
-            }
-            Button(
-                onClick = {
-                    onSave(
-                        S3BackupSettings(
-                            enabled = enabled,
-                            endpoint = endpoint,
-                            bucketName = bucketName,
-                            region = region,
-                            accessKeyId = accessKeyId,
-                            secretAccessKey = secretAccessKey,
-                            pathPrefix = pathPrefix.ifBlank { "dailylife" },
-                            autoBackup = autoBackup,
-                            backupFrequencyHours = backupFrequencyHours.toIntOrNull()?.coerceAtLeast(1)
-                                ?: settings.backupFrequencyHours,
-                            encryptBackups = encryptBackups,
-                        ),
-                    )
-                },
-            ) {
-                Text("Save")
-            }
-            Button(
-                onClick = onBackup,
-                enabled = enabled && endpoint.isNotBlank() && bucketName.isNotBlank() &&
-                    accessKeyId.isNotBlank() && secretAccessKey.isNotBlank(),
-            ) {
-                Text("Backup now")
-            }
-        }
-    }
-}
-
 internal fun showDatePicker(
     context: Context,
     initialDate: LocalDate,
@@ -2423,13 +2028,13 @@ internal fun showTimePicker(
     ).show()
 }
 
-private fun Context.canScheduleExactAlarms(): Boolean {
+internal fun Context.canScheduleExactAlarms(): Boolean {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
     val alarmManager = getSystemService(android.app.AlarmManager::class.java)
     return alarmManager?.canScheduleExactAlarms() ?: false
 }
 
-private fun Context.openExactAlarmSettings() {
+internal fun Context.openExactAlarmSettings() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
 
     val requestIntent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {

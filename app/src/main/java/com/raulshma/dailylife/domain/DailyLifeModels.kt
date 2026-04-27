@@ -211,18 +211,14 @@ private val GeoPattern =
 
 fun LifeItem.inferImagePreviewUrl(): String? {
     val source = listOf(title, body).joinToString(" ")
-    return ImageUrlPattern.find(source)?.value
-        ?: ContentImagePattern.find(source)?.value
-        ?: AnyContentUriPattern.find(source)?.value?.takeIf { uri ->
-            uri.contains("image", ignoreCase = true)
-        }
+    return firstInferredUriByType(source, LifeItemType.Photo)
         ?: Regex("""https?://\S+""").find(source)?.value?.takeIf { url ->
             url.contains("picsum", ignoreCase = true) ||
                 url.contains("unsplash", ignoreCase = true) ||
                 url.contains("images", ignoreCase = true)
         }
         ?: if (type == LifeItemType.Photo || type == LifeItemType.Mixed) {
-            AnyContentUriPattern.find(source)?.value
+            firstInferredUri(source)
         } else {
             null
         }
@@ -230,13 +226,9 @@ fun LifeItem.inferImagePreviewUrl(): String? {
 
 fun LifeItem.inferVideoPlaybackUrl(): String? {
     val source = listOf(title, body).joinToString(" ")
-    return VideoUrlPattern.find(source)?.value
-        ?: ContentVideoPattern.find(source)?.value
-        ?: AnyContentUriPattern.find(source)?.value?.takeIf { uri ->
-            uri.contains("video", ignoreCase = true)
-        }
+    return firstInferredUriByType(source, LifeItemType.Video)
         ?: if (type == LifeItemType.Video) {
-            AnyContentUriPattern.find(source)?.value
+            firstInferredUri(source)
         } else {
             null
         }
@@ -244,10 +236,9 @@ fun LifeItem.inferVideoPlaybackUrl(): String? {
 
 fun LifeItem.inferAudioUrl(): String? {
     val source = listOf(title, body).joinToString(" ")
-    return AudioUrlPattern.find(source)?.value
-        ?: ContentAudioPattern.find(source)?.value
+    return firstInferredUriByType(source, LifeItemType.Audio)
         ?: if (type == LifeItemType.Audio) {
-            AnyContentUriPattern.find(source)?.value
+            firstInferredUri(source)
         } else {
             null
         }
