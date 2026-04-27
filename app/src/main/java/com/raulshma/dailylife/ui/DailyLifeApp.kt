@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -175,6 +176,7 @@ import com.raulshma.dailylife.domain.RecurrenceRule
 import com.raulshma.dailylife.domain.S3BackupSettings
 import com.raulshma.dailylife.domain.StorageError
 import com.raulshma.dailylife.domain.TaskStatus
+import com.raulshma.dailylife.domain.displayBody
 import com.raulshma.dailylife.domain.inferAudioUrl
 import com.raulshma.dailylife.domain.inferImagePreviewUrl
 import com.raulshma.dailylife.domain.inferVideoPlaybackUrl
@@ -338,6 +340,11 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
     var quickAddDraft by rememberSaveable(stateSaver = QuickAddDraftSaver) {
         mutableStateOf(loadDraftFromPrefs(context))
     }
+    var showEditSheet by rememberSaveable { mutableStateOf(false) }
+    var editItemId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var editDraft by rememberSaveable(stateSaver = QuickAddDraftSaver) {
+        mutableStateOf(QuickAddDraft())
+    }
 
     val screen = selectedItemId?.let { Screen.Detail(it) } ?: Screen.Main(selectedTab)
 
@@ -436,6 +443,27 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                             onPinnedToggled = { viewModel.togglePinned(item.id) },
                             onCompleted = { viewModel.markOccurrenceCompleted(item.id) },
                             onNotificationsChanged = { viewModel.updateItemNotifications(item.id, it) },
+                            onEdit = {
+                                editItemId = item.id
+                                editDraft = QuickAddDraft(
+                                    typeName = item.type.name,
+                                    title = item.title,
+                                    body = item.body,
+                                    tags = item.tags.joinToString(", "),
+                                    favorite = item.isFavorite,
+                                    pinned = item.isPinned,
+                                    reminderDate = item.reminderAt?.toLocalDate()?.toString() ?: "",
+                                    reminderTime = item.reminderAt?.toLocalTime()?.format(TimeFormatter) ?: "",
+                                    notificationsEnabled = item.notificationSettings.enabled,
+                                    overrideTime = item.notificationSettings.timeOverride?.format(TimeFormatter) ?: "",
+                                    recurring = item.isRecurring,
+                                )
+                                showEditSheet = true
+                            },
+                            onDelete = {
+                                viewModel.deleteItem(item.id)
+                                selectedItemId = null
+                            },
                         )
                     } ?: run {
                         // Fallback if item not found
@@ -504,6 +532,32 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                 showLocationPicker = false
             },
         )
+    }
+
+    if (showEditSheet && editItemId != null) {
+        val editSheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showEditSheet = false },
+            sheetState = editSheetState,
+            dragHandle = { androidx.compose.material3.BottomSheetDefaults.DragHandle() },
+            modifier = Modifier.fillMaxSize()
+        ) {
+            EditItemSheet(
+                initialDraft = editDraft,
+                allTags = state.allTags,
+                onSave = { draft ->
+                    editItemId?.let { id ->
+                        viewModel.updateItem(id, draft)
+                    }
+                    showEditSheet = false
+                    editItemId = null
+                },
+                onDismiss = {
+                    showEditSheet = false
+                    editItemId = null
+                },
+            )
+        }
     }
 
     if (showPreferences) {
@@ -975,7 +1029,7 @@ internal fun TextPreview(item: LifeItem) {
             )
         }
         Text(
-            text = item.body.ifBlank { "No notes yet" },
+            text = item.displayBody().ifBlank { "No notes yet" },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSecondaryContainer,
             maxLines = 8,
@@ -1170,9 +1224,9 @@ internal fun AudioPreview(item: LifeItem) {
                 )
             }
         }
-        if (item.body.isNotBlank()) {
+        if (item.displayBody().isNotBlank()) {
             Text(
-                text = item.body,
+                text = item.displayBody(),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 4,
@@ -1802,12 +1856,13 @@ internal fun rememberVideoThumbnail(item: LifeItem): String? {
 @Composable
 internal fun rememberAudioWaveform(item: LifeItem): List<Float> {
     val context = LocalContext.current
-    return remember(item.id, item.body) {
-        val audioUrl = item.inferAudioUrl()
-            ?: item.body.split("\\s+".toRegex()).firstOrNull { it.startsWith("content://") || it.startsWith("file://") }
-        if (audioUrl == null) return@remember emptyList()
+    val rawAudioUrl = item.inferAudioUrl()
+        ?: item.body.split("\\s+".toRegex()).firstOrNull { it.startsWith("content://") || it.startsWith("file://") }
+    val decryptedUrl = rememberDecryptedMediaUri(rawAudioUrl)
+    return remember(item.id, decryptedUrl) {
+        if (decryptedUrl == null) return@remember emptyList()
         val generator = AudioWaveformGenerator()
-        generator.generateWaveform(context, android.net.Uri.parse(audioUrl), barCount = 8) ?: emptyList()
+        generator.generateWaveform(context, android.net.Uri.parse(decryptedUrl), barCount = 8) ?: emptyList()
     }
 }
 
@@ -1878,6 +1933,250 @@ internal fun parseReminderDateTime(dateInput: String, timeInput: String): LocalD
     val date = parseDateOrNull(dateInput) ?: return null
     val time = parseTimeOrNull(timeInput) ?: DefaultReminderTime
     return LocalDateTime.of(date, time)
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun EditItemSheet(
+    initialDraft: QuickAddDraft,
+    allTags: List<String>,
+    onSave: (LifeItemDraft) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
+
+    var selectedType by rememberSaveable { mutableStateOf(
+        LifeItemType.entries.firstOrNull { it.name == initialDraft.typeName } ?: LifeItemType.Thought
+    ) }
+    var title by rememberSaveable { mutableStateOf(initialDraft.title) }
+    var body by rememberSaveable { mutableStateOf(initialDraft.body) }
+    var tags by rememberSaveable { mutableStateOf(initialDraft.tags) }
+    var favorite by rememberSaveable { mutableStateOf(initialDraft.favorite) }
+    var pinned by rememberSaveable { mutableStateOf(initialDraft.pinned) }
+    var reminderDate by rememberSaveable { mutableStateOf(initialDraft.reminderDate) }
+    var reminderTime by rememberSaveable { mutableStateOf(initialDraft.reminderTime) }
+    var notificationsEnabled by rememberSaveable { mutableStateOf(initialDraft.notificationsEnabled) }
+    var overrideTime by rememberSaveable { mutableStateOf(initialDraft.overrideTime) }
+    var recurring by rememberSaveable { mutableStateOf(initialDraft.recurring) }
+    var showReminderOptions by rememberSaveable { mutableStateOf(initialDraft.showReminderOptions) }
+
+    val canSave = title.isNotBlank() || body.isNotBlank()
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(
+            text = "Edit item",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            LifeItemType.entries.forEach { type ->
+                FilterChip(
+                    selected = selectedType == type,
+                    onClick = { selectedType = type },
+                    label = { Text(type.label) },
+                    leadingIcon = {
+                        Icon(imageVector = type.icon(), contentDescription = null, modifier = Modifier.size(18.dp))
+                    },
+                    colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                )
+            }
+        }
+
+        OutlinedTextField(
+            value = title,
+            onValueChange = { if (it.length <= 120) title = it },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("Title") },
+        )
+
+        OutlinedTextField(
+            value = body,
+            onValueChange = { if (it.length <= 2000) body = it },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp),
+            label = { Text("Body") },
+            maxLines = 8,
+        )
+
+        OutlinedTextField(
+            value = tags,
+            onValueChange = { tags = it },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("Tags (comma separated)") },
+            leadingIcon = { Icon(Icons.AutoMirrored.Filled.Label, contentDescription = null) },
+        )
+
+        val currentTagSet = parseTags(tags)
+        val suggestions = remember(allTags, currentTagSet) {
+            allTags.filter { it !in currentTagSet }.take(6)
+        }
+        if (suggestions.isNotEmpty()) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                suggestions.forEach { tag ->
+                    AssistChip(
+                        onClick = { tags = if (tags.isBlank()) tag else "$tags, $tag" },
+                        label = { Text("+$tag") }
+                    )
+                }
+            }
+        }
+
+        HorizontalDivider()
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FilterChip(
+                selected = favorite,
+                onClick = { favorite = !favorite },
+                label = { Text("Favorite") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = if (favorite) Icons.Filled.Star else Icons.Filled.StarBorder,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            )
+            FilterChip(
+                selected = pinned,
+                onClick = { pinned = !pinned },
+                label = { Text("Pin") },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Filled.PushPin,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            TextButton(onClick = { showReminderOptions = !showReminderOptions }) {
+                Icon(Icons.Filled.Alarm, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(if (showReminderOptions) "Hide reminder" else "Reminder")
+            }
+        }
+
+        AnimatedVisibility(visible = showReminderOptions) {
+            ElevatedCard(
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    ReminderDateTimeRow(
+                        reminderDate = parseDateOrNull(reminderDate),
+                        reminderTime = parseTimeOrNull(reminderTime),
+                        onDateClick = {
+                            showDatePicker(
+                                context = context,
+                                initialDate = parseDateOrNull(reminderDate) ?: LocalDate.now(),
+                                onDateSelected = { selected ->
+                                    reminderDate = selected.toString()
+                                    if (reminderTime.isBlank()) reminderTime = "09:00"
+                                }
+                            )
+                        },
+                        onTimeClick = {
+                            showTimePicker(
+                                context = context,
+                                initialTime = parseTimeOrNull(reminderTime) ?: LocalTime.of(9, 0),
+                                onTimeSelected = { selected ->
+                                    reminderTime = selected.format(TimeFormatter)
+                                }
+                            )
+                        },
+                        onClear = { reminderDate = ""; reminderTime = "" }
+                    )
+                    ToggleRow(
+                        icon = if (notificationsEnabled) Icons.Filled.Notifications else Icons.Filled.NotificationsOff,
+                        label = "Notifications",
+                        checked = notificationsEnabled,
+                        onCheckedChange = { notificationsEnabled = it }
+                    )
+                    if (notificationsEnabled) {
+                        OutlinedTextField(
+                            value = overrideTime,
+                            onValueChange = { overrideTime = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("Time override, HH:mm") },
+                            leadingIcon = { Icon(Icons.Filled.AccessTime, contentDescription = null) }
+                        )
+                    }
+                    ToggleRow(
+                        icon = Icons.Filled.EventRepeat,
+                        label = "Daily recurrence",
+                        checked = recurring,
+                        onCheckedChange = { recurring = it }
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+        ) {
+            OutlinedButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+            Button(
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onSave(
+                        LifeItemDraft(
+                            type = selectedType,
+                            title = title,
+                            body = body,
+                            tags = parseTags(tags),
+                            isFavorite = favorite,
+                            isPinned = pinned,
+                            taskStatus = if (selectedType == LifeItemType.Task) TaskStatus.Open else null,
+                            reminderAt = parseReminderDateTime(reminderDate, reminderTime),
+                            recurrenceRule = if (recurring) RecurrenceRule(RecurrenceFrequency.Daily) else RecurrenceRule(),
+                            notificationSettings = ItemNotificationSettings(
+                                enabled = notificationsEnabled,
+                                timeOverride = parseTimeOrNull(overrideTime),
+                            ),
+                        )
+                    )
+                },
+                enabled = canSave,
+            ) {
+                Text("Save changes")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)

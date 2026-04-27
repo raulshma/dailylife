@@ -524,9 +524,9 @@ private fun LifeItemCard(
                 }
             }
 
-            if (item.body.isNotBlank()) {
+            if (item.displayBody().isNotBlank()) {
                 Text(
-                    text = item.body,
+                    text = item.displayBody(),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 3,

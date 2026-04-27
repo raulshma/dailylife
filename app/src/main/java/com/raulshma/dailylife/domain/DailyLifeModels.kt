@@ -187,6 +187,22 @@ private val AudioUrlPattern =
     Regex("""https?://\S+\.(?:mp3|aac|wav|ogg|m4a|flac)(?:\?\S*)?""", RegexOption.IGNORE_CASE)
 private val ContentAudioPattern =
     Regex("""(?:content|file)://\S+\.(?:mp3|aac|wav|ogg|m4a|flac)(?:\.enc)?""", RegexOption.IGNORE_CASE)
+private val AnyContentUriPattern =
+    Regex("""(?:content|file)://\S+""")
+
+private val AllMediaPatterns by lazy {
+    listOf(
+        ImageUrlPattern, ContentImagePattern,
+        VideoUrlPattern, ContentVideoPattern,
+        AudioUrlPattern, ContentAudioPattern,
+        AnyContentUriPattern,
+        GeoPattern,
+        Regex("""https?://\S+\.(?:png|jpe?g|webp|gif|bmp|avif|mp4|m4v|webm|mkv|mov|mp3|aac|wav|ogg|m4a|flac)\S*""", RegexOption.IGNORE_CASE),
+    )
+}
+
+private val GeoPattern =
+    Regex("""geo:\s*[-+]?\d{1,2}(?:\.\d+)?,\s*[-+]?\d{1,3}(?:\.\d+)?""", RegexOption.IGNORE_CASE)
 
 fun LifeItem.inferImagePreviewUrl(): String? {
     val source = listOf(title, body).joinToString(" ")
@@ -209,6 +225,19 @@ fun LifeItem.inferAudioUrl(): String? {
     val source = listOf(title, body).joinToString(" ")
     return AudioUrlPattern.find(source)?.value
         ?: ContentAudioPattern.find(source)?.value
+        ?: if (type == LifeItemType.Audio) {
+            AnyContentUriPattern.find(source)?.value
+        } else {
+            null
+        }
+}
+
+fun LifeItem.displayBody(): String {
+    var cleaned = body
+    for (pattern in AllMediaPatterns) {
+        cleaned = pattern.replace(cleaned, "")
+    }
+    return cleaned.trim()
 }
 
 data class DailyLifeFilters(

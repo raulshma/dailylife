@@ -140,6 +140,18 @@ class DailyLifeViewModel @Inject constructor(
         _lastBackupResult.value = null
     }
 
+    fun updateItem(itemId: Long, draft: LifeItemDraft) {
+        val encryptedBody = mediaEncryptionManager.encryptMediaInText(draft.body, context)
+        val encryptedDraft = draft.copy(body = encryptedBody)
+        repository.updateItem(encryptedDraft, itemId)
+        syncReminderSchedule()
+    }
+
+    fun deleteItem(itemId: Long) {
+        repository.deleteItem(itemId)
+        syncReminderSchedule()
+    }
+
     private fun syncReminderSchedule() {
         val currentState = repository.state.value
         reminderScheduler.sync(

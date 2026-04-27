@@ -188,6 +188,30 @@ class InMemoryDailyLifeRepository(
         _state.update { current -> current.copy(storageError = null) }
     }
 
+    override fun updateItem(draft: LifeItemDraft, itemId: Long): LifeItem {
+        val updated = updateItem(itemId) { existing ->
+            existing.copy(
+                type = draft.type,
+                title = draft.title.ifBlank { draft.type.label },
+                body = draft.body,
+                tags = normalizeTags(draft.tags),
+                isFavorite = draft.isFavorite,
+                isPinned = draft.isPinned,
+                taskStatus = draft.taskStatus ?: existing.taskStatus,
+                reminderAt = draft.reminderAt ?: existing.reminderAt,
+                recurrenceRule = draft.recurrenceRule,
+                notificationSettings = draft.notificationSettings,
+            )
+        }
+        return _state.value.items.first { it.id == itemId }
+    }
+
+    override fun deleteItem(itemId: Long) {
+        updateStoredState { current ->
+            current.copy(items = current.items.filter { it.id != itemId })
+        }
+    }
+
     private fun updateFilters(block: (DailyLifeFilters) -> DailyLifeFilters) {
         _state.update { current -> current.copy(filters = block(current.filters)) }
     }

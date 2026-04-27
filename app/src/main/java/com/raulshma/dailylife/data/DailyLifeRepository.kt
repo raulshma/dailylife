@@ -47,4 +47,8 @@ interface DailyLifeRepository {
     fun rolloverMissedOccurrences(referenceDate: java.time.LocalDate = java.time.LocalDate.now())
 
     fun clearStorageError()
+
+    fun updateItem(draft: LifeItemDraft, itemId: Long): LifeItem
+
+    fun deleteItem(itemId: Long)
 }
