@@ -80,11 +80,11 @@ fun TimelineScreen(
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(
                 start = 16.dp,
-                top = 12.dp,
+                top = 8.dp,
                 end = 16.dp,
-                bottom = contentPadding.calculateBottomPadding() + 96.dp,
+                bottom = contentPadding.calculateBottomPadding() + 80.dp,
             ),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item {
                 SnapshotRow(state = state)
@@ -161,7 +161,7 @@ private fun SearchBarRow(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 4.dp),
         shape = CircleShape,
         color = MaterialTheme.colorScheme.surfaceVariant,
         tonalElevation = 2.dp
@@ -231,7 +231,7 @@ private fun QuickFiltersCarousel(
     val filters = state.filters
     LazyRow(
         modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item {
@@ -496,14 +496,14 @@ private fun LifeItemCard(
         ),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                TypeBadge(type = item.type, modifier = badgeSharedModifier)
+                TypeBadge(type = item.type, modifier = badgeSharedModifier, boxSize = 32.dp)
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = item.title,
@@ -516,10 +516,13 @@ private fun LifeItemCard(
                     Text(
                         text = item.createdAt.format(TimestampFormatter),
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                IconButton(onClick = onPinnedToggled) {
+                IconButton(
+                    onClick = onPinnedToggled,
+                    modifier = Modifier.size(32.dp)
+                ) {
                     Icon(
                         imageVector = Icons.Filled.PushPin,
                         contentDescription = if (item.isPinned) "Unpin item" else "Pin item",
@@ -528,9 +531,13 @@ private fun LifeItemCard(
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         },
+                        modifier = Modifier.size(18.dp),
                     )
                 }
-                IconButton(onClick = onFavoriteToggled) {
+                IconButton(
+                    onClick = onFavoriteToggled,
+                    modifier = Modifier.size(32.dp)
+                ) {
                     Icon(
                         imageVector = if (item.isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
                         contentDescription = if (item.isFavorite) "Remove favorite" else "Add favorite",
@@ -539,6 +546,7 @@ private fun LifeItemCard(
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         },
+                        modifier = Modifier.size(18.dp),
                     )
                 }
             }
@@ -553,7 +561,7 @@ private fun LifeItemCard(
                     modifier = Modifier
                         .then(mediaSharedModifier)
                         .fillMaxWidth()
-                        .height(180.dp)
+                        .height(120.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(MaterialTheme.colorScheme.secondaryContainer),
                 ) {
@@ -566,150 +574,141 @@ private fun LifeItemCard(
                     text = item.displayBody(),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 3,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
 
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                item.tags.forEach { tag ->
-                    AssistChip(
-                        onClick = onClick,
-                        label = { Text("#$tag") },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Label,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        },
-                    )
-                }
-                if (item.isRecurring) {
-                    AssistChip(
-                        onClick = onClick,
-                        label = { Text(item.recurrenceRule.frequency.label) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Filled.EventRepeat,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        },
-                    )
-                }
-                item.reminderAt?.let { reminderAt ->
-                    AssistChip(
-                        onClick = onClick,
-                        label = { Text(reminderAt.format(TimestampFormatter)) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Filled.AccessTime,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        },
-                    )
-                }
-                if (item.notificationSettings.enabled) {
-                    AssistChip(
-                        onClick = onClick,
-                        label = { Text("Notify") },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Filled.Notifications,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        },
-                    )
-                }
-            }
+            CompactMetadataStrip(item = item, onClick = onClick)
 
             if (item.isRecurring || occurrenceStats.completedCount > 0 || occurrenceStats.missedCount > 0) {
-                OccurrenceStatsRow(stats = occurrenceStats)
+                Text(
+                    text = "Done ${occurrenceStats.completedCount} · Missed ${occurrenceStats.missedCount} · Streak ${occurrenceStats.currentStreak}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             if (item.type == LifeItemType.Task) {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TaskStatus.entries.forEach { status ->
-                        FilterChip(
-                            selected = item.taskStatus == status,
-                            onClick = { onTaskStatusChanged(status) },
-                            label = { Text(status.label) },
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TaskStatus.entries.forEach { status ->
+                            val selected = item.taskStatus == status
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(
+                                        if (selected) MaterialTheme.colorScheme.primaryContainer
+                                        else MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                    .clickable { onTaskStatusChanged(status) }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = status.label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                    }
+                    IconButton(
+                        onClick = onCompleted,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Done,
+                            contentDescription = "Complete",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp),
                         )
                     }
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                TextButton(onClick = onCompleted) {
-                    Icon(Icons.Filled.Done, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Complete")
                 }
             }
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun OccurrenceStatsRow(stats: OccurrenceStats) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+private fun CompactMetadataStrip(
+    item: LifeItem,
+    onClick: () -> Unit,
+) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        OccurrenceMetric(
-            label = "Done",
-            value = stats.completedCount.toString(),
-            modifier = Modifier.weight(1f),
-        )
-        OccurrenceMetric(
-            label = "Missed",
-            value = stats.missedCount.toString(),
-            modifier = Modifier.weight(1f),
-        )
-        OccurrenceMetric(
-            label = "Streak",
-            value = stats.currentStreak.toString(),
-            modifier = Modifier.weight(1f),
-        )
+        item.tags.forEach { tag ->
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+            ) {
+                Text(
+                    text = "#$tag",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
+        }
+        if (item.isRecurring) {
+            CompactMetaPill(
+                icon = Icons.Filled.EventRepeat,
+                label = item.recurrenceRule.frequency.label,
+            )
+        }
+        item.reminderAt?.let { reminderAt ->
+            CompactMetaPill(
+                icon = Icons.Filled.AccessTime,
+                label = reminderAt.format(TimestampFormatter),
+            )
+        }
+        if (item.notificationSettings.enabled) {
+            CompactMetaPill(
+                icon = Icons.Filled.Notifications,
+                label = "Notify",
+            )
+        }
     }
 }
 
 @Composable
-private fun OccurrenceMetric(
+private fun CompactMetaPill(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
-    value: String,
-    modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        Text(
-            text = value,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(12.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
     }
 }

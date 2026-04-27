@@ -1525,11 +1525,12 @@ internal fun DateHeader(date: LocalDate) {
 internal fun TypeBadge(
     type: LifeItemType,
     modifier: Modifier = Modifier,
+    boxSize: androidx.compose.ui.unit.Dp = 44.dp,
 ) {
     Box(
         modifier = Modifier
             .then(modifier)
-            .size(44.dp)
+            .size(boxSize)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.primaryContainer),
         contentAlignment = Alignment.Center,
@@ -1538,6 +1539,7 @@ internal fun TypeBadge(
             imageVector = type.icon(),
             contentDescription = type.label,
             tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier.size(boxSize * 0.45f),
         )
     }
 }
