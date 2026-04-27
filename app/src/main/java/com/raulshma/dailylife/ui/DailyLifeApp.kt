@@ -51,12 +51,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.items as staggeredItems
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -366,6 +370,8 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
         else -> Screen.Main
     }
 
+    var skipStaggerAnimation by remember { mutableStateOf(false) }
+
     BackHandler(enabled = completionHistoryItemId != null || selectedItemId != null) {
         if (completionHistoryItemId != null) {
             completionHistoryItemId = null
@@ -455,6 +461,9 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
     )
 
     val visibleItemIds = remember(state.visibleItems) { state.visibleItems.map { it.id } }
+    val photosGridState = rememberLazyStaggeredGridState()
+    val timelineListState = rememberLazyListState()
+
     SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
         AnimatedContent(
             modifier = Modifier.fillMaxSize(),
@@ -489,6 +498,14 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                             exit = fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { it / 8 }
                         }
                     }
+                    initial is Screen.Main && target is Screen.Detail -> {
+                        enter = fadeIn(DailyLifeTween.content<Float>())
+                        exit = fadeOut(DailyLifeTween.fade<Float>())
+                    }
+                    initial is Screen.Detail && target is Screen.Main -> {
+                        enter = fadeIn(DailyLifeTween.content<Float>())
+                        exit = fadeOut(DailyLifeTween.fade<Float>())
+                    }
                     target is Screen.Detail -> {
                         enter = fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { it / 6 }
                         exit = fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { -it / 8 }
@@ -510,8 +527,14 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                     is Screen.Main -> MainScaffold(
                         state = state,
                         selectedTab = selectedTab,
+                        skipStaggerAnimation = skipStaggerAnimation,
+                        photosGridState = photosGridState,
+                        timelineListState = timelineListState,
                         onTabSelected = { selectedTabName = it.name },
-                        onItemSelected = { selectedItemId = it },
+                        onItemSelected = {
+                            skipStaggerAnimation = true
+                            selectedItemId = it
+                        },
                         onStorageErrorDismissed = viewModel::clearStorageError,
                         onSearchChanged = viewModel::updateSearchQuery,
                         onTypeSelected = viewModel::selectType,
@@ -525,6 +548,7 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                         onCompleted = viewModel::markOccurrenceCompleted,
                         onCollectionSelected = { items ->
                             val first = items.firstOrNull() ?: return@MainScaffold
+                            skipStaggerAnimation = true
                             selectedItemId = first.id
                         },
                         onShowQuickAdd = { showQuickAdd = true },
@@ -735,6 +759,9 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
 private fun MainScaffold(
     state: DailyLifeState,
     selectedTab: HomeTab,
+    skipStaggerAnimation: Boolean,
+    photosGridState: LazyStaggeredGridState,
+    timelineListState: LazyListState,
     onTabSelected: (HomeTab) -> Unit,
     onItemSelected: (Long) -> Unit,
     onStorageErrorDismissed: () -> Unit,
@@ -841,6 +868,8 @@ private fun MainScaffold(
                     PhotosMosaicScreen(
                         state = state,
                         contentPadding = paddingValues,
+                        skipStaggerAnimation = skipStaggerAnimation,
+                        gridState = photosGridState,
                         onItemSelected = onItemSelected,
                         onStorageErrorDismissed = onStorageErrorDismissed,
                     )
@@ -850,6 +879,8 @@ private fun MainScaffold(
                     TimelineScreen(
                         state = state,
                         contentPadding = paddingValues,
+                        skipStaggerAnimation = skipStaggerAnimation,
+                        listState = timelineListState,
                         onSearchChanged = onSearchChanged,
                         onTypeSelected = onTypeSelected,
                         onTagSelected = onTagSelected,
@@ -890,6 +921,8 @@ private fun MainScaffold(
 private fun PhotosMosaicScreen(
     state: DailyLifeState,
     contentPadding: PaddingValues,
+    skipStaggerAnimation: Boolean,
+    gridState: LazyStaggeredGridState,
     onItemSelected: (Long) -> Unit,
     onStorageErrorDismissed: () -> Unit,
 ) {
@@ -899,6 +932,7 @@ private fun PhotosMosaicScreen(
 
     LazyVerticalStaggeredGrid(
         columns = StaggeredGridCells.Adaptive(minSize = 132.dp),
+        state = gridState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
             start = 10.dp,
@@ -928,27 +962,39 @@ private fun PhotosMosaicScreen(
                 val dateIdx = globalIndex
                 globalIndex++
                 item(key = "date-$date", span = StaggeredGridItemSpan.FullLine) {
-                    val dateVisible = rememberStaggeredVisibility(dateIdx, baseDelayMs = 40, maxDelayMs = 300)
-                    AnimatedVisibility(
-                        visibleState = dateVisible,
-                        enter = StaggeredEnter,
-                    ) {
+                    if (skipStaggerAnimation) {
                         DateHeader(date = date)
+                    } else {
+                        val dateVisible = rememberStaggeredVisibility(dateIdx, baseDelayMs = 40, maxDelayMs = 300)
+                        AnimatedVisibility(
+                            visibleState = dateVisible,
+                            enter = StaggeredEnter,
+                        ) {
+                            DateHeader(date = date)
+                        }
                     }
                 }
                 staggeredItems(itemsForDate, key = { it.id }) { item ->
                     val itemIdx = globalIndex
                     globalIndex++
-                    val tileVisible = rememberStaggeredVisibility(itemIdx, baseDelayMs = 45, maxDelayMs = 450)
-                    AnimatedVisibility(
-                        visibleState = tileVisible,
-                        enter = StaggeredEnter,
-                    ) {
+                    if (skipStaggerAnimation) {
                         MediaMosaicTile(
                             item = item,
                             onClick = { onItemSelected(item.id) },
                             modifier = Modifier.animateItem(),
                         )
+                    } else {
+                        val tileVisible = rememberStaggeredVisibility(itemIdx, baseDelayMs = 45, maxDelayMs = 450)
+                        AnimatedVisibility(
+                            visibleState = tileVisible,
+                            enter = StaggeredEnter,
+                        ) {
+                            MediaMosaicTile(
+                                item = item,
+                                onClick = { onItemSelected(item.id) },
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
                     }
                 }
             }

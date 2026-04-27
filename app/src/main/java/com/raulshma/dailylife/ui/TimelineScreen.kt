@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -41,6 +42,8 @@ import java.time.LocalDate
 fun TimelineScreen(
     state: DailyLifeState,
     contentPadding: PaddingValues,
+    skipStaggerAnimation: Boolean,
+    listState: LazyListState,
     onSearchChanged: (String) -> Unit,
     onTypeSelected: (LifeItemType?) -> Unit,
     onTagSelected: (String?) -> Unit,
@@ -86,6 +89,7 @@ fun TimelineScreen(
 
         // Timeline Items
         LazyColumn(
+            state = listState,
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(
                 start = 16.dp,
