@@ -1501,6 +1501,13 @@ private fun DetailContentSection(
                         ) {
                             Text("View all ${item.completionHistory.size} entries")
                         }
+                    } else {
+                        TextButton(
+                            onClick = onViewHistory,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("View history")
+                        }
                     }
                 }
             }

@@ -12,6 +12,7 @@ import com.raulshma.dailylife.data.DailyLifeRepository
 import com.raulshma.dailylife.data.backup.S3BackupRepository
 import com.raulshma.dailylife.data.RoomDailyLifeStore
 import com.raulshma.dailylife.data.security.MediaEncryptionManager
+import com.raulshma.dailylife.domain.CompletionRecord
 import com.raulshma.dailylife.domain.BackupResult
 import com.raulshma.dailylife.domain.BackupSnapshot
 import com.raulshma.dailylife.domain.ItemNotificationSettings
@@ -199,6 +200,14 @@ class DailyLifeViewModel @Inject constructor(
     fun deleteItem(itemId: Long) {
         repository.deleteItem(itemId)
         syncReminderSchedule()
+    }
+
+    fun updateCompletionRecord(itemId: Long, record: CompletionRecord) {
+        repository.updateCompletionRecord(itemId, record)
+    }
+
+    fun deleteCompletionRecord(itemId: Long, occurrenceDate: LocalDate, completedAt: java.time.LocalDateTime) {
+        repository.deleteCompletionRecord(itemId, occurrenceDate, completedAt)
     }
 
     private fun syncReminderSchedule() {

@@ -228,6 +228,27 @@ class InMemoryDailyLifeRepository(
         }
     }
 
+    override fun updateCompletionRecord(itemId: Long, record: CompletionRecord) {
+        updateItem(itemId) { item ->
+            item.copy(
+                completionHistory = item.completionHistory.map {
+                    if (it.occurrenceDate == record.occurrenceDate && it.completedAt == record.completedAt) record
+                    else it
+                },
+            )
+        }
+    }
+
+    override fun deleteCompletionRecord(itemId: Long, occurrenceDate: LocalDate, completedAt: LocalDateTime) {
+        updateItem(itemId) { item ->
+            item.copy(
+                completionHistory = item.completionHistory.filterNot {
+                    it.occurrenceDate == occurrenceDate && it.completedAt == completedAt
+                },
+            )
+        }
+    }
+
     private fun updateFilters(block: (DailyLifeFilters) -> DailyLifeFilters) {
         _state.update { current -> current.copy(filters = block(current.filters)) }
     }

@@ -569,6 +569,12 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                             com.raulshma.dailylife.ui.detail.CompletionHistoryScreen(
                                 item = historyItem,
                                 onBack = { completionHistoryItemId = null },
+                                onUpdateRecord = { itemId, record ->
+                                    viewModel.updateCompletionRecord(itemId, record)
+                                },
+                                onDeleteRecord = { itemId, occurrenceDate, completedAt ->
+                                    viewModel.deleteCompletionRecord(itemId, occurrenceDate, completedAt)
+                                },
                             )
                         } else {
                             completionHistoryItemId = null

@@ -1,5 +1,6 @@
 package com.raulshma.dailylife.data
 
+import com.raulshma.dailylife.domain.CompletionRecord
 import com.raulshma.dailylife.domain.DailyLifeState
 import com.raulshma.dailylife.domain.ItemNotificationSettings
 import com.raulshma.dailylife.domain.LifeItem
@@ -55,4 +56,8 @@ interface DailyLifeRepository {
     fun updateItem(draft: LifeItemDraft, itemId: Long): LifeItem
 
     fun deleteItem(itemId: Long)
+
+    fun updateCompletionRecord(itemId: Long, record: CompletionRecord)
+
+    fun deleteCompletionRecord(itemId: Long, occurrenceDate: java.time.LocalDate, completedAt: java.time.LocalDateTime)
 }
