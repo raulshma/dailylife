@@ -49,7 +49,9 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -156,6 +158,7 @@ fun ItemDetailScreen(
     var contentVisible by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var chromeVisible by remember { mutableStateOf(true) }
+    var heavyReady by remember { mutableStateOf(false) }
     var showDetailsSheet by remember { mutableStateOf(false) }
     val detailsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     var dragAccumulator by remember { mutableStateOf(0f) }
@@ -241,6 +244,11 @@ fun ItemDetailScreen(
     LaunchedEffect(Unit) {
         delay(DailyLifeDuration.SHORT.toLong())
         contentVisible = true
+    }
+
+    LaunchedEffect(Unit) {
+        delay(DailyLifeDuration.SHORT.toLong())
+        heavyReady = true
     }
 
     LaunchedEffect(chromeVisible, showDetailsSheet, item.id, chromeInteractionTick) {
@@ -386,6 +394,7 @@ fun ItemDetailScreen(
             onVisualBrightnessMeasured = { measured ->
                 visualBrightnessHint = measured
             },
+            heavyReady = heavyReady,
             modifier = Modifier
                 .then(mediaSharedModifier)
                 .fillMaxSize()
@@ -634,6 +643,7 @@ fun ItemDetailScreen(
 private fun AttachmentHeroSection(
     item: LifeItem,
     onVisualBrightnessMeasured: (Float?) -> Unit,
+    heavyReady: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val imageUrl = item.inferImagePreviewUrl()
@@ -689,24 +699,56 @@ private fun AttachmentHeroSection(
 
                 decryptedVideo != null -> {
                     onVisualBrightnessMeasured(null)
-                    DetailVideoPlayer(
-                        videoUrl = decryptedVideo,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    if (heavyReady) {
+                        DetailVideoPlayer(
+                            videoUrl = decryptedVideo,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Videocam,
+                                contentDescription = null,
+                                tint = Color.White.copy(alpha = 0.5f),
+                                modifier = Modifier.size(48.dp),
+                            )
+                        }
+                    }
                 }
 
                 location != null -> {
                     onVisualBrightnessMeasured(0.56f)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.Black),
-                    ) {
-                        com.raulshma.dailylife.ui.OpenStreetMapPreview(
-                            latitude = location.first,
-                            longitude = location.second,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                    if (heavyReady) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black),
+                        ) {
+                            com.raulshma.dailylife.ui.OpenStreetMapPreview(
+                                latitude = location.first,
+                                longitude = location.second,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.LocationOn,
+                                contentDescription = null,
+                                tint = Color.White.copy(alpha = 0.5f),
+                                modifier = Modifier.size(48.dp),
+                            )
+                        }
                     }
                 }
 
@@ -785,8 +827,9 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
         localVideoFile?.let(Uri::fromFile) ?: parsedVideoUri
     }
 
-    val exoPlayer = remember(mediaUri) {
-        ExoPlayer.Builder(context).build().apply {
+    var exoPlayer by remember(mediaUri) { mutableStateOf<ExoPlayer?>(null) }
+    LaunchedEffect(mediaUri) {
+        val player = ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(mediaUri))
             repeatMode = Player.REPEAT_MODE_ONE
             volume = 1f
@@ -811,13 +854,15 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
                 }
             })
         }
+        exoPlayer = player
     }
 
     LaunchedEffect(exoPlayer, isSeeking) {
+        val player = exoPlayer ?: return@LaunchedEffect
         while (true) {
-            durationMs = exoPlayer.duration.coerceAtLeast(0L)
+            durationMs = player.duration.coerceAtLeast(0L)
             if (!isSeeking) {
-                positionMs = exoPlayer.currentPosition.coerceAtLeast(0L)
+                positionMs = player.currentPosition.coerceAtLeast(0L)
                 seekPositionMs = positionMs
             }
             delay(250L)
@@ -835,7 +880,6 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
                 PlayerView(ctx).apply {
-                    player = exoPlayer
                     useController = false
                 }
             },
@@ -875,7 +919,7 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
                 },
                 onValueChangeFinished = {
                     val target = seekPositionMs.coerceIn(0L, durationMs.coerceAtLeast(0L))
-                    exoPlayer.seekTo(target)
+                    exoPlayer?.seekTo(target)
                     positionMs = target
                     isSeeking = false
                 },
@@ -902,7 +946,7 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
         if (!isPlaying) {
             FilledTonalIconButton(
                 onClick = {
-                    exoPlayer.playWhenReady = true
+                    exoPlayer?.playWhenReady = true
                 },
                 modifier = Modifier
                     .align(Alignment.Center)
@@ -944,11 +988,12 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
         ) {
             FilledTonalIconButton(
                 onClick = {
-                    if (exoPlayer.isPlaying) {
-                        exoPlayer.pause()
+                    val player = exoPlayer ?: return@FilledTonalIconButton
+                    if (player.isPlaying) {
+                        player.pause()
                         isPlaying = false
                     } else {
-                        exoPlayer.play()
+                        player.play()
                         isPlaying = true
                     }
                 },
@@ -963,16 +1008,17 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
         }
 
         DisposableEffect(exoPlayer, lifecycleOwner) {
+            val player = exoPlayer ?: return@DisposableEffect onDispose { }
             val observer = LifecycleEventObserver { _, event ->
                 when (event) {
                     Lifecycle.Event.ON_PAUSE -> {
-                        exoPlayer.pause()
+                        player.pause()
                         isPlaying = false
                     }
                     Lifecycle.Event.ON_RESUME -> {
                         if (!hadPlaybackError) {
-                            exoPlayer.playWhenReady = true
-                            isPlaying = exoPlayer.isPlaying
+                            player.playWhenReady = true
+                            isPlaying = player.isPlaying
                         }
                     }
                     else -> {}
@@ -981,7 +1027,7 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
             lifecycleOwner.lifecycle.addObserver(observer)
             onDispose {
                 lifecycleOwner.lifecycle.removeObserver(observer)
-                exoPlayer.release()
+                player.release()
             }
         }
     }
