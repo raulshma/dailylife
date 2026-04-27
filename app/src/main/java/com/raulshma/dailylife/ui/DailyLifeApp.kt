@@ -12,6 +12,7 @@ import android.provider.Settings
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ContentTransform
@@ -19,9 +20,11 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -48,6 +51,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
@@ -192,6 +196,9 @@ import com.raulshma.dailylife.ui.capture.rememberMediaCaptureLauncher
 import com.raulshma.dailylife.ui.components.AnimatedCounter
 import com.raulshma.dailylife.ui.components.PressableCard
 import com.raulshma.dailylife.ui.components.ShimmerBox
+import com.raulshma.dailylife.ui.components.StaggeredEnter
+import com.raulshma.dailylife.ui.components.rememberStaggeredVisibility
+import com.raulshma.dailylife.ui.components.SharedElementKeys
 import com.raulshma.dailylife.ui.detail.ItemDetailScreen
 import com.raulshma.dailylife.ui.theme.DailyLifeTween
 import java.time.LocalDate
@@ -751,20 +758,11 @@ private fun MainScaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Filled.PhotoLibrary,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = "DailyLife",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Medium,
-                        )
-                    }
+                    Text(
+                        text = "DailyLife",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Medium,
+                    )
                 },
                 actions = {
                     IconButton(onClick = onShowS3Backup) {
@@ -813,56 +811,71 @@ private fun MainScaffold(
             }
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = onShowQuickAdd,
-                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                text = { Text("Add") },
-            )
+            AnimatedVisibility(
+                visible = true,
+                enter = androidx.compose.animation.scaleIn(
+                    initialScale = 0.7f,
+                    animationSpec = DailyLifeTween.emphasized<Float>(),
+                ) + fadeIn(DailyLifeTween.fade<Float>()),
+                exit = fadeOut(DailyLifeTween.fade<Float>()),
+            ) {
+                ExtendedFloatingActionButton(
+                    onClick = onShowQuickAdd,
+                    icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                    text = { Text("Add") },
+                )
+            }
         },
     ) { paddingValues ->
-        when (selectedTab) {
-            HomeTab.Photos -> {
-                PhotosMosaicScreen(
-                    state = state,
-                    contentPadding = paddingValues,
-                    onItemSelected = onItemSelected,
-                    onStorageErrorDismissed = onStorageErrorDismissed,
-                )
-            }
+        androidx.compose.animation.Crossfade(
+            targetState = selectedTab,
+            animationSpec = DailyLifeTween.content(),
+            label = "tabTransition",
+        ) { currentTab ->
+            when (currentTab) {
+                HomeTab.Photos -> {
+                    PhotosMosaicScreen(
+                        state = state,
+                        contentPadding = paddingValues,
+                        onItemSelected = onItemSelected,
+                        onStorageErrorDismissed = onStorageErrorDismissed,
+                    )
+                }
 
-            HomeTab.Search -> {
-                TimelineScreen(
-                    state = state,
-                    contentPadding = paddingValues,
-                    onSearchChanged = onSearchChanged,
-                    onTypeSelected = onTypeSelected,
-                    onTagSelected = onTagSelected,
-                    onDateRangeChanged = onDateRangeChanged,
-                    onFavoritesOnlyToggled = onFavoritesOnlyToggled,
-                    onClearFilters = onClearFilters,
-                    onItemSelected = onItemSelected,
-                    onFavoriteToggled = onFavoriteToggled,
-                    onPinnedToggled = onPinnedToggled,
-                    onTaskStatusChanged = onTaskStatusChanged,
-                    onCompleted = onCompleted,
-                    onStorageErrorDismissed = onStorageErrorDismissed,
-                )
-            }
+                HomeTab.Search -> {
+                    TimelineScreen(
+                        state = state,
+                        contentPadding = paddingValues,
+                        onSearchChanged = onSearchChanged,
+                        onTypeSelected = onTypeSelected,
+                        onTagSelected = onTagSelected,
+                        onDateRangeChanged = onDateRangeChanged,
+                        onFavoritesOnlyToggled = onFavoritesOnlyToggled,
+                        onClearFilters = onClearFilters,
+                        onItemSelected = onItemSelected,
+                        onFavoriteToggled = onFavoriteToggled,
+                        onPinnedToggled = onPinnedToggled,
+                        onTaskStatusChanged = onTaskStatusChanged,
+                        onCompleted = onCompleted,
+                        onStorageErrorDismissed = onStorageErrorDismissed,
+                    )
+                }
 
-            HomeTab.Collections -> {
-                CollectionsScreen(
-                    state = state,
-                    contentPadding = paddingValues,
-                    onCollectionSelected = onCollectionSelected,
-                )
-            }
+                HomeTab.Collections -> {
+                    CollectionsScreen(
+                        state = state,
+                        contentPadding = paddingValues,
+                        onCollectionSelected = onCollectionSelected,
+                    )
+                }
 
-            HomeTab.Graph -> {
-                GraphViewScreen(
-                    items = state.visibleItems,
-                    contentPadding = paddingValues,
-                    onItemSelected = onItemSelected,
-                )
+                HomeTab.Graph -> {
+                    GraphViewScreen(
+                        items = state.visibleItems,
+                        contentPadding = paddingValues,
+                        onItemSelected = onItemSelected,
+                    )
+                }
             }
         }
     }
@@ -906,16 +919,33 @@ private fun PhotosMosaicScreen(
                 EmptyPhotosScreen()
             }
         } else {
+            var globalIndex = 0
             groupedItems.forEach { (date, itemsForDate) ->
+                val dateIdx = globalIndex
+                globalIndex++
                 item(key = "date-$date", span = StaggeredGridItemSpan.FullLine) {
-                    DateHeader(date = date)
+                    val dateVisible = rememberStaggeredVisibility(dateIdx, baseDelayMs = 40, maxDelayMs = 300)
+                    AnimatedVisibility(
+                        visibleState = dateVisible,
+                        enter = StaggeredEnter,
+                    ) {
+                        DateHeader(date = date)
+                    }
                 }
                 staggeredItems(itemsForDate, key = { it.id }) { item ->
-                    MediaMosaicTile(
-                        item = item,
-                        onClick = { onItemSelected(item.id) },
-                        modifier = Modifier.animateItem(),
-                    )
+                    val itemIdx = globalIndex
+                    globalIndex++
+                    val tileVisible = rememberStaggeredVisibility(itemIdx, baseDelayMs = 45, maxDelayMs = 450)
+                    AnimatedVisibility(
+                        visibleState = tileVisible,
+                        enter = StaggeredEnter,
+                    ) {
+                        MediaMosaicTile(
+                            item = item,
+                            onClick = { onItemSelected(item.id) },
+                            modifier = Modifier.animateItem(),
+                        )
+                    }
                 }
             }
         }
@@ -944,6 +974,15 @@ private fun CollectionsScreen(
         }
     }
 
+    val collectionsData = remember(favoriteItems.size, videoItems.size, placeItems.size, notes.size) {
+        listOf(
+            Triple("Favorites", "Pinned and loved memories", Icons.Filled.Star) to favoriteItems,
+            Triple("Videos", "Tap to open playback items", Icons.Filled.Videocam) to videoItems,
+            Triple("Places", "Items with map context", Icons.Filled.LocationOn) to placeItems,
+            Triple("Notes & Thoughts", "Text-first memories and reminders", Icons.Filled.EditNote) to notes,
+        )
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -955,47 +994,26 @@ private fun CollectionsScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Text(
-                text = "Collections",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
+            val headerVisible = rememberStaggeredVisibility(0, baseDelayMs = 30, maxDelayMs = 150)
+            AnimatedVisibility(visibleState = headerVisible, enter = StaggeredEnter) {
+                Text(
+                    text = "Collections",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
         }
-        item {
-            CollectionCard(
-                title = "Favorites",
-                subtitle = "Pinned and loved memories",
-                count = favoriteItems.size,
-                icon = Icons.Filled.Star,
-                onClick = { onCollectionSelected(favoriteItems) },
-            )
-        }
-        item {
-            CollectionCard(
-                title = "Videos",
-                subtitle = "Tap to open playback items",
-                count = videoItems.size,
-                icon = Icons.Filled.Videocam,
-                onClick = { onCollectionSelected(videoItems) },
-            )
-        }
-        item {
-            CollectionCard(
-                title = "Places",
-                subtitle = "Items with map context",
-                count = placeItems.size,
-                icon = Icons.Filled.LocationOn,
-                onClick = { onCollectionSelected(placeItems) },
-            )
-        }
-        item {
-            CollectionCard(
-                title = "Notes & Thoughts",
-                subtitle = "Text-first memories and reminders",
-                count = notes.size,
-                icon = Icons.Filled.EditNote,
-                onClick = { onCollectionSelected(notes) },
-            )
+        itemsIndexed(collectionsData) { index, (meta, items) ->
+            val cardVisible = rememberStaggeredVisibility(index + 1, baseDelayMs = 70, maxDelayMs = 500)
+            AnimatedVisibility(visibleState = cardVisible, enter = StaggeredEnter) {
+                CollectionCard(
+                    title = meta.first,
+                    subtitle = meta.second,
+                    count = items.size,
+                    icon = meta.third,
+                    onClick = { onCollectionSelected(items) },
+                )
+            }
         }
     }
 }
@@ -1056,12 +1074,27 @@ private fun CollectionCard(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
 @Composable
 private fun MediaMosaicTile(
     item: LifeItem,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val sharedTransitionScope = LocalSharedTransitionScope.current
+    val animatedVisibilityScope = LocalAnimatedVisibilityScope.current
+
+    val mediaSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.sharedElement(
+                sharedContentState = rememberSharedContentState(key = SharedElementKeys.media(item.id)),
+                animatedVisibilityScope = animatedVisibilityScope,
+            )
+        }
+    } else {
+        Modifier
+    }
+
     PressableCard(
         onClick = onClick,
         modifier = modifier
@@ -1073,7 +1106,9 @@ private fun MediaMosaicTile(
         ),
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            ItemPreview(item = item)
+            Box(modifier = Modifier.then(mediaSharedModifier)) {
+                ItemPreview(item = item)
+            }
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -1305,12 +1340,19 @@ internal fun VideoPreview(item: LifeItem, autoplay: Boolean = false) {
 @Composable
 internal fun AudioPreview(item: LifeItem) {
     val waveform = rememberAudioWaveform(item)
-    val barHeights = if (waveform.isNotEmpty()) {
+    val targetHeights = if (waveform.isNotEmpty()) {
         waveform.map { (16.dp + (it * 24).dp).coerceAtLeast(4.dp) }
     } else {
         remember(item.id) {
             listOf(8.dp, 16.dp, 10.dp, 22.dp, 14.dp, 20.dp, 12.dp, 18.dp)
         }
+    }
+    val animatedHeights = targetHeights.mapIndexed { index, target ->
+        animateFloatAsState(
+            targetValue = target.value,
+            animationSpec = com.raulshma.dailylife.ui.theme.DailyLifeSpring.Gentle,
+            label = "audioBar-$index"
+        ).value
     }
     Column(
         modifier = Modifier
@@ -1339,11 +1381,11 @@ internal fun AudioPreview(item: LifeItem) {
             horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.Bottom,
         ) {
-            barHeights.forEach { height ->
+            animatedHeights.forEach { height ->
                 Box(
                     modifier = Modifier
                         .width(8.dp)
-                        .height(height)
+                        .height(height.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(MaterialTheme.colorScheme.primary),
                 )
@@ -1834,11 +1876,18 @@ internal fun ToggleRow(
 
 @Composable
 internal fun EmptyTimeline() {
-    val floatOffset by androidx.compose.animation.core.rememberInfiniteTransition(label = "emptyFloat").animateFloat(
+    val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "emptyFloat")
+    val floatOffset by infiniteTransition.animateFloat(
         initialValue = -4f,
         targetValue = 4f,
         animationSpec = com.raulshma.dailylife.ui.theme.DailyLifeRepeat.float<Float>(duration = 2200),
         label = "float"
+    )
+    val scalePulse by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.03f,
+        animationSpec = com.raulshma.dailylife.ui.theme.DailyLifeRepeat.breathe<Float>(duration = 3000),
+        label = "scalePulse"
     )
     Box(
         modifier = Modifier
@@ -1853,7 +1902,11 @@ internal fun EmptyTimeline() {
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
                     .size(42.dp)
-                    .offset(y = floatOffset.dp),
+                    .graphicsLayer {
+                        translationY = floatOffset
+                        scaleX = scalePulse
+                        scaleY = scalePulse
+                    },
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
@@ -1867,11 +1920,18 @@ internal fun EmptyTimeline() {
 
 @Composable
 internal fun EmptyPhotosScreen() {
-    val floatOffset by androidx.compose.animation.core.rememberInfiniteTransition(label = "emptyFloat").animateFloat(
+    val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "emptyFloat")
+    val floatOffset by infiniteTransition.animateFloat(
         initialValue = -6f,
         targetValue = 6f,
         animationSpec = com.raulshma.dailylife.ui.theme.DailyLifeRepeat.float<Float>(),
         label = "float"
+    )
+    val scalePulse by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.04f,
+        animationSpec = com.raulshma.dailylife.ui.theme.DailyLifeRepeat.breathe<Float>(duration = 3500),
+        label = "scalePulse"
     )
     Box(
         modifier = Modifier
@@ -1887,7 +1947,11 @@ internal fun EmptyPhotosScreen() {
             Box(
                 modifier = Modifier
                     .size(120.dp)
-                    .offset(y = floatOffset.dp)
+                    .graphicsLayer {
+                        translationY = floatOffset
+                        scaleX = scalePulse
+                        scaleY = scalePulse
+                    }
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center,

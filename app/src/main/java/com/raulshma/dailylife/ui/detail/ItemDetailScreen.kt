@@ -18,6 +18,7 @@ import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -123,6 +124,7 @@ import com.raulshma.dailylife.ui.LocalSharedTransitionScope
 import com.raulshma.dailylife.ui.TimestampFormatter
 import com.raulshma.dailylife.ui.TypeBadge
 import com.raulshma.dailylife.ui.components.SharedElementKeys
+import com.raulshma.dailylife.ui.components.CompletionRipple
 import com.raulshma.dailylife.ui.inferLocationPreview
 import com.raulshma.dailylife.ui.rememberDecryptedMediaUri
 import com.raulshma.dailylife.ui.theme.DailyLifeDuration
@@ -217,12 +219,13 @@ fun ItemDetailScreen(
     }
 
     val chromeEnter = remember {
-        fadeIn(animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing)) +
-            slideInVertically(animationSpec = tween(durationMillis = 240, easing = LinearOutSlowInEasing)) { it / 10 }
+        fadeIn(animationSpec = tween(durationMillis = 180, easing = LinearOutSlowInEasing)) +
+            slideInVertically(animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing)) { it / 10 } +
+            androidx.compose.animation.scaleIn(initialScale = 0.96f, animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing))
     }
     val chromeExit = remember {
-        fadeOut(animationSpec = tween(durationMillis = 170, easing = FastOutLinearInEasing)) +
-            slideOutVertically(animationSpec = tween(durationMillis = 170, easing = FastOutLinearInEasing)) { -it / 16 }
+        fadeOut(animationSpec = tween(durationMillis = 140, easing = FastOutLinearInEasing)) +
+            slideOutVertically(animationSpec = tween(durationMillis = 140, easing = FastOutLinearInEasing)) { -it / 16 }
     }
 
     val fallbackBrightness = when {
@@ -553,17 +556,20 @@ fun ItemDetailScreen(
                                 animationSpec = tween(durationMillis = 300),
                                 label = "completeTint",
                             )
-                            Icon(
-                                Icons.Filled.Done,
-                                contentDescription = "Mark complete",
-                                tint = checkTint,
-                                modifier = Modifier
-                                    .graphicsLayer {
-                                        scaleX = checkScale
-                                        scaleY = checkScale
-                                    }
-                                    .size(24.dp),
-                            )
+                            Box(contentAlignment = Alignment.Center) {
+                                CompletionRipple(triggered = justCompleted)
+                                Icon(
+                                    Icons.Filled.Done,
+                                    contentDescription = "Mark complete",
+                                    tint = checkTint,
+                                    modifier = Modifier
+                                        .graphicsLayer {
+                                            scaleX = checkScale
+                                            scaleY = checkScale
+                                        }
+                                        .size(24.dp),
+                                )
+                            }
                         }
 
                         LaunchedEffect(justCompleted) {

@@ -2,6 +2,7 @@ package com.raulshma.dailylife.ui.detail
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,7 +19,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -65,6 +66,8 @@ import androidx.compose.ui.unit.dp
 import com.raulshma.dailylife.domain.CompletionRecord
 import com.raulshma.dailylife.domain.LifeItem
 import com.raulshma.dailylife.ui.OpenStreetMapPreview
+import com.raulshma.dailylife.ui.components.StaggeredEnter
+import com.raulshma.dailylife.ui.components.rememberStaggeredVisibility
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -169,15 +172,18 @@ fun CompletionHistoryScreen(
                         bottom = 32.dp,
                     ),
                 ) {
-                    items(
+                    itemsIndexed(
                         displayRecords,
-                        key = { "${it.occurrenceDate}-${it.completedAt}-${it.missed}" },
-                    ) { record ->
-                        CompletionHistoryCard(
-                            record = record,
-                            onEdit = { editingRecord = record },
-                            onDelete = { deletingRecord = record },
-                        )
+                        key = { _, record -> "${record.occurrenceDate}-${record.completedAt}-${record.missed}" },
+                    ) { index, record ->
+                        val visible = rememberStaggeredVisibility(index, baseDelayMs = 60, maxDelayMs = 400)
+                        AnimatedVisibility(visibleState = visible, enter = StaggeredEnter) {
+                            CompletionHistoryCard(
+                                record = record,
+                                onEdit = { editingRecord = record },
+                                onDelete = { deletingRecord = record },
+                            )
+                        }
                     }
                 }
             }

@@ -66,17 +66,25 @@ fun GraphViewScreen(
     val onTertiary = MaterialTheme.colorScheme.onTertiary
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
 
-    // Animate nodes from center to target with spring physics
     val center = remember { Offset(400f, 500f) }
-    val animatedPositions = graph.nodes.map { node ->
+    val animatedPositions = graph.nodes.mapIndexed { index, node ->
+        val nodeDelay = (index * 40).coerceAtMost(300)
         val animX by animateFloatAsState(
             targetValue = node.position.x,
-            animationSpec = spring(stiffness = 280f, dampingRatio = 0.9f, visibilityThreshold = 0.5f),
+            animationSpec = tween(
+                durationMillis = DailyLifeDuration.LONG + (index * 30).coerceAtMost(200),
+                delayMillis = nodeDelay,
+                easing = DailyLifeEasing.Emphasized,
+            ),
             label = "nodeX-${node.itemId}"
         )
         val animY by animateFloatAsState(
             targetValue = node.position.y,
-            animationSpec = spring(stiffness = 280f, dampingRatio = 0.9f, visibilityThreshold = 0.5f),
+            animationSpec = tween(
+                durationMillis = DailyLifeDuration.LONG + (index * 30).coerceAtMost(200),
+                delayMillis = nodeDelay,
+                easing = DailyLifeEasing.Emphasized,
+            ),
             label = "nodeY-${node.itemId}"
         )
         node.itemId to Offset(animX, animY)
@@ -87,7 +95,7 @@ fun GraphViewScreen(
         targetValue = if (graph.nodes.isNotEmpty()) 0.6f else 0f,
         animationSpec = tween(
             durationMillis = DailyLifeDuration.MEDIUM,
-            delayMillis = DailyLifeDuration.SHORT,
+            delayMillis = DailyLifeDuration.SHORT + (graph.nodes.size * 20).coerceAtMost(200),
             easing = DailyLifeEasing.Enter,
         ),
         label = "edgeAlpha"

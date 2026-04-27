@@ -3,6 +3,7 @@ package com.raulshma.dailylife.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -21,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -30,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.raulshma.dailylife.ui.components.SharedElementKeys
+import com.raulshma.dailylife.ui.components.CompletionRipple
 import com.raulshma.dailylife.domain.*
 import java.time.LocalDate
 
@@ -164,18 +167,36 @@ private fun SearchBarRow(
     onSearchChanged: (String) -> Unit,
     onOpenFilters: () -> Unit
 ) {
+    var isFocused by remember { mutableStateOf(false) }
+    val animatedElevation by animateDpAsState(
+        targetValue = if (isFocused) 4.dp else 2.dp,
+        animationSpec = tween(durationMillis = com.raulshma.dailylife.ui.theme.DailyLifeDuration.SHORT),
+        label = "searchElevation",
+    )
+    val animatedColor by androidx.compose.animation.animateColorAsState(
+        targetValue = if (isFocused) {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant
+        },
+        animationSpec = tween(durationMillis = com.raulshma.dailylife.ui.theme.DailyLifeDuration.SHORT),
+        label = "searchColor",
+    )
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        tonalElevation = 2.dp
+        color = animatedColor,
+        tonalElevation = animatedElevation,
     ) {
         TextField(
             value = query,
             onValueChange = onSearchChanged,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .onFocusChanged { focusState -> isFocused = focusState.isFocused },
             placeholder = { Text("Search your timeline") },
             leadingIcon = {
                 IconButton(onClick = { /* Menu or search action */ }) {
@@ -648,17 +669,20 @@ private fun LifeItemCard(
                             animationSpec = tween(durationMillis = 300),
                             label = "completeTint",
                         )
-                        Icon(
-                            imageVector = Icons.Filled.Done,
-                            contentDescription = "Complete",
-                            tint = checkTint,
-                            modifier = Modifier
-                                .graphicsLayer {
-                                    scaleX = checkScale
-                                    scaleY = checkScale
-                                }
-                                .size(18.dp),
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            CompletionRipple(triggered = justCompleted, modifier = Modifier.size(36.dp))
+                            Icon(
+                                imageVector = Icons.Filled.Done,
+                                contentDescription = "Complete",
+                                tint = checkTint,
+                                modifier = Modifier
+                                    .graphicsLayer {
+                                        scaleX = checkScale
+                                        scaleY = checkScale
+                                    }
+                                    .size(18.dp),
+                            )
+                        }
                     }
 
                     LaunchedEffect(justCompleted) {
