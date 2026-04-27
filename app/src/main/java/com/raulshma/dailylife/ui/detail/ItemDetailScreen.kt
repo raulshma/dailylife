@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -127,10 +128,12 @@ import com.raulshma.dailylife.ui.components.SharedElementKeys
 import com.raulshma.dailylife.ui.components.CompletionRipple
 import com.raulshma.dailylife.ui.inferLocationPreview
 import com.raulshma.dailylife.ui.rememberDecryptedMediaUri
+import com.raulshma.dailylife.data.media.AudioWaveformGenerator
 import com.raulshma.dailylife.ui.theme.DailyLifeDuration
 import com.raulshma.dailylife.ui.theme.DailyLifeEasing
 import com.raulshma.dailylife.ui.theme.DailyLifeTween
 import com.raulshma.dailylife.ui.theme.staggerDelay
+import kotlin.random.Random
 import java.io.File
 import java.time.format.DateTimeFormatter
 import kotlin.math.abs
@@ -698,15 +701,20 @@ private fun AttachmentHeroSection(
     val decryptedAudio = rememberDecryptedMediaUri(audioUrl)
 
     val hasVisual = decryptedImage != null || decryptedVideo != null || location != null
+    val displayBody = item.displayBody()
+    val hasText = displayBody.isNotBlank()
+
+    if (decryptedAudio != null && !hasVisual) {
+        onVisualBrightnessMeasured(null)
+    }
 
     Column(modifier = modifier) {
-        if (decryptedAudio != null) {
-            if (!hasVisual) {
-                onVisualBrightnessMeasured(null)
-            }
+        if (decryptedAudio != null && hasVisual) {
             DetailAudioPlayer(
                 audioUrl = decryptedAudio,
                 title = item.title,
+                isPlaying = null,
+                onPlayingChanged = {},
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -796,15 +804,28 @@ private fun AttachmentHeroSection(
 
                 else -> {
                     onVisualBrightnessMeasured(0.62f)
-                    val displayBody = item.displayBody()
-                    if (displayBody.isNotBlank()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color.Black)
-                                .padding(16.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black)
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        if (decryptedAudio != null) {
+                            var isPlaying by remember { mutableStateOf(false) }
+                            DetailAudioPlayer(
+                                audioUrl = decryptedAudio,
+                                title = item.title,
+                                isPlaying = isPlaying,
+                                onPlayingChanged = { isPlaying = it },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            if (hasText) {
+                                Spacer(modifier = Modifier.height(24.dp))
+                            }
+                        }
+                        if (hasText) {
                             Text(
                                 text = displayBody,
                                 style = MaterialTheme.typography.bodyLarge,
@@ -1128,12 +1149,22 @@ private fun resolveLocalMediaFile(context: android.content.Context, uri: Uri): F
 }
 
 @Composable
-private fun DetailAudioPlayer(audioUrl: String, title: String, modifier: Modifier = Modifier) {
+private fun DetailAudioPlayer(
+    audioUrl: String,
+    title: String,
+    isPlaying: Boolean?,
+    onPlayingChanged: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
-    var isPlaying by remember { mutableStateOf(false) }
+    var localIsPlaying by remember { mutableStateOf(false) }
     var currentPosition by remember { mutableStateOf(0) }
     var duration by remember { mutableStateOf(0) }
+    val barCount = 48
+    var waveformBars by remember { mutableStateOf<FloatArray?>(null) }
+
+    val effectiveIsPlaying = isPlaying ?: localIsPlaying
 
     DisposableEffect(audioUrl) {
         val mp = MediaPlayer()
@@ -1147,14 +1178,20 @@ private fun DetailAudioPlayer(audioUrl: String, title: String, modifier: Modifie
         }
         onDispose {
             mediaPlayer?.apply {
-                if (isPlaying) stop()
+                if (isPlaying == true || localIsPlaying) stop()
                 release()
             }
             mediaPlayer = null
             duration = 0
             currentPosition = 0
-            isPlaying = false
+            localIsPlaying = false
+            if (isPlaying != null) onPlayingChanged(false)
         }
+    }
+
+    LaunchedEffect(audioUrl) {
+        val bars = AudioWaveformGenerator().generateWaveform(context, Uri.parse(audioUrl), barCount)
+        waveformBars = bars
     }
 
     ElevatedCard(
@@ -1167,10 +1204,12 @@ private fun DetailAudioPlayer(audioUrl: String, title: String, modifier: Modifie
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth(),
             ) {
                 FilledTonalIconButton(
                     onClick = {
@@ -1178,17 +1217,19 @@ private fun DetailAudioPlayer(audioUrl: String, title: String, modifier: Modifie
                         if (mp == null) return@FilledTonalIconButton
                         if (mp.isPlaying) {
                             mp.pause()
-                            isPlaying = false
+                            localIsPlaying = false
+                            onPlayingChanged(false)
                         } else {
                             mp.start()
-                            isPlaying = true
+                            localIsPlaying = true
+                            onPlayingChanged(true)
                         }
                     },
                     modifier = Modifier.size(48.dp),
                 ) {
                     Icon(
-                        imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        imageVector = if (effectiveIsPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = if (effectiveIsPlaying) "Pause" else "Play",
                         modifier = Modifier.size(28.dp),
                     )
                 }
@@ -1225,15 +1266,106 @@ private fun DetailAudioPlayer(audioUrl: String, title: String, modifier: Modifie
                     )
                 }
             }
+
+            WaveformVisualizer(
+                bars = waveformBars,
+                barCount = barCount,
+                isPlaying = effectiveIsPlaying,
+                progress = if (duration > 0) currentPosition / duration.toFloat() else 0f,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+            )
         }
     }
 
-    LaunchedEffect(isPlaying) {
-        while (isPlaying) {
+    LaunchedEffect(effectiveIsPlaying) {
+        while (effectiveIsPlaying) {
             mediaPlayer?.let { mp ->
                 currentPosition = mp.currentPosition
             }
             delay(200L)
+        }
+    }
+}
+
+@Composable
+private fun WaveformVisualizer(
+    bars: FloatArray?,
+    barCount: Int,
+    isPlaying: Boolean,
+    progress: Float,
+    modifier: Modifier = Modifier,
+) {
+    val randomOffsets = remember(barCount) {
+        FloatArray(barCount) { 0.6f + 0.4f * Random.nextFloat() }
+    }
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        if (bars != null) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                bars.forEachIndexed { index, amplitude ->
+                    val isPast = index / barCount.toFloat() <= progress
+                    val targetHeightRatio = if (isPlaying) {
+                        (amplitude * randomOffsets[index]).coerceIn(0.05f, 1f)
+                    } else {
+                        amplitude.coerceIn(0.05f, 1f)
+                    }
+                    val animatedHeight by animateFloatAsState(
+                        targetValue = targetHeightRatio,
+                        animationSpec = tween(durationMillis = if (isPlaying) 180 else 300, easing = LinearOutSlowInEasing),
+                        label = "waveformBar$index",
+                    )
+                    val barColor = if (isPast) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .width(3.dp)
+                            .fillMaxHeight(animatedHeight)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(barColor),
+                    )
+                }
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                repeat(barCount) { index ->
+                    val placeholderAmp = 0.3f + 0.2f * kotlin.math.sin(index * 0.5f)
+                    val targetHeightRatio = if (isPlaying) {
+                        (placeholderAmp * randomOffsets[index]).coerceIn(0.1f, 0.8f)
+                    } else {
+                        placeholderAmp.coerceIn(0.1f, 0.5f)
+                    }
+                    val animatedHeight by animateFloatAsState(
+                        targetValue = targetHeightRatio,
+                        animationSpec = tween(durationMillis = if (isPlaying) 180 else 300, easing = LinearOutSlowInEasing),
+                        label = "waveformPlaceholder$index",
+                    )
+                    val isPast = index / barCount.toFloat() <= progress
+                    val barColor = if (isPast) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .width(3.dp)
+                            .fillMaxHeight(animatedHeight)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(barColor),
+                    )
+                }
+            }
         }
     }
 }
