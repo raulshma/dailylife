@@ -1,16 +1,27 @@
 package com.raulshma.dailylife.ui.detail
 
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.Drawable
 import android.media.MediaPlayer
 import android.net.Uri
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,12 +32,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -52,14 +64,14 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
+import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -70,16 +82,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
@@ -88,6 +103,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.SubcomposeAsyncImage
 import com.raulshma.dailylife.domain.ItemNotificationSettings
 import com.raulshma.dailylife.domain.LifeItem
@@ -97,22 +113,22 @@ import com.raulshma.dailylife.domain.displayBody
 import com.raulshma.dailylife.domain.inferAudioUrl
 import com.raulshma.dailylife.domain.inferImagePreviewUrl
 import com.raulshma.dailylife.domain.inferVideoPlaybackUrl
-import com.raulshma.dailylife.ui.DateFormatter
-import com.raulshma.dailylife.ui.TimestampFormatter
-import com.raulshma.dailylife.ui.TypeBadge
-import com.raulshma.dailylife.ui.inferLocationPreview
-import com.raulshma.dailylife.ui.isMediaLike
 import com.raulshma.dailylife.ui.LocalAnimatedVisibilityScope
 import com.raulshma.dailylife.ui.LocalSharedTransitionScope
+import com.raulshma.dailylife.ui.TimestampFormatter
+import com.raulshma.dailylife.ui.TypeBadge
+import com.raulshma.dailylife.ui.components.SharedElementKeys
+import com.raulshma.dailylife.ui.inferLocationPreview
 import com.raulshma.dailylife.ui.rememberDecryptedMediaUri
 import com.raulshma.dailylife.ui.theme.DailyLifeDuration
 import com.raulshma.dailylife.ui.theme.DailyLifeEasing
 import com.raulshma.dailylife.ui.theme.DailyLifeTween
 import com.raulshma.dailylife.ui.theme.staggerDelay
 import java.io.File
+import kotlin.math.abs
 import kotlinx.coroutines.delay
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun ItemDetailScreen(
     item: LifeItem,
@@ -125,19 +141,102 @@ fun ItemDetailScreen(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val haptic = LocalHapticFeedback.current
     val occurrenceStats = item.occurrenceStats()
-
-    val sharedTransitionScope = LocalSharedTransitionScope.current
-    val animatedVisibilityScope = LocalAnimatedVisibilityScope.current
+    val hasVisualMedia = item.inferImagePreviewUrl() != null ||
+        item.inferVideoPlaybackUrl() != null ||
+        item.inferLocationPreview() != null
+    val hasAudioMedia = item.inferAudioUrl() != null
 
     var contentVisible by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var chromeVisible by remember { mutableStateOf(true) }
+    var showDetailsSheet by remember { mutableStateOf(false) }
+    val detailsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    var dragAccumulator by remember { mutableStateOf(0f) }
+    var dragVisualOffsetPx by remember { mutableStateOf(0f) }
+    var chromeInteractionTick by remember { mutableStateOf(0) }
+    var visualBrightnessHint by remember(item.id) { mutableStateOf<Float?>(null) }
+    val sharedTransitionScope = LocalSharedTransitionScope.current
+    val animatedVisibilityScope = LocalAnimatedVisibilityScope.current
+
+    val registerChromeInteraction: () -> Unit = {
+        chromeVisible = true
+        chromeInteractionTick += 1
+    }
+
+    val mediaSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.sharedElement(
+                sharedContentState = rememberSharedContentState(key = SharedElementKeys.media(item.id)),
+                animatedVisibilityScope = animatedVisibilityScope,
+            )
+        }
+    } else {
+        Modifier
+    }
+    val titleSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.sharedElement(
+                sharedContentState = rememberSharedContentState(key = SharedElementKeys.title(item.id)),
+                animatedVisibilityScope = animatedVisibilityScope,
+            )
+        }
+    } else {
+        Modifier
+    }
+    val badgeSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.sharedElement(
+                sharedContentState = rememberSharedContentState(key = SharedElementKeys.typeBadge(item.id)),
+                animatedVisibilityScope = animatedVisibilityScope,
+            )
+        }
+    } else {
+        Modifier
+    }
+
+    val chromeEnter = remember {
+        fadeIn(animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing)) +
+            slideInVertically(animationSpec = tween(durationMillis = 240, easing = LinearOutSlowInEasing)) { it / 10 }
+    }
+    val chromeExit = remember {
+        fadeOut(animationSpec = tween(durationMillis = 170, easing = FastOutLinearInEasing)) +
+            slideOutVertically(animationSpec = tween(durationMillis = 170, easing = FastOutLinearInEasing)) { -it / 16 }
+    }
+
+    val fallbackBrightness = when {
+        hasVisualMedia -> 0.62f
+        hasAudioMedia -> 0.54f
+        else -> MaterialTheme.colorScheme.background.luminance().coerceIn(0.35f, 0.8f)
+    }
+    val scrimBrightness = (visualBrightnessHint ?: fallbackBrightness).coerceIn(0f, 1f)
+    val topScrimStrong = (0.30f + (scrimBrightness * 0.52f)).coerceIn(0.30f, 0.84f)
+    val topScrimWeak = (topScrimStrong * 0.42f).coerceIn(0.14f, 0.40f)
+    val bottomScrimMid = (topScrimStrong * 0.55f).coerceIn(0.20f, 0.52f)
+    val bottomScrimStrong = (topScrimStrong * 0.92f).coerceIn(0.28f, 0.84f)
+    val isWideLayout = LocalConfiguration.current.screenWidthDp >= 700
+
+    val horizontalChromePadding: Dp = if (isWideLayout) 24.dp else 8.dp
+    val topChromeMaxWidth: Dp = if (isWideLayout) 980.dp else 10_000.dp
+    val bottomChromeMaxWidth: Dp = if (isWideLayout) 760.dp else 10_000.dp
+    val dragVisualOffset = animateFloatAsState(
+        targetValue = dragVisualOffsetPx,
+        animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing),
+        label = "dragVisualOffset",
+    ).value
+    val dragProgress = (dragVisualOffset / 700f).coerceIn(0f, 1f)
 
     LaunchedEffect(Unit) {
         delay(DailyLifeDuration.SHORT.toLong())
         contentVisible = true
+    }
+
+    LaunchedEffect(chromeVisible, showDetailsSheet, item.id, chromeInteractionTick) {
+        if (chromeVisible && !showDetailsSheet) {
+            delay(2800L)
+            chromeVisible = false
+        }
     }
 
     if (showDeleteDialog) {
@@ -163,84 +262,305 @@ fun ItemDetailScreen(
         )
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        LargeTopAppBar(
-            title = {
-                Text(
-                    text = item.title,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            },
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                }
-            },
-            actions = {
-                AnimatedActionButton(
-                    icon = Icons.Filled.PushPin,
-                    contentDescription = if (item.isPinned) "Unpin" else "Pin",
-                    tint = if (item.isPinned) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    onClick = onPinnedToggled,
-                )
-                AnimatedActionButton(
-                    icon = if (item.isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
-                    contentDescription = if (item.isFavorite) "Remove favorite" else "Add favorite",
-                    tint = if (item.isFavorite) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onFavoriteToggled()
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .pointerInput(showDetailsSheet) {
+                detectVerticalDragGestures(
+                    onVerticalDrag = { _, dragAmount: Float ->
+                        dragAccumulator += dragAmount
+                        if (dragAmount < -2f) {
+                            chromeVisible = true
+                        }
+                        if (!showDetailsSheet) {
+                            if (dragAmount > 0f && !chromeVisible) {
+                                dragVisualOffsetPx = (dragVisualOffsetPx + (dragAmount * 0.9f)).coerceAtMost(360f)
+                            } else if (dragAmount < 0f) {
+                                dragVisualOffsetPx = (dragVisualOffsetPx + (dragAmount * 0.6f)).coerceAtLeast(0f)
+                            }
+                        }
                     },
-                    animate = item.isFavorite,
+                    onDragEnd = {
+                        when {
+                            dragAccumulator <= -120f && !showDetailsSheet -> {
+                                showDetailsSheet = true
+                                chromeVisible = true
+                                dragVisualOffsetPx = 0f
+                            }
+                            dragAccumulator >= 220f && !showDetailsSheet && !chromeVisible -> {
+                                onBack()
+                            }
+                            abs(dragAccumulator) >= 24f && !showDetailsSheet -> {
+                                chromeVisible = dragAccumulator < 0f
+                                chromeInteractionTick += 1
+                            }
+                        }
+                        dragAccumulator = 0f
+                        dragVisualOffsetPx = 0f
+                    },
+                    onDragCancel = {
+                        dragAccumulator = 0f
+                        dragVisualOffsetPx = 0f
+                    },
                 )
-                IconButton(onClick = onEdit) {
-                    Icon(Icons.Filled.Edit, contentDescription = "Edit item")
-                }
-                IconButton(onClick = { showDeleteDialog = true }) {
-                    Icon(Icons.Filled.Delete, contentDescription = "Delete item")
-                }
-                IconButton(onClick = onCompleted) {
-                    Icon(Icons.Filled.Done, contentDescription = "Mark complete")
-                }
+            }
+    ) {
+        AttachmentHeroSection(
+            item = item,
+            onVisualBrightnessMeasured = { measured ->
+                visualBrightnessHint = measured
             },
-            scrollBehavior = scrollBehavior,
-            colors = TopAppBarDefaults.topAppBarColors(
-                scrolledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-            ),
-            modifier = Modifier.statusBarsPadding(),
+            modifier = Modifier
+                .then(mediaSharedModifier)
+                .fillMaxSize()
+                .graphicsLayer {
+                    translationY = dragVisualOffset
+                    val scale = 1f - (dragProgress * 0.07f)
+                    scaleX = scale
+                    scaleY = scale
+                    alpha = 1f - (dragProgress * 0.08f)
+                }
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) {
+                    chromeVisible = !chromeVisible
+                    chromeInteractionTick += 1
+                },
         )
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = 32.dp),
+        AnimatedVisibility(
+            visible = chromeVisible,
+            enter = chromeEnter,
+            exit = chromeExit,
         ) {
-            val hasMediaContent = item.type.isMediaLike() ||
-                item.inferImagePreviewUrl() != null ||
-                item.inferVideoPlaybackUrl() != null ||
-                item.inferAudioUrl() != null ||
-                item.inferLocationPreview() != null
-            if (hasMediaContent) {
-                AttachmentHeroSection(item = item)
-                Spacer(modifier = Modifier.height(20.dp))
-            }
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        translationY = dragVisualOffset * 0.34f
+                    }
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Black.copy(alpha = topScrimStrong),
+                                    Color.Black.copy(alpha = topScrimWeak),
+                                    Color.Transparent,
+                                ),
+                                startY = 0f,
+                                endY = if (isWideLayout) 340f else 280f,
+                            )
+                        )
+                ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = topChromeMaxWidth)
+                        .align(Alignment.Center)
+                        .statusBarsPadding()
+                        .padding(horizontal = horizontalChromePadding, vertical = if (isWideLayout) 8.dp else 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White,
+                        )
+                    }
+                    Text(
+                        text = item.title,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f)
+                            .then(titleSharedModifier),
+                    )
+                    TypeBadge(type = item.type, modifier = badgeSharedModifier)
+                }
+                }
 
-            DetailContentSection(
-                item = item,
-                occurrenceStats = occurrenceStats,
-                globalSettings = globalSettings,
-                contentVisible = contentVisible,
-                onNotificationsChanged = onNotificationsChanged,
+                Spacer(modifier = Modifier.weight(1f))
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color.Black.copy(alpha = bottomScrimMid),
+                                    Color.Black.copy(alpha = bottomScrimStrong),
+                                ),
+                            )
+                        )
+                        .navigationBarsPadding()
+                        .padding(horizontal = horizontalChromePadding, vertical = if (isWideLayout) 10.dp else 6.dp),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .widthIn(max = bottomChromeMaxWidth)
+                            .align(Alignment.CenterHorizontally),
+                        horizontalArrangement = if (isWideLayout) {
+                            Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally)
+                        } else {
+                            Arrangement.SpaceEvenly
+                        },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AnimatedActionButton(
+                            icon = Icons.Filled.PushPin,
+                            contentDescription = if (item.isPinned) "Unpin" else "Pin",
+                            tint = if (item.isPinned) MaterialTheme.colorScheme.tertiary else Color.White,
+                            onClick = {
+                                registerChromeInteraction()
+                                onPinnedToggled()
+                            },
+                        )
+                        AnimatedActionButton(
+                            icon = if (item.isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
+                            contentDescription = if (item.isFavorite) "Remove favorite" else "Add favorite",
+                            tint = if (item.isFavorite) MaterialTheme.colorScheme.tertiary else Color.White,
+                            onClick = {
+                                registerChromeInteraction()
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onFavoriteToggled()
+                            },
+                            animate = item.isFavorite,
+                        )
+                        IconButton(onClick = {
+                            registerChromeInteraction()
+                            onEdit()
+                        }) {
+                            Icon(Icons.Filled.Edit, contentDescription = "Edit item", tint = Color.White)
+                        }
+                        IconButton(onClick = {
+                            registerChromeInteraction()
+                            showDeleteDialog = true
+                        }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Delete item", tint = Color.White)
+                        }
+                        IconButton(onClick = {
+                            registerChromeInteraction()
+                            onCompleted()
+                        }) {
+                            Icon(Icons.Filled.Done, contentDescription = "Mark complete", tint = Color.White)
+                        }
+                    }
+
+                    TextButton(
+                        onClick = {
+                            showDetailsSheet = true
+                            registerChromeInteraction()
+                        },
+                        modifier = Modifier.align(Alignment.CenterHorizontally),
+                    ) {
+                        Text("Swipe up for details", color = Color.White)
+                    }
+                }
+            }
+        }
+
+        if (!showDetailsSheet) {
+            AnimatedVisibility(
+                visible = !chromeVisible,
+                enter = fadeIn(animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing)) +
+                    slideInVertically(animationSpec = tween(durationMillis = 260, easing = LinearOutSlowInEasing)) { it / 3 },
+                exit = fadeOut(animationSpec = tween(durationMillis = 170, easing = FastOutLinearInEasing)) +
+                    slideOutVertically(animationSpec = tween(durationMillis = 170, easing = FastOutLinearInEasing)) { it / 3 },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 10.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color.Black.copy(alpha = 0.46f))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) {
+                            showDetailsSheet = true
+                            registerChromeInteraction()
+                        }
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(20.dp)
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color.White.copy(alpha = 0.85f)),
+                    )
+                    Text(
+                        text = "Details",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.88f),
+                    )
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = !chromeVisible,
+            enter = fadeIn(animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing)),
+            exit = fadeOut(animationSpec = tween(durationMillis = 170, easing = FastOutLinearInEasing)),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 8.dp),
+        ) {
+            Text(
+                text = "Swipe down to go back",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.72f),
             )
+        }
+    }
+
+    if (showDetailsSheet) {
+        ModalBottomSheet(
+            onDismissRequest = {
+                showDetailsSheet = false
+                registerChromeInteraction()
+            },
+            sheetState = detailsSheetState,
+            dragHandle = { BottomSheetDefaults.DragHandle() },
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = 32.dp),
+            ) {
+                DetailContentSection(
+                    item = item,
+                    occurrenceStats = occurrenceStats,
+                    globalSettings = globalSettings,
+                    contentVisible = contentVisible,
+                    onNotificationsChanged = onNotificationsChanged,
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun AttachmentHeroSection(item: LifeItem) {
+private fun AttachmentHeroSection(
+    item: LifeItem,
+    onVisualBrightnessMeasured: (Float?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     val imageUrl = item.inferImagePreviewUrl()
     val videoUrl = item.inferVideoPlaybackUrl()
@@ -255,113 +575,70 @@ private fun AttachmentHeroSection(item: LifeItem) {
         decryptedImage != null -> {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(280.dp)
-                    .padding(horizontal = 16.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .clickable {
-                        decryptedImage.let { url ->
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            context.startActivity(intent)
-                        }
-                    },
+                    .then(modifier)
+                    .background(Color.Black),
             ) {
                 SubcomposeAsyncImage(
                     model = decryptedImage,
                     contentDescription = "Image preview",
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
+                    contentScale = ContentScale.Fit,
+                    onSuccess = { state ->
+                        onVisualBrightnessMeasured(drawableBrightnessLuminance(state.result.drawable))
+                    },
+                    onError = {
+                        onVisualBrightnessMeasured(null)
+                    },
                 )
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(12.dp)
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.5f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Fullscreen,
-                        contentDescription = "View full image",
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
             }
         }
 
         decryptedVideo != null -> {
-            DetailVideoPlayer(videoUrl = decryptedVideo)
+            onVisualBrightnessMeasured(null)
+            DetailVideoPlayer(
+                videoUrl = decryptedVideo,
+                modifier = modifier,
+            )
         }
 
         decryptedAudio != null -> {
-            DetailAudioPlayer(audioUrl = decryptedAudio, title = item.title)
+            onVisualBrightnessMeasured(null)
+            DetailAudioPlayer(
+                audioUrl = decryptedAudio,
+                title = item.title,
+                modifier = modifier,
+            )
         }
 
         location != null -> {
+            onVisualBrightnessMeasured(0.56f)
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(280.dp)
-                    .padding(horizontal = 16.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .clickable {
-                        val gmmIntentUri = Uri.parse("geo:${location.first},${location.second}")
-                        val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri)
-                        mapIntent.setPackage("com.google.android.apps.maps")
-                        mapIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        runCatching { context.startActivity(mapIntent) }
-                            .recoverCatching {
-                                val fallback = Intent(Intent.ACTION_VIEW, gmmIntentUri)
-                                fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                context.startActivity(fallback)
-                            }
-                    },
+                    .then(modifier)
+                    .background(Color.Black),
             ) {
                 com.raulshma.dailylife.ui.OpenStreetMapPreview(
                     latitude = location.first,
                     longitude = location.second,
                     modifier = Modifier.fillMaxSize(),
                 )
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(12.dp)
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.5f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Fullscreen,
-                        contentDescription = "Open in maps",
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
             }
         }
 
         else -> {
+            onVisualBrightnessMeasured(0.62f)
             val displayBody = item.displayBody()
             if (displayBody.isNotBlank()) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(280.dp)
-                        .padding(horizontal = 16.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .then(modifier)
+                        .background(Color.Black)
                         .padding(16.dp),
                 ) {
                     Text(
                         text = displayBody,
                         style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Color.White,
                     )
                 }
             }
@@ -369,8 +646,42 @@ private fun AttachmentHeroSection(item: LifeItem) {
     }
 }
 
+private fun drawableBrightnessLuminance(drawable: Drawable): Float? {
+    return runCatching {
+        val srcWidth = drawable.intrinsicWidth.takeIf { it > 0 } ?: 64
+        val srcHeight = drawable.intrinsicHeight.takeIf { it > 0 } ?: 64
+        val sampleWidth = srcWidth.coerceAtMost(48)
+        val sampleHeight = srcHeight.coerceAtMost(48)
+
+        val bitmap = Bitmap.createBitmap(sampleWidth, sampleHeight, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, sampleWidth, sampleHeight)
+        drawable.draw(canvas)
+
+        var totalLuminance = 0f
+        var countedPixels = 0
+
+        val pixels = IntArray(sampleWidth * sampleHeight)
+        bitmap.getPixels(pixels, 0, sampleWidth, 0, 0, sampleWidth, sampleHeight)
+        for (argb in pixels) {
+            val alpha = (argb ushr 24) and 0xff
+            if (alpha < 16) continue
+            val r = ((argb ushr 16) and 0xff) / 255f
+            val g = ((argb ushr 8) and 0xff) / 255f
+            val b = (argb and 0xff) / 255f
+            val pixelLuminance = (0.2126f * r) + (0.7152f * g) + (0.0722f * b)
+            totalLuminance += pixelLuminance
+            countedPixels += 1
+        }
+
+        bitmap.recycle()
+
+        if (countedPixels == 0) null else (totalLuminance / countedPixels).coerceIn(0f, 1f)
+    }.getOrNull()
+}
+
 @Composable
-private fun DetailVideoPlayer(videoUrl: String) {
+private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val parsedVideoUri = remember(videoUrl) { Uri.parse(videoUrl) }
@@ -429,11 +740,7 @@ private fun DetailVideoPlayer(videoUrl: String) {
     val sliderValue = if (isSeeking) seekPositionMs.toFloat() else positionMs.toFloat().coerceAtMost(sliderMax)
 
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(280.dp)
-            .padding(horizontal = 16.dp)
-            .clip(RoundedCornerShape(20.dp))
+        modifier = modifier
             .background(Color.Black),
     ) {
         AndroidView(
@@ -640,7 +947,7 @@ private fun resolveLocalMediaFile(context: android.content.Context, uri: Uri): F
 }
 
 @Composable
-private fun DetailAudioPlayer(audioUrl: String, title: String) {
+private fun DetailAudioPlayer(audioUrl: String, title: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
@@ -669,9 +976,7 @@ private fun DetailAudioPlayer(audioUrl: String, title: String) {
     }
 
     ElevatedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
+        modifier = modifier.padding(horizontal = 16.dp, vertical = 24.dp),
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
         ),

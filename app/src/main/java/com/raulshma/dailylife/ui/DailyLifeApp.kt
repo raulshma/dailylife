@@ -1492,9 +1492,13 @@ internal fun DateHeader(date: LocalDate) {
 }
 
 @Composable
-internal fun TypeBadge(type: LifeItemType) {
+internal fun TypeBadge(
+    type: LifeItemType,
+    modifier: Modifier = Modifier,
+) {
     Box(
         modifier = Modifier
+            .then(modifier)
             .size(44.dp)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.primaryContainer),

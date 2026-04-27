@@ -1,6 +1,7 @@
 package com.raulshma.dailylife.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -22,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.raulshma.dailylife.ui.components.SharedElementKeys
 import com.raulshma.dailylife.domain.*
 import java.time.LocalDate
 
@@ -452,6 +454,39 @@ private fun LifeItemCard(
     modifier: Modifier = Modifier,
 ) {
     val occurrenceStats = item.occurrenceStats()
+    val sharedTransitionScope = LocalSharedTransitionScope.current
+    val animatedVisibilityScope = LocalAnimatedVisibilityScope.current
+
+    val mediaSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.sharedElement(
+                sharedContentState = rememberSharedContentState(key = SharedElementKeys.media(item.id)),
+                animatedVisibilityScope = animatedVisibilityScope,
+            )
+        }
+    } else {
+        Modifier
+    }
+    val titleSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.sharedElement(
+                sharedContentState = rememberSharedContentState(key = SharedElementKeys.title(item.id)),
+                animatedVisibilityScope = animatedVisibilityScope,
+            )
+        }
+    } else {
+        Modifier
+    }
+    val badgeSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.sharedElement(
+                sharedContentState = rememberSharedContentState(key = SharedElementKeys.typeBadge(item.id)),
+                animatedVisibilityScope = animatedVisibilityScope,
+            )
+        }
+    } else {
+        Modifier
+    }
 
     com.raulshma.dailylife.ui.components.PressableCard(
         onClick = onClick,
@@ -468,10 +503,11 @@ private fun LifeItemCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                TypeBadge(type = item.type)
+                TypeBadge(type = item.type, modifier = badgeSharedModifier)
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = item.title,
+                        modifier = titleSharedModifier,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
@@ -515,6 +551,7 @@ private fun LifeItemCard(
             if (hasMediaContent) {
                 Box(
                     modifier = Modifier
+                        .then(mediaSharedModifier)
                         .fillMaxWidth()
                         .height(180.dp)
                         .clip(RoundedCornerShape(8.dp))
