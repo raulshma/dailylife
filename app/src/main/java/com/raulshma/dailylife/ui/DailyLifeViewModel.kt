@@ -27,6 +27,7 @@ import com.raulshma.dailylife.notifications.ReminderScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.Instant
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -54,7 +55,7 @@ class DailyLifeViewModel @Inject constructor(
     init {
         repository.rolloverMissedOccurrences()
         syncReminderSchedule()
-        _s3BackupSettings.value = roomStore.loadS3BackupSettings()
+        viewModelScope.launch { _s3BackupSettings.value = roomStore.loadS3BackupSettings() }
     }
 
     fun addItem(draft: LifeItemDraft) {
@@ -165,7 +166,7 @@ class DailyLifeViewModel @Inject constructor(
 
     fun updateS3BackupSettings(settings: S3BackupSettings) {
         _s3BackupSettings.value = settings
-        roomStore.saveS3BackupSettings(settings)
+        viewModelScope.launch { roomStore.saveS3BackupSettings(settings) }
     }
 
     fun performS3Backup() {
@@ -206,7 +207,7 @@ class DailyLifeViewModel @Inject constructor(
         repository.updateCompletionRecord(itemId, record)
     }
 
-    fun deleteCompletionRecord(itemId: Long, occurrenceDate: LocalDate, completedAt: java.time.LocalDateTime) {
+    fun deleteCompletionRecord(itemId: Long, occurrenceDate: LocalDate, completedAt: LocalDateTime) {
         repository.deleteCompletionRecord(itemId, occurrenceDate, completedAt)
     }
 

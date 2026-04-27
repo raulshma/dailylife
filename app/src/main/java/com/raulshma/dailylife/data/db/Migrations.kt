@@ -34,3 +34,32 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
         db.execSQL("ALTER TABLE completion_records ADD COLUMN note TEXT")
     }
 }
+
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_life_items_createdAt ON life_items(createdAt)")
+        db.execSQL(
+            """
+            CREATE TABLE completion_records_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                itemId INTEGER NOT NULL,
+                occurrenceDate TEXT NOT NULL,
+                completedAt TEXT NOT NULL,
+                missed INTEGER NOT NULL,
+                latitude REAL,
+                longitude REAL,
+                batteryLevel INTEGER,
+                appVersion TEXT,
+                note TEXT,
+                FOREIGN KEY(itemId) REFERENCES life_items(id) ON DELETE CASCADE
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("INSERT INTO completion_records_new SELECT * FROM completion_records")
+        db.execSQL("DROP TABLE completion_records")
+        db.execSQL("ALTER TABLE completion_records_new RENAME TO completion_records")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_completion_records_itemId ON completion_records(itemId)")
+    }
+}
+
+val ALL_MIGRATIONS = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)

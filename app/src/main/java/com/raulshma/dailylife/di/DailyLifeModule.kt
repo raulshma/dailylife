@@ -1,6 +1,7 @@
 package com.raulshma.dailylife.di
 
 import android.content.Context
+import android.util.Log
 import androidx.room.Room
 import com.raulshma.dailylife.data.DailyLifeRepository
 import com.raulshma.dailylife.data.RoomBackedDailyLifeRepository
@@ -9,8 +10,7 @@ import com.raulshma.dailylife.data.backup.OkHttpS3BackupRepository
 import com.raulshma.dailylife.data.backup.S3BackupRepository
 import com.raulshma.dailylife.data.db.DailyLifeDatabase
 import com.raulshma.dailylife.data.db.DatabasePassphraseManager
-import com.raulshma.dailylife.data.db.MIGRATION_1_2
-import com.raulshma.dailylife.data.db.MIGRATION_2_3
+import com.raulshma.dailylife.data.db.ALL_MIGRATIONS
 import com.raulshma.dailylife.data.media.AudioWaveformGenerator
 import com.raulshma.dailylife.data.media.MediaThumbnailGenerator
 import com.raulshma.dailylife.data.security.BackupEncryptionManager
@@ -51,7 +51,7 @@ object DailyLifeModule {
                 DatabaseName,
             )
                 .openHelperFactory(factory)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(*ALL_MIGRATIONS.toTypedArray())
                 .build()
         }
 
@@ -69,12 +69,15 @@ object DailyLifeModule {
         return runCatching {
             initialDatabase.openHelper.writableDatabase
             initialDatabase
-        }.getOrElse {
+        }.getOrElse { error ->
+            Log.w("DailyLife", "Database open failed, attempting recovery: ${error.message}")
             runCatching { initialDatabase.close() }
             deleteDatabaseFiles()
+            Log.w("DailyLife", "Database files deleted, regenerating passphrase and rebuilding")
             val regeneratedPassphrase = passphraseManager.regeneratePassphrase()
             val recoveredDatabase = buildDatabase(regeneratedPassphrase)
             recoveredDatabase.openHelper.writableDatabase
+            Log.w("DailyLife", "Database recovery successful (previous data lost)")
             recoveredDatabase
         }
     }

@@ -1482,11 +1482,7 @@ private fun AudioRecordingCard(
                         if (isRecordingAudio) "Listening\u2026" else "No transcription available."
                     },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (liveTranscription.isBlank()) {
-                        MaterialTheme.colorScheme.onTertiaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.onTertiaryContainer
-                    },
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
                 )
             }
 

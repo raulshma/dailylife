@@ -13,6 +13,9 @@ import com.raulshma.dailylife.domain.TaskStatus
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -196,6 +199,8 @@ class InMemoryDailyLifeRepositoryTest {
         val repository = InMemoryDailyLifeRepository(
             seedItems = emptyList(),
             store = FileDailyLifeStore(storeFile),
+            persistDebounceMs = 0,
+            persistScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
         )
         val item = repository.addItem(
             LifeItemDraft(
@@ -234,6 +239,7 @@ class InMemoryDailyLifeRepositoryTest {
             ),
         )
 
+        Thread.sleep(100)
         val restored = InMemoryDailyLifeRepository(
             seedItems = emptyList(),
             store = FileDailyLifeStore(storeFile),
@@ -267,7 +273,6 @@ class InMemoryDailyLifeRepositoryTest {
 
         assertEquals(item.id + 1L, nextItem.id)
     }
-
     @Test
     fun loadErrorsAreSurfacedAndCanBeDismissed() {
         val repository = InMemoryDailyLifeRepository(
@@ -292,9 +297,11 @@ class InMemoryDailyLifeRepositoryTest {
         val repository = InMemoryDailyLifeRepository(
             seedItems = emptyList(),
             store = store,
+            persistDebounceMs = 0,
         )
 
         repository.addItem(LifeItemDraft(title = "Plan dinner"))
+        Thread.sleep(50)
 
         val storageError = repository.state.value.storageError
         assertEquals(StorageOperation.Save, storageError?.operation)
@@ -309,11 +316,14 @@ class InMemoryDailyLifeRepositoryTest {
         val repository = InMemoryDailyLifeRepository(
             seedItems = emptyList(),
             store = store,
+            persistDebounceMs = 0,
         )
         repository.addItem(LifeItemDraft(title = "Plan dinner"))
+        Thread.sleep(50)
 
         store.failSaves = false
         repository.addItem(LifeItemDraft(title = "Buy basil"))
+        Thread.sleep(50)
 
         assertNull(repository.state.value.storageError)
         assertEquals(2, repository.state.value.items.size)
@@ -402,23 +412,22 @@ class InMemoryDailyLifeRepositoryTest {
 }
 
 private object ThrowingLoadStore : DailyLifeStore {
-    override fun load(): PersistedDailyLifeState? {
+    override suspend fun load(): PersistedDailyLifeState? {
         error("disk unavailable")
     }
 
-    override fun save(snapshot: PersistedDailyLifeState) = Unit
+    override suspend fun save(snapshot: PersistedDailyLifeState) = Unit
 }
 
 private class ToggleSaveStore(
     var failSaves: Boolean,
 ) : DailyLifeStore {
-    override fun load(): PersistedDailyLifeState? = null
+    override suspend fun load(): PersistedDailyLifeState? = null
 
-    override fun save(snapshot: PersistedDailyLifeState) {
+    override suspend fun save(snapshot: PersistedDailyLifeState) {
         if (failSaves) error("disk full")
     }
 }
-
 private fun completionRecord(
     itemId: Long,
     date: LocalDate,

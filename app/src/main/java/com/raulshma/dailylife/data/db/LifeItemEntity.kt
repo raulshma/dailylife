@@ -1,9 +1,13 @@
 package com.raulshma.dailylife.data.db
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "life_items")
+@Entity(
+    tableName = "life_items",
+    indices = [Index("createdAt")],
+)
 data class LifeItemEntity(
     @PrimaryKey
     val id: Long,

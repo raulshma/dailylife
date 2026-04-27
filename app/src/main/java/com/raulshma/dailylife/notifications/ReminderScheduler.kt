@@ -17,6 +17,7 @@ import androidx.room.Room
 import com.raulshma.dailylife.MainActivity
 import com.raulshma.dailylife.R
 import com.raulshma.dailylife.data.RoomDailyLifeStore
+import com.raulshma.dailylife.data.db.ALL_MIGRATIONS
 import com.raulshma.dailylife.data.db.DailyLifeDatabase
 import com.raulshma.dailylife.data.db.DatabasePassphraseManager
 import com.raulshma.dailylife.domain.LifeItem
@@ -301,13 +302,18 @@ private fun rescheduleStoredReminders(
             "dailylife.db",
         )
             .openHelperFactory(openHelperFactory)
+            .addMigrations(*ALL_MIGRATIONS.toTypedArray())
             .build()
-        val snapshot = RoomDailyLifeStore(database).load() ?: return
-        AndroidReminderScheduler(context).sync(
-            items = snapshot.items,
-            settings = snapshot.notificationSettings,
-            now = now,
-        )
+        try {
+            val snapshot = kotlinx.coroutines.runBlocking { RoomDailyLifeStore(database).load() } ?: return
+            AndroidReminderScheduler(context).sync(
+                items = snapshot.items,
+                settings = snapshot.notificationSettings,
+                now = now,
+            )
+        } finally {
+            database.close()
+        }
     }
 }
 

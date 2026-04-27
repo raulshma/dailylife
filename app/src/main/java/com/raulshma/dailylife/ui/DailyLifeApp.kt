@@ -138,6 +138,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.mapSaver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -2026,26 +2027,34 @@ private val OsmMlatPattern =
 @Composable
 internal fun rememberDecryptedMediaUri(uriString: String?): String? {
     val context = LocalContext.current
-    return remember(uriString) {
-        if (uriString == null) return@remember null
-        if (uriString.endsWith(".enc")) {
-            val manager = MediaEncryptionManager(context)
-            manager.decryptToCache(android.net.Uri.parse(uriString), context)?.toString()
+    return produceState<String?>(initialValue = null, key1 = uriString) {
+        value = if (uriString == null) {
+            null
+        } else if (uriString.endsWith(".enc")) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val manager = MediaEncryptionManager(context)
+                manager.decryptToCache(android.net.Uri.parse(uriString), context)?.toString()
+            }
         } else {
             uriString
         }
-    }
+    }.value
 }
 
 @Composable
 internal fun rememberVideoThumbnail(item: LifeItem): String? {
     val context = LocalContext.current
     val videoUrl = rememberDecryptedMediaUri(item.inferVideoPlaybackUrl())
-    return remember(item.id, item.body, videoUrl) {
-        if (videoUrl == null) return@remember null
-        val generator = MediaThumbnailGenerator(context)
-        generator.generateVideoThumbnail(android.net.Uri.parse(videoUrl), context)?.toString()
-    }
+    return produceState<String?>(initialValue = null, key1 = item.id, key2 = videoUrl) {
+        value = if (videoUrl == null) {
+            null
+        } else {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val generator = MediaThumbnailGenerator(context)
+                generator.generateVideoThumbnail(android.net.Uri.parse(videoUrl), context)?.toString()
+            }
+        }
+    }.value
 }
 
 @Composable
@@ -2054,11 +2063,16 @@ internal fun rememberAudioWaveform(item: LifeItem): List<Float> {
     val rawAudioUrl = item.inferAudioUrl()
         ?: item.body.split("\\s+".toRegex()).firstOrNull { it.startsWith("content://") || it.startsWith("file://") }
     val decryptedUrl = rememberDecryptedMediaUri(rawAudioUrl)
-    return remember(item.id, decryptedUrl) {
-        if (decryptedUrl == null) return@remember emptyList()
-        val generator = AudioWaveformGenerator()
-        generator.generateWaveform(context, android.net.Uri.parse(decryptedUrl), barCount = 8) ?: emptyList()
-    }
+    return produceState<List<Float>>(initialValue = emptyList(), key1 = item.id, key2 = decryptedUrl) {
+        value = if (decryptedUrl == null) {
+            emptyList()
+        } else {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val generator = AudioWaveformGenerator()
+                generator.generateWaveform(context, android.net.Uri.parse(decryptedUrl), barCount = 8)?.toList() ?: emptyList()
+            }
+        }
+    }.value
 }
 
 private fun LifeItem.inferMosaicHeight(): Dp {

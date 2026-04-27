@@ -27,15 +27,15 @@ data class PersistedDailyLifeState(
 )
 
 interface DailyLifeStore {
-    fun load(): PersistedDailyLifeState?
+    suspend fun load(): PersistedDailyLifeState?
 
-    fun save(snapshot: PersistedDailyLifeState)
+    suspend fun save(snapshot: PersistedDailyLifeState)
 }
 
 class FileDailyLifeStore(
     private val file: File,
 ) : DailyLifeStore {
-    override fun load(): PersistedDailyLifeState? {
+    override suspend fun load(): PersistedDailyLifeState? {
         if (!file.exists()) return null
 
         val properties = Properties()
@@ -50,7 +50,7 @@ class FileDailyLifeStore(
         )
     }
 
-    override fun save(snapshot: PersistedDailyLifeState) {
+    override suspend fun save(snapshot: PersistedDailyLifeState) {
         file.parentFile?.mkdirs()
 
         val properties = Properties().apply {

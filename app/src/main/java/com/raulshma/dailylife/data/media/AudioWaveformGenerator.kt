@@ -6,19 +6,12 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
 import java.nio.ByteBuffer
+import kotlin.math.abs
 import kotlin.math.sqrt
 
-/**
- * Generates waveform amplitude data from audio files using MediaExtractor + MediaCodec.
- * Returns a list of normalized amplitude values (0.0 to 1.0) for visualization.
- */
 class AudioWaveformGenerator {
 
-    /**
-     * Extracts [barCount] amplitude values from the audio at [uri].
-     * Returns null if the file cannot be decoded.
-     */
-    fun generateWaveform(context: Context, uri: Uri, barCount: Int = 32): List<Float>? {
+    fun generateWaveform(context: Context, uri: Uri, barCount: Int = 32): FloatArray? {
         val extractor = MediaExtractor()
         return try {
             extractor.setDataSource(context, uri, null)
@@ -34,15 +27,14 @@ class AudioWaveformGenerator {
             decoder.configure(format, null, null, 0)
             decoder.start()
 
-            val samples = decodeSamples(extractor, decoder, durationUs)
+            val bars = decodeToBars(extractor, decoder, durationUs, barCount)
             decoder.stop()
             decoder.release()
             extractor.release()
 
-            if (samples.isEmpty()) return null
-            downsampleToBars(samples, barCount)
-        } catch (e: Exception) {
-            extractor.release()
+            bars
+        } catch (_: Exception) {
+            runCatching { extractor.release() }
             null
         }
     }
@@ -56,11 +48,19 @@ class AudioWaveformGenerator {
         return -1
     }
 
-    private fun decodeSamples(extractor: MediaExtractor, decoder: MediaCodec, durationUs: Long): List<Float> {
-        val samples = mutableListOf<Float>()
+    private fun decodeToBars(
+        extractor: MediaExtractor,
+        decoder: MediaCodec,
+        durationUs: Long,
+        barCount: Int,
+    ): FloatArray? {
+        val rmsAccumulators = FloatArray(barCount)
+        val sampleCounts = IntArray(barCount)
         val bufferInfo = MediaCodec.BufferInfo()
         var sawInputEOS = false
         var sawOutputEOS = false
+        var totalSamplesDecoded = 0L
+        val estimatedTotalSamples = (durationUs / 1_000_000.0 * 44100).toLong().coerceAtLeast(1)
 
         while (!sawOutputEOS) {
             if (!sawInputEOS) {
@@ -83,46 +83,49 @@ class AudioWaveformGenerator {
             if (outputBufferId >= 0) {
                 val outputBuffer = decoder.getOutputBuffer(outputBufferId)
                 if (outputBuffer != null && bufferInfo.size > 0) {
-                    val chunk = extractAmplitudes(outputBuffer, bufferInfo.size)
-                    samples.addAll(chunk)
+                    accumulateRms(outputBuffer, bufferInfo.size, totalSamplesDecoded, estimatedTotalSamples, rmsAccumulators, sampleCounts)
+                    totalSamplesDecoded += bufferInfo.size / 2L
                 }
                 if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
                     sawOutputEOS = true
                 }
                 decoder.releaseOutputBuffer(outputBufferId, false)
-            } else if (outputBufferId == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                // Format changed, can query new format if needed
             }
         }
-        return samples
+
+        var hasData = false
+        val result = FloatArray(barCount) { i ->
+            if (sampleCounts[i] > 0) {
+                hasData = true
+                val rms = sqrt(rmsAccumulators[i] / sampleCounts[i]).coerceIn(0f, 1f)
+                rms
+            } else {
+                0f
+            }
+        }
+        return if (hasData) result else null
     }
 
-    private fun extractAmplitudes(buffer: ByteBuffer, size: Int): List<Float> {
-        val amplitudes = mutableListOf<Float>()
-        val samples = size / 2 // 16-bit PCM
+    private fun accumulateRms(
+        buffer: ByteBuffer,
+        size: Int,
+        samplesSoFar: Long,
+        estimatedTotal: Long,
+        rmsAccumulators: FloatArray,
+        sampleCounts: IntArray,
+    ) {
+        val barCount = rmsAccumulators.size
+        val samplesInChunk = size / 2
         var i = 0
-        while (i < samples) {
-            // Read little-endian 16-bit signed sample
+        while (i < samplesInChunk) {
             val low = buffer.get().toInt() and 0xFF
             val high = buffer.get().toInt()
-            val sample = (high shl 8 or low).toShort().toInt()
-            amplitudes.add(kotlin.math.abs(sample) / 32768f)
+            val sample = abs((high shl 8 or low).toShort().toInt()) / 32768f
+            val sampleIndex = samplesSoFar + i
+            val barIndex = ((sampleIndex * barCount) / estimatedTotal).toInt().coerceIn(0, barCount - 1)
+            rmsAccumulators[barIndex] += sample * sample
+            sampleCounts[barIndex]++
             i++
-        }
-        return amplitudes
-    }
-
-    private fun downsampleToBars(samples: List<Float>, barCount: Int): List<Float> {
-        if (samples.isEmpty() || barCount <= 0) return emptyList()
-        val samplesPerBar = samples.size / barCount
-        if (samplesPerBar <= 0) return samples
-
-        return (0 until barCount).map { barIndex ->
-            val start = barIndex * samplesPerBar
-            val end = kotlin.math.min(start + samplesPerBar, samples.size)
-            val chunk = samples.subList(start, end)
-            val rms = sqrt(chunk.map { it * it }.average()).toFloat()
-            rms.coerceIn(0f, 1f)
         }
     }
 }

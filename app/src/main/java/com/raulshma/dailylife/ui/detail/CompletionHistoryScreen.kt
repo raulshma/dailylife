@@ -87,7 +87,9 @@ fun CompletionHistoryScreen(
     onDeleteRecord: (Long, LocalDate, LocalDateTime) -> Unit,
 ) {
     var showMissed by remember { mutableStateOf(true) }
-    val allRecords = item.completionHistory.sortedByDescending { it.completedAt }
+    val allRecords = remember(item.id, item.completionHistory) {
+        item.completionHistory.sortedByDescending { it.completedAt }
+    }
     val displayRecords = if (showMissed) allRecords else allRecords.filter { !it.missed }
 
     val completedCount = allRecords.count { !it.missed }

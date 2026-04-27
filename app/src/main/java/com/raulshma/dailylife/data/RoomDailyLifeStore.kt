@@ -15,8 +15,6 @@ import com.raulshma.dailylife.domain.RecurrenceFrequency
 import com.raulshma.dailylife.domain.RecurrenceRule
 import com.raulshma.dailylife.domain.S3BackupSettings
 import com.raulshma.dailylife.domain.TaskStatus
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -26,13 +24,13 @@ class RoomDailyLifeStore(
 ) : DailyLifeStore {
     private val dao = database.dailyLifeDao()
 
-    override fun load(): PersistedDailyLifeState? = runBlocking(Dispatchers.IO) {
+    override suspend fun load(): PersistedDailyLifeState? {
         val items = dao.getAllItems()
         val completionRecords = dao.getAllCompletionRecords()
         val settingsEntity = dao.getNotificationSettings()
 
         if (items.isEmpty() && settingsEntity == null) {
-            return@runBlocking null
+            return null
         }
 
         val completionsByItemId = completionRecords.groupBy { it.itemId }
@@ -42,14 +40,14 @@ class RoomDailyLifeStore(
 
         val fallbackNextId = (lifeItems.maxOfOrNull { it.id } ?: 0L) + 1L
 
-        PersistedDailyLifeState(
+        return PersistedDailyLifeState(
             items = lifeItems,
             notificationSettings = settingsEntity?.toNotificationSettings() ?: NotificationSettings(),
             nextId = fallbackNextId,
         )
     }
 
-    override fun save(snapshot: PersistedDailyLifeState) = runBlocking(Dispatchers.IO) {
+    override suspend fun save(snapshot: PersistedDailyLifeState) {
         val itemEntities = snapshot.items.map { it.toEntity() }
         val completionEntities = snapshot.items.flatMap { item ->
             item.completionHistory.map { it.toEntity() }
@@ -57,6 +55,14 @@ class RoomDailyLifeStore(
         val settingsEntity = snapshot.notificationSettings.toEntity()
 
         dao.replaceAll(itemEntities, completionEntities, settingsEntity)
+    }
+
+    suspend fun loadS3BackupSettings(): S3BackupSettings {
+        return dao.getS3BackupSettings()?.toS3BackupSettings() ?: S3BackupSettings()
+    }
+
+    suspend fun saveS3BackupSettings(settings: S3BackupSettings) {
+        dao.insertS3BackupSettings(settings.toEntity())
     }
 
     private fun LifeItemEntity.toLifeItem(
@@ -154,14 +160,6 @@ class RoomDailyLifeStore(
             batchNotifications = batchNotifications,
             respectDoNotDisturb = respectDoNotDisturb,
         )
-
-    fun loadS3BackupSettings(): S3BackupSettings = runBlocking(Dispatchers.IO) {
-        dao.getS3BackupSettings()?.toS3BackupSettings() ?: S3BackupSettings()
-    }
-
-    fun saveS3BackupSettings(settings: S3BackupSettings) = runBlocking(Dispatchers.IO) {
-        dao.insertS3BackupSettings(settings.toEntity())
-    }
 
     private fun S3BackupSettings.toEntity(): S3BackupSettingsEntity = S3BackupSettingsEntity(
         id = 0,

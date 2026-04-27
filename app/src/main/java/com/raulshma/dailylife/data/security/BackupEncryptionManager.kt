@@ -1,10 +1,7 @@
 package com.raulshma.dailylife.data.security
 
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
-import java.security.KeyStore
+import com.raulshma.dailylife.data.security.KeystoreHelper
 import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
@@ -34,34 +31,11 @@ class BackupEncryptionManager {
         return cipher.doFinal(ciphertext)
     }
 
-    private fun getOrCreateKey(): SecretKey {
-        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        val existing = keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry
-        if (existing != null) {
-            return existing.secretKey
-        }
-
-        val keyGenerator = KeyGenerator.getInstance(KEY_ALGORITHM, ANDROID_KEYSTORE)
-        val spec = KeyGenParameterSpec.Builder(
-            KEY_ALIAS,
-            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
-        )
-            .setBlockModes(BLOCK_MODE)
-            .setEncryptionPaddings(PADDING)
-            .setKeySize(KEY_SIZE)
-            .setRandomizedEncryptionRequired(true)
-            .build()
-        keyGenerator.init(spec)
-        return keyGenerator.generateKey()
-    }
+    private fun getOrCreateKey(): SecretKey = KeystoreHelper.getOrCreateKey(KEY_ALIAS)
 
     companion object {
         private const val KEY_ALIAS = "dailylife_backup_key"
-        private const val ANDROID_KEYSTORE = "AndroidKeyStore"
-        private const val KEY_ALGORITHM = KeyProperties.KEY_ALGORITHM_AES
-        private const val BLOCK_MODE = KeyProperties.BLOCK_MODE_GCM
-        private const val PADDING = KeyProperties.ENCRYPTION_PADDING_NONE
-        private const val TRANSFORMATION = "$KEY_ALGORITHM/$BLOCK_MODE/$PADDING"
+        private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val KEY_SIZE = 256
         private const val GCM_TAG_LENGTH = 16
         private const val IV_LENGTH = 12

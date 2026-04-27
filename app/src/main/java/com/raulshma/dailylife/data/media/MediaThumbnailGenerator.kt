@@ -35,8 +35,16 @@ class MediaThumbnailGenerator(context: Context) {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(videoFile.absolutePath)
-            val bitmap = retriever.frameAtTime
+            val raw = retriever.frameAtTime
                 ?: retriever.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+
+            val bitmap = raw?.let { frame ->
+                val targetWidth = 320
+                val ratio = targetWidth.toFloat() / frame.width
+                val scaled = Bitmap.createScaledBitmap(frame, targetWidth, (frame.height * ratio).toInt(), true)
+                if (scaled !== frame) frame.recycle()
+                scaled
+            }
 
             bitmap?.let {
                 FileOutputStream(thumbFile).use { fos ->
@@ -53,72 +61,7 @@ class MediaThumbnailGenerator(context: Context) {
         }
     }
 
-    private fun Uri.toFile(context: Context): File? {
-        return when (scheme) {
-            "file" -> path?.let { File(it) }
-            "content" -> {
-                runCatching {
-                    val projection = arrayOf(android.provider.MediaStore.MediaColumns.DATA)
-                    context.contentResolver.query(this, projection, null, null, null)?.use { cursor ->
-                        if (cursor.moveToFirst()) {
-                            val path = cursor.getString(0)
-                            if (path != null) {
-                                val file = File(path)
-                                if (file.exists()) return file
-                            }
-                        }
-                    }
-                }
-                val segments = pathSegments
-                if (segments.isNotEmpty()) {
-                    val possiblePath = segments.joinToString("/")
-                    val cacheFile = File(context.cacheDir, possiblePath)
-                    if (cacheFile.exists()) return cacheFile
-
-                    if (segments.first() == "cache_media") {
-                        val relative = segments.drop(1).joinToString("/")
-                        val mappedCacheFile = File(context.cacheDir, "media/$relative")
-                        if (mappedCacheFile.exists()) return mappedCacheFile
-                    }
-
-                    val file = File(context.filesDir, possiblePath)
-                    if (file.exists()) return file
-                }
-                copyContentUriToInternal(this, context)
-            }
-            else -> null
-        }
-    }
-
-    private fun copyContentUriToInternal(uri: Uri, context: Context): File? {
-        return try {
-            val mimeType = context.contentResolver.getType(uri)
-            val extension = mimeType?.let { mime ->
-                when {
-                    mime.startsWith("video/") -> mime.substringAfter("video/").let {
-                        when (it) { "mp4" -> "mp4"; "webm" -> "webm"; "3gpp" -> "3gp"; else -> "mp4" }
-                    }
-                    mime.startsWith("image/") -> mime.substringAfter("image/").let {
-                        when (it) { "jpeg" -> "jpg"; "png" -> "png"; "webp" -> "webp"; "gif" -> "gif"; else -> "jpg" }
-                    }
-                    else -> "bin"
-                }
-            } ?: "bin"
-
-            val importDir = File(context.filesDir, "media/imported").apply { mkdirs() }
-            val destFile = File(importDir, "${System.currentTimeMillis()}.$extension")
-
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                FileOutputStream(destFile).use { output ->
-                    input.copyTo(output, 8192)
-                }
-            } ?: return null
-
-            if (destFile.length() > 0) destFile else { destFile.delete(); null }
-        } catch (_: Exception) {
-            null
-        }
-    }
+    private fun Uri.toFile(context: Context): File? = UriFileResolver.resolveToFile(this, context)
 
     companion object {
         private const val ThumbCacheMaxSize = 64L * 1024 * 1024 // 64 MB

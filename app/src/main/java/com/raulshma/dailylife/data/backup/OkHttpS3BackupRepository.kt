@@ -9,9 +9,12 @@ import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
+import java.io.File
 import java.io.StringReader
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -77,14 +80,17 @@ class OkHttpS3BackupRepository @Inject constructor(
                 for (path in mediaFilePaths) {
                     val fileName = path.substringAfterLast('/')
                     val mediaKey = "$prefix/media/$fileName"
-                    val fileBytes = java.io.File(path.replace("file://", "")).readBytes()
-                    val bytesToUpload = if (settings.encryptBackups) {
-                        encryptionManager.encrypt(fileBytes)
+                    val file = File(path.removePrefix("file://"))
+                    if (settings.encryptBackups) {
+                        val fileBytes = file.readBytes()
+                        val encrypted = encryptionManager.encrypt(fileBytes)
+                        if (uploadObject(baseUrl, mediaKey, encrypted, settings)) {
+                            mediaUploaded++
+                        }
                     } else {
-                        fileBytes
-                    }
-                    if (uploadObject(baseUrl, mediaKey, bytesToUpload, settings)) {
-                        mediaUploaded++
+                        if (uploadFileStream(baseUrl, mediaKey, file, settings)) {
+                            mediaUploaded++
+                        }
                     }
                 }
 
@@ -166,6 +172,30 @@ class OkHttpS3BackupRepository @Inject constructor(
             .build()
         val signedRequest = signerFor(settings).sign(request, data)
         return client.newCall(signedRequest).execute().use { it.isSuccessful }
+    }
+
+    private fun uploadFileStream(baseUrl: String, key: String, file: File, settings: S3BackupSettings): Boolean {
+        val url = "$baseUrl/$key"
+        val body: RequestBody = file.asRequestBody("application/octet-stream".toMediaType())
+        val payloadHash = file.sha256Hex()
+        val request = Request.Builder()
+            .url(url)
+            .put(body)
+            .build()
+        val signedRequest = signerFor(settings).sign(request, payloadHash = payloadHash)
+        return client.newCall(signedRequest).execute().use { it.isSuccessful }
+    }
+
+    private fun File.sha256Hex(): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        inputStream().use { input ->
+            val buffer = ByteArray(8192)
+            var read: Int
+            while (input.read(buffer).also { read = it } != -1) {
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun buildBaseUrl(settings: S3BackupSettings): String {

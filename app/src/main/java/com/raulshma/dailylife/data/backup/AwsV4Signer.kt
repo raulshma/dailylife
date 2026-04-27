@@ -5,10 +5,10 @@ import okio.Buffer
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.Locale
-import java.util.TimeZone
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
@@ -24,14 +24,21 @@ class AwsV4Signer(
 ) {
 
     fun sign(request: Request, payload: ByteArray = ByteArray(0)): Request {
-        val now = Date()
-        val dateStamp = dateFormatter.format(now)
-        val amzDate = amzDateFormatter.format(now)
-        val payloadHash = sha256Hex(payload)
+        return signWithPayloadHash(request, sha256Hex(payload))
+    }
+
+    fun sign(request: Request, payloadHash: String): Request {
+        return signWithPayloadHash(request, payloadHash)
+    }
+
+    private fun signWithPayloadHash(request: Request, hash: String): Request {
+        val now = Instant.now().atZone(ZoneOffset.UTC)
+        val dateStamp = DateFormatter.format(now)
+        val amzDate = AmzDateFormatter.format(now)
 
         val builder = request.newBuilder()
             .header("x-amz-date", amzDate)
-            .header("x-amz-content-sha256", payloadHash)
+            .header("x-amz-content-sha256", hash)
 
         if (request.header("Host") == null) {
             builder.header("Host", request.url.host)
@@ -39,7 +46,7 @@ class AwsV4Signer(
 
         val signedRequest = builder.build()
 
-        val canonicalRequest = buildCanonicalRequest(signedRequest, payloadHash)
+        val canonicalRequest = buildCanonicalRequest(signedRequest, hash)
         val credentialScope = "$dateStamp/$region/$service/aws4_request"
         val stringToSign = buildStringToSign(amzDate, credentialScope, canonicalRequest)
         val signingKey = deriveSigningKey(secretAccessKey, dateStamp, region, service)
@@ -126,11 +133,7 @@ class AwsV4Signer(
     }
 
     companion object {
-        private val dateFormatter = SimpleDateFormat("yyyyMMdd", Locale.US).apply {
-            timeZone = TimeZone.getTimeZone("UTC")
-        }
-        private val amzDateFormatter = SimpleDateFormat("yyyyMMdd'T'HHmmss'Z'", Locale.US).apply {
-            timeZone = TimeZone.getTimeZone("UTC")
-        }
+        private val DateFormatter = DateTimeFormatter.ofPattern("yyyyMMdd").withZone(ZoneOffset.UTC)
+        private val AmzDateFormatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC)
     }
 }

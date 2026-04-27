@@ -27,7 +27,7 @@ fun AnimatedCounter(
     maxLines: Int = 1,
     overflow: TextOverflow = TextOverflow.Ellipsis,
 ) {
-    val animatedValue = remember { Animatable(0f) }
+    val animatedValue = remember(value) { Animatable(value.toFloat()) }
 
     LaunchedEffect(value) {
         animatedValue.animateTo(

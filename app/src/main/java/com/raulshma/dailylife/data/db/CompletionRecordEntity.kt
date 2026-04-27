@@ -1,9 +1,22 @@
 package com.raulshma.dailylife.data.db
 
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "completion_records")
+@Entity(
+    tableName = "completion_records",
+    foreignKeys = [
+        ForeignKey(
+            entity = LifeItemEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["itemId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("itemId")],
+)
 data class CompletionRecordEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,

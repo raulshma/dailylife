@@ -17,6 +17,7 @@ import com.raulshma.dailylife.ui.theme.DailyLifeDuration
 import com.raulshma.dailylife.ui.theme.DailyLifeEasing
 import com.raulshma.dailylife.ui.theme.DailyLifeTween
 import com.raulshma.dailylife.ui.theme.staggerDelay
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 @Composable
@@ -28,7 +29,7 @@ fun rememberStaggeredVisibility(
     val state = remember { MutableTransitionState(false) }
     val delay = staggerDelay(index, baseDelayMs, maxDelayMs)
     LaunchedEffect(delay) {
-        kotlinx.coroutines.delay(delay.toLong())
+        delay(delay.toLong())
         state.targetState = true
     }
     return state

@@ -49,7 +49,7 @@ interface DailyLifeRepository {
 
     fun updateItemNotifications(itemId: Long, settings: ItemNotificationSettings)
 
-    fun rolloverMissedOccurrences(referenceDate: java.time.LocalDate = java.time.LocalDate.now())
+    fun rolloverMissedOccurrences(referenceDate: LocalDate = LocalDate.now())
 
     fun clearStorageError()
 
@@ -59,5 +59,5 @@ interface DailyLifeRepository {
 
     fun updateCompletionRecord(itemId: Long, record: CompletionRecord)
 
-    fun deleteCompletionRecord(itemId: Long, occurrenceDate: java.time.LocalDate, completedAt: java.time.LocalDateTime)
+    fun deleteCompletionRecord(itemId: Long, occurrenceDate: LocalDate, completedAt: LocalDateTime)
 }

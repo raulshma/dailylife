@@ -47,6 +47,12 @@ interface DailyLifeDao {
     @Query("DELETE FROM s3_backup_settings")
     suspend fun deleteAllS3BackupSettings()
 
+    @Query("DELETE FROM life_items WHERE id = :itemId")
+    suspend fun deleteItemById(itemId: Long)
+
+    @Query("DELETE FROM completion_records WHERE itemId = :itemId")
+    suspend fun deleteCompletionRecordsByItemId(itemId: Long)
+
     @Transaction
     suspend fun replaceAll(
         items: List<LifeItemEntity>,
@@ -59,5 +65,11 @@ interface DailyLifeDao {
         insertItems(items)
         insertCompletionRecords(completionRecords)
         insertNotificationSettings(settings)
+    }
+
+    @Transaction
+    suspend fun deleteItemCascade(itemId: Long) {
+        deleteCompletionRecordsByItemId(itemId)
+        deleteItemById(itemId)
     }
 }

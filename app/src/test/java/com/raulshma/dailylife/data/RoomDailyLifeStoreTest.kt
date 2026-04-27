@@ -22,6 +22,7 @@ import org.robolectric.RobolectricTestRunner
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import kotlinx.coroutines.runBlocking
 
 @RunWith(RobolectricTestRunner::class)
 class RoomDailyLifeStoreTest {
@@ -34,7 +35,7 @@ class RoomDailyLifeStoreTest {
     }
 
     @Test
-    fun loadReturnsNullWhenDatabaseIsEmpty() {
+    fun loadReturnsNullWhenDatabaseIsEmpty() = runBlocking {
         val database = createInMemoryDatabase()
         val store = RoomDailyLifeStore(database)
 
@@ -44,7 +45,7 @@ class RoomDailyLifeStoreTest {
     }
 
     @Test
-    fun saveAndLoadRoundTripPreservesItemsAndSettings() {
+    fun saveAndLoadRoundTripPreservesItemsAndSettings() = runBlocking {
         val database = createInMemoryDatabase()
         val store = RoomDailyLifeStore(database)
 
@@ -123,7 +124,7 @@ class RoomDailyLifeStoreTest {
     }
 
     @Test
-    fun overwriteReplacesPreviousData() {
+    fun overwriteReplacesPreviousData() = runBlocking {
         val database = createInMemoryDatabase()
         val store = RoomDailyLifeStore(database)
 
@@ -168,7 +169,7 @@ class RoomDailyLifeStoreTest {
     }
 
     @Test
-    fun emptyTagsRoundTrip() {
+    fun emptyTagsRoundTrip() = runBlocking {
         val database = createInMemoryDatabase()
         val store = RoomDailyLifeStore(database)
 
@@ -195,7 +196,7 @@ class RoomDailyLifeStoreTest {
     }
 
     @Test
-    fun nullableFieldsRoundTrip() {
+    fun nullableFieldsRoundTrip() = runBlocking {
         val database = createInMemoryDatabase()
         val store = RoomDailyLifeStore(database)
 
