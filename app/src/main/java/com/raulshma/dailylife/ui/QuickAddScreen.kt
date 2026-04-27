@@ -360,9 +360,7 @@ private fun QuickAddContent(
         }
     }
 
-    LaunchedEffect(Unit) {
-        titleFocusRequester.requestFocus()
-    }
+
 
     LaunchedEffect(
         selectedType, title, body, tags, favorite, pinned,
