@@ -609,7 +609,7 @@ fun ItemDetailScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
-                    .padding(bottom = if (hasVideoMedia) 80.dp else 10.dp),
+                    .padding(bottom = if (hasVideoMedia) 64.dp else 10.dp),
             ) {
                 Row(
                     modifier = Modifier
@@ -1141,23 +1141,64 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
                 )
                 .navigationBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
-            Slider(
-                modifier = Modifier.height(16.dp),
-                value = sliderValue,
-                onValueChange = { value ->
-                    isSeeking = true
-                    seekPositionMs = value.toLong().coerceIn(0L, durationMs.coerceAtLeast(0L))
-                },
-                onValueChangeFinished = {
-                    val target = seekPositionMs.coerceIn(0L, durationMs.coerceAtLeast(0L))
-                    exoPlayer?.seekTo(target)
-                    positionMs = target
-                    isSeeking = false
-                },
-                valueRange = 0f..sliderMax,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilledTonalIconButton(
+                    onClick = {
+                        val player = exoPlayer ?: return@FilledTonalIconButton
+                        if (player.isPlaying) {
+                            player.pause()
+                            userPaused = true
+                        } else {
+                            player.play()
+                            userPaused = false
+                        }
+                    },
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+
+                Slider(
+                    modifier = Modifier.weight(1f).height(16.dp),
+                    value = sliderValue,
+                    onValueChange = { value ->
+                        isSeeking = true
+                        seekPositionMs = value.toLong().coerceIn(0L, durationMs.coerceAtLeast(0L))
+                    },
+                    onValueChangeFinished = {
+                        val target = seekPositionMs.coerceIn(0L, durationMs.coerceAtLeast(0L))
+                        exoPlayer?.seekTo(target)
+                        positionMs = target
+                        isSeeking = false
+                    },
+                    valueRange = 0f..sliderMax,
+                )
+
+                FilledTonalIconButton(
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(videoUrl))
+                        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        runCatching { context.startActivity(intent) }
+                    },
+                    modifier = Modifier.size(32.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Fullscreen,
+                        contentDescription = "Open with",
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1168,45 +1209,6 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
                     style = MaterialTheme.typography.labelSmall,
                     color = Color.White.copy(alpha = 0.88f),
                 )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    FilledTonalIconButton(
-                        onClick = {
-                            val player = exoPlayer ?: return@FilledTonalIconButton
-                            if (player.isPlaying) {
-                                player.pause()
-                                userPaused = true
-                            } else {
-                                player.play()
-                                userPaused = false
-                            }
-                        },
-                        modifier = Modifier.size(32.dp),
-                    ) {
-                        Icon(
-                            imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = if (isPlaying) "Pause" else "Play",
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-
-                    FilledTonalIconButton(
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(videoUrl))
-                            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            runCatching { context.startActivity(intent) }
-                        },
-                        modifier = Modifier.size(32.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Fullscreen,
-                            contentDescription = "Fullscreen",
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                }
                 Text(
                     text = formatPlaybackTime(durationMs / 1000L),
                     style = MaterialTheme.typography.labelSmall,
