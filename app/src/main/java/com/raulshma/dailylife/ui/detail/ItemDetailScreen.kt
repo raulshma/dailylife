@@ -27,6 +27,10 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -73,13 +77,11 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.BottomSheetDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -174,8 +176,15 @@ fun ItemDetailScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var chromeVisible by remember { mutableStateOf(true) }
     var heavyReady by remember { mutableStateOf(false) }
-    var showDetailsSheet by remember { mutableStateOf(false) }
-    val detailsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    var showDetails by remember { mutableStateOf(false) }
+    val screenHeightPx = with(androidx.compose.ui.platform.LocalDensity.current) {
+        LocalConfiguration.current.screenHeightDp.dp.toPx()
+    }
+    val detailsProgress by animateFloatAsState(
+        targetValue = if (showDetails) 1f else 0f,
+        animationSpec = tween(durationMillis = 320, easing = LinearOutSlowInEasing),
+        label = "detailsProgress",
+    )
     var dragAccumulator by remember { mutableStateOf(0f) }
     var dragVisualOffsetPx by remember { mutableStateOf(0f) }
     var chromeInteractionTick by remember { mutableStateOf(0) }
@@ -195,6 +204,13 @@ fun ItemDetailScreen(
         chromeVisible = true
         chromeInteractionTick += 1
     }
+
+    val dismissNestedScrollConnection = rememberDismissNestedScrollConnection(
+        onDismiss = {
+            showDetails = false
+            registerChromeInteraction()
+        },
+    )
 
     val mediaSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
         with(sharedTransitionScope) {
@@ -269,8 +285,8 @@ fun ItemDetailScreen(
         heavyReady = true
     }
 
-    LaunchedEffect(chromeVisible, showDetailsSheet, item.id, chromeInteractionTick) {
-        if (chromeVisible && !showDetailsSheet) {
+    LaunchedEffect(chromeVisible, showDetails, item.id, chromeInteractionTick) {
+        if (chromeVisible && !showDetails) {
             delay(2800L)
             chromeVisible = false
         }
@@ -303,7 +319,7 @@ fun ItemDetailScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(showDetailsSheet) {
+            .pointerInput(showDetails) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     dragAxisLocked = false
@@ -357,18 +373,18 @@ fun ItemDetailScreen(
                                     }
                                 }
                             } else {
-                                when {
-                                    dragAccumulator <= -120f && !showDetailsSheet -> {
-                                        showDetailsSheet = true
+                                 when {
+                                    dragAccumulator <= -120f && !showDetails -> {
+                                        showDetails = true
                                         chromeVisible = true
                                         dragVisualOffsetPx = 0f
                                     }
 
-                                    dragAccumulator >= 220f && !showDetailsSheet && !chromeVisible -> {
+                                    dragAccumulator >= 220f && !showDetails && !chromeVisible -> {
                                         onBack()
                                     }
 
-                                    abs(dragAccumulator) >= 24f && !showDetailsSheet -> {
+                                     abs(dragAccumulator) >= 24f && !showDetails -> {
                                         chromeVisible =
                                             dragAccumulator < 0f
                                         chromeInteractionTick += 1
@@ -406,7 +422,7 @@ fun ItemDetailScreen(
                                 if (dragAmount.y < -2f) {
                                     chromeVisible = true
                                 }
-                                if (!showDetailsSheet) {
+                                if (!showDetails) {
                                     if (dragAmount.y > 0f && !chromeVisible) {
                                         dragVisualOffsetPx =
                                             (dragVisualOffsetPx + (dragAmount.y * 0.9f)).coerceAtMost(360f)
@@ -435,11 +451,17 @@ fun ItemDetailScreen(
                 .then(mediaSharedModifier)
                 .fillMaxSize()
                 .graphicsLayer {
-                    translationY = dragVisualOffset
-                    val scale = 1f - (dragProgress * 0.07f)
-                    scaleX = scale
-                    scaleY = scale
-                    alpha = 1f - (dragProgress * 0.08f)
+                    // Push hero up when details are revealed (Google Photos style)
+                    val heroTargetY = -screenHeightPx * 0.48f
+                    translationY = dragVisualOffset + (heroTargetY - dragVisualOffset) * detailsProgress
+                    val dragScale = 1f - (dragProgress * 0.07f)
+                    val detailsScale = 0.94f
+                    val s = dragScale + (detailsScale - dragScale) * detailsProgress
+                    scaleX = s
+                    scaleY = s
+                    val dragAlpha = 1f - (dragProgress * 0.08f)
+                    val detailsAlpha = 0.90f
+                    alpha = dragAlpha + (detailsAlpha - dragAlpha) * detailsProgress
                 }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -459,7 +481,7 @@ fun ItemDetailScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        translationY = dragVisualOffset * 0.34f
+                        translationY = dragVisualOffset * 0.34f + ((-screenHeightPx * 0.48f * 0.34f) - dragVisualOffset * 0.34f) * detailsProgress
                     }
             ) {
                 Box(
@@ -609,7 +631,7 @@ fun ItemDetailScreen(
 
                     TextButton(
                         onClick = {
-                            showDetailsSheet = true
+                            showDetails = true
                             registerChromeInteraction()
                         },
                         modifier = Modifier.align(Alignment.CenterHorizontally),
@@ -620,7 +642,7 @@ fun ItemDetailScreen(
             }
         }
 
-        if (!showDetailsSheet) {
+        if (!showDetails) {
             AnimatedVisibility(
                 visible = !chromeVisible,
                 enter = fadeIn(animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing)) +
@@ -640,7 +662,7 @@ fun ItemDetailScreen(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                         ) {
-                            showDetailsSheet = true
+                            showDetails = true
                             registerChromeInteraction()
                         }
                         .padding(horizontal = 14.dp, vertical = 6.dp),
@@ -664,7 +686,7 @@ fun ItemDetailScreen(
         }
 
         AnimatedVisibility(
-            visible = !chromeVisible,
+            visible = !chromeVisible && !showDetails,
             enter = fadeIn(animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing)),
             exit = fadeOut(animationSpec = tween(durationMillis = 170, easing = FastOutLinearInEasing)),
             modifier = Modifier
@@ -678,34 +700,70 @@ fun ItemDetailScreen(
                 color = Color.White.copy(alpha = 0.72f),
             )
         }
-    }
 
-    if (showDetailsSheet) {
-        ModalBottomSheet(
-            onDismissRequest = {
-                showDetailsSheet = false
-                registerChromeInteraction()
-            },
-            sheetState = detailsSheetState,
-            dragHandle = { BottomSheetDefaults.DragHandle() },
+        AnimatedVisibility(
+            visible = showDetails,
+            enter = slideInVertically(
+                animationSpec = tween(durationMillis = 320, easing = LinearOutSlowInEasing),
+            ) { it },
+            exit = slideOutVertically(
+                animationSpec = tween(durationMillis = 250, easing = FastOutLinearInEasing),
+            ) { it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.54f)
+                .align(Alignment.BottomCenter),
         ) {
-            Column(
+            Surface(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(bottom = 32.dp),
+                    .fillMaxSize()
+                    .nestedScroll(dismissNestedScrollConnection),
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 3.dp,
             ) {
-                DetailContentSection(
-                    item = item,
-                    occurrenceStats = occurrenceStats,
-                    globalSettings = globalSettings,
-                    contentVisible = contentVisible,
-                    onNotificationsChanged = onNotificationsChanged,
-                    onViewHistory = onViewHistory,
-                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize(),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(36.dp)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.28f),
+                                ),
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState())
+                            .padding(bottom = 32.dp),
+                    ) {
+                        DetailContentSection(
+                            item = item,
+                            occurrenceStats = occurrenceStats,
+                            globalSettings = globalSettings,
+                            contentVisible = contentVisible,
+                            onNotificationsChanged = onNotificationsChanged,
+                            onViewHistory = onViewHistory,
+                        )
+                    }
+                }
             }
         }
     }
+
 }
 
 @Composable
@@ -1906,5 +1964,47 @@ private fun AnimatedActionButton(
                 }
                 .size(24.dp)
         )
+    }
+}
+
+@Composable
+private fun rememberDismissNestedScrollConnection(
+    onDismiss: () -> Unit,
+    dismissThresholdPx: Float = 120f,
+): NestedScrollConnection {
+    var accumulatedDrag by remember { mutableStateOf(0f) }
+    return remember {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                if (source == NestedScrollSource.UserInput) {
+                    if (available.y > 0) {
+                        accumulatedDrag += available.y
+                        if (accumulatedDrag > dismissThresholdPx) {
+                            onDismiss()
+                            accumulatedDrag = 0f
+                        }
+                        return available
+                    } else {
+                        accumulatedDrag = 0f
+                    }
+                }
+                return Offset.Zero
+            }
+
+            override suspend fun onPostFling(
+                consumed: Velocity,
+                available: Velocity,
+            ): Velocity {
+                if (available.y > 0 && accumulatedDrag > dismissThresholdPx * 0.4f) {
+                    onDismiss()
+                    accumulatedDrag = 0f
+                }
+                return Velocity.Zero
+            }
+        }
     }
 }
