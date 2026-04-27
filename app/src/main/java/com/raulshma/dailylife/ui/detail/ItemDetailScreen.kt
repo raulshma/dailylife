@@ -998,6 +998,7 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
+                .navigationBarsPadding()
                 .padding(start = 40.dp, end = 40.dp, bottom = 6.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
@@ -1055,6 +1056,7 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
         Box(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
+                .navigationBarsPadding()
                 .padding(8.dp),
         ) {
             FilledTonalIconButton(
@@ -1076,6 +1078,7 @@ private fun DetailVideoPlayer(videoUrl: String, modifier: Modifier = Modifier) {
         Box(
             modifier = Modifier
                 .align(Alignment.BottomStart)
+                .navigationBarsPadding()
                 .padding(8.dp),
         ) {
             FilledTonalIconButton(
