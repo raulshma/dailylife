@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -20,7 +21,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -78,6 +79,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -127,12 +129,14 @@ import com.raulshma.dailylife.ui.theme.staggerDelay
 import java.io.File
 import kotlin.math.abs
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun ItemDetailScreen(
     item: LifeItem,
     globalSettings: NotificationSettings,
+    navigableItemIds: List<Long> = emptyList(),
     onBack: () -> Unit,
     onFavoriteToggled: () -> Unit,
     onPinnedToggled: () -> Unit,
@@ -140,6 +144,7 @@ fun ItemDetailScreen(
     onNotificationsChanged: (ItemNotificationSettings) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    onNavigateToItem: (Long) -> Unit = {},
 ) {
     val haptic = LocalHapticFeedback.current
     val occurrenceStats = item.occurrenceStats()
@@ -157,6 +162,12 @@ fun ItemDetailScreen(
     var dragVisualOffsetPx by remember { mutableStateOf(0f) }
     var chromeInteractionTick by remember { mutableStateOf(0) }
     var visualBrightnessHint by remember(item.id) { mutableStateOf<Float?>(null) }
+    val scope = rememberCoroutineScope()
+    var horizontalDragOffset by remember(item.id) { mutableStateOf(0f) }
+    var totalDx by remember { mutableStateOf(0f) }
+    var totalDy by remember { mutableStateOf(0f) }
+    var dragAxisLocked by remember { mutableStateOf(false) }
+    var isHorizontalDrag by remember { mutableStateOf(false) }
     val sharedTransitionScope = LocalSharedTransitionScope.current
     val animatedVisibilityScope = LocalAnimatedVisibilityScope.current
 
@@ -267,43 +278,107 @@ fun ItemDetailScreen(
             .fillMaxSize()
             .background(Color.Black)
             .pointerInput(showDetailsSheet) {
-                detectVerticalDragGestures(
-                    onVerticalDrag = { _, dragAmount: Float ->
-                        dragAccumulator += dragAmount
-                        if (dragAmount < -2f) {
-                            chromeVisible = true
+                detectDragGestures(
+                    onDragStart = {
+                        dragAxisLocked = false
+                        isHorizontalDrag = false
+                        dragAccumulator = 0f
+                        totalDx = 0f
+                        totalDy = 0f
+                    },
+                    onDrag = { change, dragAmount ->
+                        if (!dragAxisLocked) {
+                            totalDx += dragAmount.x
+                            totalDy += dragAmount.y
+                            if (kotlin.math.abs(totalDx) > kotlin.math.abs(totalDy) * 1.5f && kotlin.math.abs(totalDx) > 10f) {
+                                dragAxisLocked = true
+                                isHorizontalDrag = true
+                            } else if (kotlin.math.abs(totalDy) > kotlin.math.abs(totalDx) * 1.5f && kotlin.math.abs(totalDy) > 10f) {
+                                dragAxisLocked = true
+                                isHorizontalDrag = false
+                            }
                         }
-                        if (!showDetailsSheet) {
-                            if (dragAmount > 0f && !chromeVisible) {
-                                dragVisualOffsetPx = (dragVisualOffsetPx + (dragAmount * 0.9f)).coerceAtMost(360f)
-                            } else if (dragAmount < 0f) {
-                                dragVisualOffsetPx = (dragVisualOffsetPx + (dragAmount * 0.6f)).coerceAtLeast(0f)
+
+                        if (dragAxisLocked) {
+                            change.consume()
+                            if (isHorizontalDrag) {
+                                horizontalDragOffset += dragAmount.x
+                            } else {
+                                dragAccumulator += dragAmount.y
+                                if (dragAmount.y < -2f) {
+                                    chromeVisible = true
+                                }
+                                if (!showDetailsSheet) {
+                                    if (dragAmount.y > 0f && !chromeVisible) {
+                                        dragVisualOffsetPx = (dragVisualOffsetPx + (dragAmount.y * 0.9f)).coerceAtMost(360f)
+                                    } else if (dragAmount.y < 0f) {
+                                        dragVisualOffsetPx = (dragVisualOffsetPx + (dragAmount.y * 0.6f)).coerceAtLeast(0f)
+                                    }
+                                }
                             }
                         }
                     },
                     onDragEnd = {
-                        when {
-                            dragAccumulator <= -120f && !showDetailsSheet -> {
-                                showDetailsSheet = true
-                                chromeVisible = true
-                                dragVisualOffsetPx = 0f
+                        if (isHorizontalDrag) {
+                            val swipeThreshold = size.width * 0.25f
+                            val currentIndex = navigableItemIds.indexOf(item.id)
+                            val navigateTo = when {
+                                horizontalDragOffset < -swipeThreshold && currentIndex != -1 && currentIndex < navigableItemIds.lastIndex -> navigableItemIds[currentIndex + 1]
+                                horizontalDragOffset > swipeThreshold && currentIndex != -1 && currentIndex > 0 -> navigableItemIds[currentIndex - 1]
+                                else -> null
                             }
-                            dragAccumulator >= 220f && !showDetailsSheet && !chromeVisible -> {
-                                onBack()
+                            if (navigateTo != null) {
+                                onNavigateToItem(navigateTo)
+                            } else {
+                                scope.launch {
+                                    Animatable(horizontalDragOffset).animateTo(
+                                        targetValue = 0f,
+                                        animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing),
+                                    ) {
+                                        horizontalDragOffset = value
+                                    }
+                                }
                             }
-                            abs(dragAccumulator) >= 24f && !showDetailsSheet -> {
-                                chromeVisible = dragAccumulator < 0f
-                                chromeInteractionTick += 1
+                        } else {
+                            when {
+                                dragAccumulator <= -120f && !showDetailsSheet -> {
+                                    showDetailsSheet = true
+                                    chromeVisible = true
+                                    dragVisualOffsetPx = 0f
+                                }
+                                dragAccumulator >= 220f && !showDetailsSheet && !chromeVisible -> {
+                                    onBack()
+                                }
+                                abs(dragAccumulator) >= 24f && !showDetailsSheet -> {
+                                    chromeVisible = dragAccumulator < 0f
+                                    chromeInteractionTick += 1
+                                }
                             }
+                            dragAccumulator = 0f
+                            dragVisualOffsetPx = 0f
                         }
-                        dragAccumulator = 0f
-                        dragVisualOffsetPx = 0f
+                        dragAxisLocked = false
                     },
                     onDragCancel = {
-                        dragAccumulator = 0f
-                        dragVisualOffsetPx = 0f
+                        if (isHorizontalDrag) {
+                            scope.launch {
+                                Animatable(horizontalDragOffset).animateTo(
+                                    targetValue = 0f,
+                                    animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing),
+                                ) {
+                                    horizontalDragOffset = value
+                                }
+                            }
+                        } else {
+                            dragAccumulator = 0f
+                            dragVisualOffsetPx = 0f
+                        }
+                        dragAxisLocked = false
                     },
                 )
+            }
+            .graphicsLayer {
+                translationX = horizontalDragOffset
             }
     ) {
         AttachmentHeroSection(
@@ -561,7 +636,6 @@ private fun AttachmentHeroSection(
     onVisualBrightnessMeasured: (Float?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     val imageUrl = item.inferImagePreviewUrl()
     val videoUrl = item.inferVideoPlaybackUrl()
     val audioUrl = item.inferAudioUrl()
@@ -571,75 +645,89 @@ private fun AttachmentHeroSection(
     val decryptedVideo = rememberDecryptedMediaUri(videoUrl)
     val decryptedAudio = rememberDecryptedMediaUri(audioUrl)
 
-    when {
-        decryptedImage != null -> {
-            Box(
-                modifier = Modifier
-                    .then(modifier)
-                    .background(Color.Black),
-            ) {
-                SubcomposeAsyncImage(
-                    model = decryptedImage,
-                    contentDescription = "Image preview",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit,
-                    onSuccess = { state ->
-                        onVisualBrightnessMeasured(drawableBrightnessLuminance(state.result.drawable))
-                    },
-                    onError = {
-                        onVisualBrightnessMeasured(null)
-                    },
-                )
+    val hasVisual = decryptedImage != null || decryptedVideo != null || location != null
+
+    Column(modifier = modifier) {
+        if (decryptedAudio != null) {
+            if (!hasVisual) {
+                onVisualBrightnessMeasured(null)
             }
-        }
-
-        decryptedVideo != null -> {
-            onVisualBrightnessMeasured(null)
-            DetailVideoPlayer(
-                videoUrl = decryptedVideo,
-                modifier = modifier,
-            )
-        }
-
-        decryptedAudio != null -> {
-            onVisualBrightnessMeasured(null)
             DetailAudioPlayer(
                 audioUrl = decryptedAudio,
                 title = item.title,
-                modifier = modifier,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
 
-        location != null -> {
-            onVisualBrightnessMeasured(0.56f)
-            Box(
-                modifier = Modifier
-                    .then(modifier)
-                    .background(Color.Black),
-            ) {
-                com.raulshma.dailylife.ui.OpenStreetMapPreview(
-                    latitude = location.first,
-                    longitude = location.second,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            contentAlignment = Alignment.Center,
+        ) {
+            when {
+                decryptedImage != null -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black),
+                    ) {
+                        SubcomposeAsyncImage(
+                            model = decryptedImage,
+                            contentDescription = "Image preview",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit,
+                            onSuccess = { state ->
+                                onVisualBrightnessMeasured(drawableBrightnessLuminance(state.result.drawable))
+                            },
+                            onError = {
+                                onVisualBrightnessMeasured(null)
+                            },
+                        )
+                    }
+                }
 
-        else -> {
-            onVisualBrightnessMeasured(0.62f)
-            val displayBody = item.displayBody()
-            if (displayBody.isNotBlank()) {
-                Box(
-                    modifier = Modifier
-                        .then(modifier)
-                        .background(Color.Black)
-                        .padding(16.dp),
-                ) {
-                    Text(
-                        text = displayBody,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = Color.White,
+                decryptedVideo != null -> {
+                    onVisualBrightnessMeasured(null)
+                    DetailVideoPlayer(
+                        videoUrl = decryptedVideo,
+                        modifier = Modifier.fillMaxSize(),
                     )
+                }
+
+                location != null -> {
+                    onVisualBrightnessMeasured(0.56f)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black),
+                    ) {
+                        com.raulshma.dailylife.ui.OpenStreetMapPreview(
+                            latitude = location.first,
+                            longitude = location.second,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+
+                else -> {
+                    onVisualBrightnessMeasured(0.62f)
+                    val displayBody = item.displayBody()
+                    if (displayBody.isNotBlank()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black)
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = displayBody,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = Color.White,
+                            )
+                        }
+                    }
                 }
             }
         }

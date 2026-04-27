@@ -433,17 +433,38 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
         selectedItemId = null
     }
 
+    val visibleItemIds = state.visibleItems.map { it.id }
     SharedTransitionLayout {
         AnimatedContent(
             targetState = screen,
             transitionSpec = {
-                val isForward = targetState is Screen.Detail
-                if (isForward) {
-                    (fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { it / 6 })
-                        .togetherWith(fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { -it / 8 })
-                } else {
-                    (fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { -it / 8 })
-                        .togetherWith(fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { it / 6 })
+                val initial = initialState
+                val target = targetState
+                when {
+                    initial is Screen.Detail && target is Screen.Detail -> {
+                        val initialIndex = visibleItemIds.indexOf(initial.itemId)
+                        val targetIndex = visibleItemIds.indexOf(target.itemId)
+                        val isNext = if (initialIndex != -1 && targetIndex != -1) {
+                            targetIndex > initialIndex
+                        } else {
+                            target.itemId > initial.itemId
+                        }
+                        if (isNext) {
+                            (fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { it / 6 })
+                                .togetherWith(fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { -it / 8 })
+                        } else {
+                            (fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { -it / 6 })
+                                .togetherWith(fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { it / 8 })
+                        }
+                    }
+                    targetState is Screen.Detail -> {
+                        (fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { it / 6 })
+                            .togetherWith(fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { -it / 8 })
+                    }
+                    else -> {
+                        (fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { -it / 8 })
+                            .togetherWith(fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { it / 6 })
+                    }
                 }
             },
             label = "screenTransition"
@@ -480,9 +501,11 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                     )
 
                     is Screen.Detail -> selectedItem?.let { item ->
+                        val navigableItemIds = state.visibleItems.map { it.id }
                         ItemDetailScreen(
                             item = item,
                             globalSettings = state.notificationSettings,
+                            navigableItemIds = navigableItemIds,
                             onBack = { selectedItemId = null },
                             onFavoriteToggled = { viewModel.toggleFavorite(item.id) },
                             onPinnedToggled = { viewModel.togglePinned(item.id) },
@@ -509,6 +532,7 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                                 viewModel.deleteItem(item.id)
                                 selectedItemId = null
                             },
+                            onNavigateToItem = { selectedItemId = it },
                         )
                     } ?: run {
                         // Fallback if item not found
