@@ -15,6 +15,9 @@ import com.raulshma.dailylife.domain.RecurrenceFrequency
 import com.raulshma.dailylife.domain.RecurrenceRule
 import com.raulshma.dailylife.domain.S3BackupSettings
 import com.raulshma.dailylife.domain.TaskStatus
+import com.raulshma.dailylife.domain.DayOfWeek as RecurrenceDayOfWeek
+import com.raulshma.dailylife.domain.GeofenceTrigger
+import com.raulshma.dailylife.domain.WeekOfMonth
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -82,6 +85,15 @@ class RoomDailyLifeStore(
             frequency = RecurrenceFrequency.entries.firstOrNull { it.name == recurrenceFrequency }
                 ?: RecurrenceFrequency.None,
             interval = recurrenceInterval.coerceAtLeast(1),
+            daysOfWeek = recurrenceDaysOfWeek.split(",").mapNotNull { s ->
+                RecurrenceDayOfWeek.entries.firstOrNull { it.name.equals(s, ignoreCase = true) }
+            }.toSet(),
+            dayOfWeek = recurrenceDayOfWeek?.let {
+                RecurrenceDayOfWeek.entries.firstOrNull { d -> d.name.equals(it, ignoreCase = true) }
+            },
+            weekOfMonth = recurrenceWeekOfMonth?.let {
+                WeekOfMonth.entries.firstOrNull { w -> w.name.equals(it, ignoreCase = true) }
+            },
         ),
         notificationSettings = ItemNotificationSettings(
             enabled = notificationEnabled,
@@ -90,8 +102,14 @@ class RoomDailyLifeStore(
             },
             flexibleWindowMinutes = notificationFlexibleWindow?.coerceAtLeast(0),
             snoozeMinutes = notificationSnoozeMinutes?.coerceAtLeast(1),
+            geofenceLatitude = geofenceLatitude,
+            geofenceLongitude = geofenceLongitude,
+            geofenceRadiusMeters = geofenceRadiusMeters,
+            geofenceTrigger = GeofenceTrigger.entries.firstOrNull { it.name == geofenceTrigger }
+                ?: GeofenceTrigger.Arrival,
         ),
         completionHistory = completionEntities.map { it.toCompletionRecord() },
+        isArchived = isArchived,
     )
 
     private fun CompletionRecordEntity.toCompletionRecord(): CompletionRecord = CompletionRecord(
@@ -121,10 +139,18 @@ class RoomDailyLifeStore(
         reminderAt = reminderAt?.toString(),
         recurrenceFrequency = recurrenceRule.frequency.name,
         recurrenceInterval = recurrenceRule.interval.coerceAtLeast(1),
+        recurrenceDaysOfWeek = recurrenceRule.daysOfWeek.joinToString(",") { it.name },
+        recurrenceDayOfWeek = recurrenceRule.dayOfWeek?.name,
+        recurrenceWeekOfMonth = recurrenceRule.weekOfMonth?.name,
         notificationEnabled = notificationSettings.enabled,
         notificationTimeOverride = notificationSettings.timeOverride?.toString(),
         notificationFlexibleWindow = notificationSettings.flexibleWindowMinutes,
         notificationSnoozeMinutes = notificationSettings.snoozeMinutes,
+        geofenceLatitude = notificationSettings.geofenceLatitude,
+        geofenceLongitude = notificationSettings.geofenceLongitude,
+        geofenceRadiusMeters = notificationSettings.geofenceRadiusMeters,
+        geofenceTrigger = notificationSettings.geofenceTrigger.name,
+        isArchived = isArchived,
     )
 
     private fun CompletionRecord.toEntity(): CompletionRecordEntity = CompletionRecordEntity(

@@ -24,6 +24,7 @@ import com.raulshma.dailylife.domain.S3BackupSettings
 import com.raulshma.dailylife.domain.TaskStatus
 import com.raulshma.dailylife.domain.inferImagePreviewUrl
 import com.raulshma.dailylife.domain.inferVideoPlaybackUrl
+import com.raulshma.dailylife.notifications.GeofenceManager
 import com.raulshma.dailylife.notifications.ReminderScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -46,6 +47,7 @@ class DailyLifeViewModel @Inject constructor(
     private val mediaEncryptionManager: MediaEncryptionManager,
     private val s3BackupRepository: S3BackupRepository,
     private val roomStore: RoomDailyLifeStore,
+    private val geofenceManager: GeofenceManager,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
     val state = repository.state
@@ -244,5 +246,47 @@ class DailyLifeViewModel @Inject constructor(
             items = currentState.items,
             settings = currentState.notificationSettings,
         )
+        geofenceManager.syncGeofences(currentState.items)
+    }
+
+    fun restoreFromS3() {
+        viewModelScope.launch {
+            val settings = _s3BackupSettings.value
+            val snapshot = s3BackupRepository.restoreLatestSnapshot(settings)
+            if (snapshot != null) {
+                _lastBackupResult.value = BackupResult.Success(
+                    itemsBackedUp = snapshot.items.size,
+                    mediaFilesBackedUp = 0,
+                )
+                repository.importSnapshot(snapshot)
+                syncReminderSchedule()
+            } else {
+                _lastBackupResult.value = BackupResult.Failure("No backup found or restore failed")
+            }
+        }
+    }
+
+    fun restoreFromJson(json: String) {
+        viewModelScope.launch {
+            runCatching {
+                val snapshot = com.raulshma.dailylife.data.backup.SnapshotDeserializer.deserialize(json)
+                repository.importSnapshot(snapshot)
+                syncReminderSchedule()
+                _lastBackupResult.value = BackupResult.Success(
+                    itemsBackedUp = snapshot.items.size,
+                    mediaFilesBackedUp = 0,
+                )
+            }.getOrElse { error ->
+                _lastBackupResult.value = BackupResult.Failure(error.message ?: "Import failed")
+            }
+        }
+    }
+
+    fun toggleArchive(itemId: Long) {
+        repository.toggleArchive(itemId)
+    }
+
+    fun toggleShowArchived() {
+        repository.toggleShowArchived()
     }
 }

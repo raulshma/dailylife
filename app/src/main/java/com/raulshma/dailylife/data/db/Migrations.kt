@@ -62,4 +62,17 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
-val ALL_MIGRATIONS = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE life_items ADD COLUMN recurrenceDaysOfWeek TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE life_items ADD COLUMN recurrenceDayOfWeek TEXT DEFAULT NULL")
+        db.execSQL("ALTER TABLE life_items ADD COLUMN recurrenceWeekOfMonth TEXT DEFAULT NULL")
+        db.execSQL("ALTER TABLE life_items ADD COLUMN geofenceLatitude REAL DEFAULT NULL")
+        db.execSQL("ALTER TABLE life_items ADD COLUMN geofenceLongitude REAL DEFAULT NULL")
+        db.execSQL("ALTER TABLE life_items ADD COLUMN geofenceRadiusMeters REAL NOT NULL DEFAULT 200")
+        db.execSQL("ALTER TABLE life_items ADD COLUMN geofenceTrigger TEXT NOT NULL DEFAULT 'Arrival'")
+        db.execSQL("ALTER TABLE life_items ADD COLUMN isArchived INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+val ALL_MIGRATIONS = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)

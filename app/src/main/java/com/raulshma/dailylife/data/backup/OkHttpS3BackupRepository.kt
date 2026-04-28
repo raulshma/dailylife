@@ -154,12 +154,42 @@ class OkHttpS3BackupRepository @Inject constructor(
                         bytes
                     }
                     val json = String(decryptedBytes, Charsets.UTF_8)
-                    // TODO: deserialize snapshot and merge into local store
-                    BackupResult.Success(itemsBackedUp = 0, mediaFilesBackedUp = 0)
+                    val snapshot = SnapshotDeserializer.deserialize(json)
+                    BackupResult.Success(
+                        itemsBackedUp = snapshot.items.size,
+                        mediaFilesBackedUp = 0,
+                    )
                 }
             }.getOrElse { error ->
                 BackupResult.Failure(error.message ?: "Unknown restore error")
             }
+        }
+    }
+
+    override suspend fun restoreLatestSnapshot(settings: S3BackupSettings): BackupSnapshot? {
+        if (!hasRequiredSettings(settings)) return null
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val keys = listBackups(settings)
+                val latestKey = keys.maxOrNull() ?: return@runCatching null
+                val baseUrl = buildBaseUrl(settings)
+                val request = Request.Builder()
+                    .url("$baseUrl/$latestKey")
+                    .get()
+                    .build()
+                val signedRequest = signerFor(settings).sign(request)
+                client.newCall(signedRequest).execute().use { response ->
+                    if (!response.isSuccessful) return@runCatching null
+                    val bytes = response.body?.bytes() ?: return@runCatching null
+                    val decryptedBytes = if (settings.encryptBackups) {
+                        encryptionManager.decrypt(bytes)
+                    } else {
+                        bytes
+                    }
+                    val json = String(decryptedBytes, Charsets.UTF_8)
+                    SnapshotDeserializer.deserialize(json)
+                }
+            }.getOrNull()
         }
     }
 

@@ -237,13 +237,14 @@ private sealed class Screen {
     data object Main : Screen()
     data class Detail(val itemId: Long) : Screen()
     data class CompletionHistory(val itemId: Long) : Screen()
+    data class FocusTimer(val itemId: Long) : Screen()
     data object Settings : Screen()
 }
 
 internal val LocalSharedTransitionScope = staticCompositionLocalOf<SharedTransitionScope?> { null }
 internal val LocalAnimatedVisibilityScope = compositionLocalOf<AnimatedVisibilityScope?> { null }
 
-internal data class QuickAddDraft(
+data class QuickAddDraft(
     val typeName: String = LifeItemType.Thought.name,
     val title: String = "",
     val body: String = "",
@@ -255,6 +256,13 @@ internal data class QuickAddDraft(
     val notificationsEnabled: Boolean = true,
     val overrideTime: String = "",
     val recurring: Boolean = false,
+    val recurrenceFrequency: String = RecurrenceFrequency.None.name,
+    val recurrenceDaysOfWeek: String = "",
+    val recurrenceDayOfWeek: String = "",
+    val recurrenceWeekOfMonth: String = "",
+    val geofenceLatitude: String = "",
+    val geofenceLongitude: String = "",
+    val geofenceTrigger: String = "Arrival",
     val showAdvanced: Boolean = false,
     val showReminderOptions: Boolean = false,
 )
@@ -273,6 +281,13 @@ internal val QuickAddDraftSaver = mapSaver(
             "notificationsEnabled" to it.notificationsEnabled,
             "overrideTime" to it.overrideTime,
             "recurring" to it.recurring,
+            "recurrenceFrequency" to it.recurrenceFrequency,
+            "recurrenceDaysOfWeek" to it.recurrenceDaysOfWeek,
+            "recurrenceDayOfWeek" to it.recurrenceDayOfWeek,
+            "recurrenceWeekOfMonth" to it.recurrenceWeekOfMonth,
+            "geofenceLatitude" to it.geofenceLatitude,
+            "geofenceLongitude" to it.geofenceLongitude,
+            "geofenceTrigger" to it.geofenceTrigger,
             "showAdvanced" to it.showAdvanced,
             "showReminderOptions" to it.showReminderOptions,
         )
@@ -290,6 +305,13 @@ internal val QuickAddDraftSaver = mapSaver(
             notificationsEnabled = it["notificationsEnabled"] as? Boolean ?: true,
             overrideTime = it["overrideTime"] as? String ?: "",
             recurring = it["recurring"] as? Boolean ?: false,
+            recurrenceFrequency = it["recurrenceFrequency"] as? String ?: RecurrenceFrequency.None.name,
+            recurrenceDaysOfWeek = it["recurrenceDaysOfWeek"] as? String ?: "",
+            recurrenceDayOfWeek = it["recurrenceDayOfWeek"] as? String ?: "",
+            recurrenceWeekOfMonth = it["recurrenceWeekOfMonth"] as? String ?: "",
+            geofenceLatitude = it["geofenceLatitude"] as? String ?: "",
+            geofenceLongitude = it["geofenceLongitude"] as? String ?: "",
+            geofenceTrigger = it["geofenceTrigger"] as? String ?: "Arrival",
             showAdvanced = it["showAdvanced"] as? Boolean ?: false,
             showReminderOptions = it["showReminderOptions"] as? Boolean ?: false,
         )
@@ -312,6 +334,13 @@ private fun saveDraftToPrefs(context: Context, draft: QuickAddDraft) {
         putBoolean("notificationsEnabled", draft.notificationsEnabled)
         putString("overrideTime", draft.overrideTime)
         putBoolean("recurring", draft.recurring)
+        putString("recurrenceFrequency", draft.recurrenceFrequency)
+        putString("recurrenceDaysOfWeek", draft.recurrenceDaysOfWeek)
+        putString("recurrenceDayOfWeek", draft.recurrenceDayOfWeek)
+        putString("recurrenceWeekOfMonth", draft.recurrenceWeekOfMonth)
+        putString("geofenceLatitude", draft.geofenceLatitude)
+        putString("geofenceLongitude", draft.geofenceLongitude)
+        putString("geofenceTrigger", draft.geofenceTrigger)
         putBoolean("showAdvanced", draft.showAdvanced)
         putBoolean("showReminderOptions", draft.showReminderOptions)
         apply()
@@ -332,6 +361,13 @@ private fun loadDraftFromPrefs(context: Context): QuickAddDraft {
         notificationsEnabled = prefs.getBoolean("notificationsEnabled", true),
         overrideTime = prefs.getString("overrideTime", null) ?: "",
         recurring = prefs.getBoolean("recurring", false),
+        recurrenceFrequency = prefs.getString("recurrenceFrequency", null) ?: RecurrenceFrequency.None.name,
+        recurrenceDaysOfWeek = prefs.getString("recurrenceDaysOfWeek", null) ?: "",
+        recurrenceDayOfWeek = prefs.getString("recurrenceDayOfWeek", null) ?: "",
+        recurrenceWeekOfMonth = prefs.getString("recurrenceWeekOfMonth", null) ?: "",
+        geofenceLatitude = prefs.getString("geofenceLatitude", null) ?: "",
+        geofenceLongitude = prefs.getString("geofenceLongitude", null) ?: "",
+        geofenceTrigger = prefs.getString("geofenceTrigger", null) ?: "Arrival",
         showAdvanced = prefs.getBoolean("showAdvanced", false),
         showReminderOptions = prefs.getBoolean("showReminderOptions", false),
     )
@@ -343,7 +379,11 @@ private fun clearDraftFromPrefs(context: Context) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DailyLifeApp(viewModel: DailyLifeViewModel) {
+fun DailyLifeApp(
+    viewModel: DailyLifeViewModel,
+    shareDraft: QuickAddDraft? = null,
+    onShareDraftConsumed: () -> Unit = {},
+) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showQuickAdd by rememberSaveable { mutableStateOf(false) }
@@ -365,10 +405,12 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
         mutableStateOf(QuickAddDraft())
     }
     var completionHistoryItemId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var focusTimerItemId by rememberSaveable { mutableStateOf<Long?>(null) }
     var pendingQuickAddSave by remember { mutableStateOf(false) }
     var pendingEditSave by remember { mutableStateOf(false) }
 
     val screen = when {
+        focusTimerItemId != null -> Screen.FocusTimer(focusTimerItemId!!)
         completionHistoryItemId != null -> Screen.CompletionHistory(completionHistoryItemId!!)
         selectedItemId != null -> Screen.Detail(selectedItemId!!)
         showSettings -> Screen.Settings
@@ -377,8 +419,9 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
 
     var skipStaggerAnimation by remember { mutableStateOf(false) }
 
-    BackHandler(enabled = completionHistoryItemId != null || selectedItemId != null || showSettings) {
+    BackHandler(enabled = focusTimerItemId != null || completionHistoryItemId != null || selectedItemId != null || showSettings) {
         when {
+            focusTimerItemId != null -> focusTimerItemId = null
             completionHistoryItemId != null -> completionHistoryItemId = null
             selectedItemId != null -> selectedItemId = null
             showSettings -> showSettings = false
@@ -387,6 +430,14 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
 
     LaunchedEffect(quickAddDraft) {
         saveDraftToPrefs(context, quickAddDraft)
+    }
+
+    LaunchedEffect(shareDraft) {
+        shareDraft?.let { draft ->
+            quickAddDraft = draft
+            showQuickAdd = true
+            onShareDraftConsumed()
+        }
     }
 
     var quickAddLocationCallback by remember { mutableStateOf<((Double, Double) -> Unit)?>(null) }
@@ -429,7 +480,18 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
             showQuickAdd = true
         },
         onFilePicked = { uri ->
-            quickAddDraft = quickAddDraft.copy(body = if (quickAddDraft.body.isBlank()) uri.toString() else "${quickAddDraft.body}\n$uri")
+            val mimeType = runCatching { context.contentResolver.getType(uri) }.getOrNull()
+            val typeName = when {
+                mimeType == "application/pdf" -> LifeItemType.Pdf.name
+                mimeType?.startsWith("image/") == true -> LifeItemType.Photo.name
+                mimeType?.startsWith("video/") == true -> LifeItemType.Video.name
+                mimeType?.startsWith("audio/") == true -> LifeItemType.Audio.name
+                else -> quickAddDraft.typeName
+            }
+            quickAddDraft = quickAddDraft.copy(
+                typeName = typeName,
+                body = if (quickAddDraft.body.isBlank()) uri.toString() else "${quickAddDraft.body}\n$uri",
+            )
             showQuickAdd = true
         },
     )
@@ -461,7 +523,18 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
             )
         },
         onFilePicked = { uri ->
-            editDraft = editDraft.copy(body = if (editDraft.body.isBlank()) uri.toString() else "${editDraft.body}\n$uri")
+            val mimeType = runCatching { context.contentResolver.getType(uri) }.getOrNull()
+            val typeName = when {
+                mimeType == "application/pdf" -> LifeItemType.Pdf.name
+                mimeType?.startsWith("image/") == true -> LifeItemType.Photo.name
+                mimeType?.startsWith("video/") == true -> LifeItemType.Video.name
+                mimeType?.startsWith("audio/") == true -> LifeItemType.Audio.name
+                else -> editDraft.typeName
+            }
+            editDraft = editDraft.copy(
+                typeName = typeName,
+                body = if (editDraft.body.isBlank()) uri.toString() else "${editDraft.body}\n$uri",
+            )
         },
     )
 
@@ -598,6 +671,13 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                                     notificationsEnabled = item.notificationSettings.enabled,
                                     overrideTime = item.notificationSettings.timeOverride?.format(TimeFormatter) ?: "",
                                     recurring = item.isRecurring,
+                                    recurrenceFrequency = item.recurrenceRule.frequency.name,
+                                    recurrenceDaysOfWeek = item.recurrenceRule.daysOfWeek.joinToString(",") { it.name },
+                                    recurrenceDayOfWeek = item.recurrenceRule.dayOfWeek?.name ?: "",
+                                    recurrenceWeekOfMonth = item.recurrenceRule.weekOfMonth?.name ?: "",
+                                    geofenceLatitude = item.notificationSettings.geofenceLatitude?.toString() ?: "",
+                                    geofenceLongitude = item.notificationSettings.geofenceLongitude?.toString() ?: "",
+                                    geofenceTrigger = item.notificationSettings.geofenceTrigger.name,
                                 )
                                 showEditSheet = true
                             },
@@ -607,6 +687,7 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                             },
                             onNavigateToItem = { selectedItemId = it },
                             onViewHistory = { completionHistoryItemId = item.id },
+                            onStartFocusTimer = { focusTimerItemId = item.id },
                         )
                     } ?: run {
                         selectedItemId = null
@@ -627,6 +708,21 @@ fun DailyLifeApp(viewModel: DailyLifeViewModel) {
                             )
                         } else {
                             completionHistoryItemId = null
+                        }
+                    }
+
+                    is Screen.FocusTimer -> {
+                        val focusItem = state.items.firstOrNull { it.id == currentScreen.itemId }
+                        if (focusItem != null) {
+                            com.raulshma.dailylife.ui.focus.FocusTimerScreen(
+                                itemTitle = focusItem.title.ifBlank { focusItem.type.label },
+                                onBack = { focusTimerItemId = null },
+                                onSessionComplete = { sessionCount ->
+                                    viewModel.markOccurrenceCompleted(focusItem.id)
+                                },
+                            )
+                        } else {
+                            focusTimerItemId = null
                         }
                     }
 

@@ -4,6 +4,8 @@ import com.raulshma.dailylife.domain.LifeItem
 import com.raulshma.dailylife.domain.NotificationSettings
 import com.raulshma.dailylife.domain.RecurrenceFrequency
 import com.raulshma.dailylife.domain.TaskStatus
+import com.raulshma.dailylife.domain.WeekOfMonth
+import java.time.DayOfWeek as JavaDayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -67,23 +69,94 @@ private fun LifeItem.nextDueAt(
     }
 
     val startDate = reminderAt?.toLocalDate() ?: createdAt.toLocalDate()
-    val firstCandidate = LocalDateTime.of(startDate, effectiveTime)
-    if (firstCandidate.isAfter(now) && startDate !in completedDates) return firstCandidate
+    val rule = recurrenceRule
 
-    val stepDays = recurrenceStepDays() ?: return null
-    var candidateDate = startDate.plusDays(
-        daysUntilNextCandidate(
-            startDate = startDate,
-            nowDate = now.toLocalDate(),
-            stepDays = stepDays,
-        ),
-    )
-    var candidate = LocalDateTime.of(candidateDate, effectiveTime)
-    while (!candidate.isAfter(now) || candidateDate in completedDates) {
-        candidateDate = candidateDate.plusDays(stepDays)
-        candidate = LocalDateTime.of(candidateDate, effectiveTime)
+    when (rule.frequency) {
+        RecurrenceFrequency.WeeklyDays -> {
+            val selectedDays = rule.daysOfWeek.map { it.value }.toSet()
+            if (selectedDays.isEmpty()) return null
+            var cursor = maxOf(startDate, now.toLocalDate())
+            while (true) {
+                if (cursor.dayOfWeek in selectedDays && cursor !in completedDates) {
+                    val candidate = LocalDateTime.of(cursor, effectiveTime)
+                    if (candidate.isAfter(now)) return candidate
+                }
+                cursor = cursor.plusDays(1)
+                if (cursor.isAfter(now.toLocalDate().plusYears(2))) return null
+            }
+        }
+        RecurrenceFrequency.MonthlyDay -> {
+            val dayOfMonth = startDate.dayOfMonth
+            var cursor = startDate
+            while (true) {
+                val maxDay = cursor.lengthOfMonth()
+                val effectiveDay = dayOfMonth.coerceAtMost(maxDay)
+                val candidateDate = cursor.withDayOfMonth(effectiveDay)
+                if (!candidateDate.isBefore(now.toLocalDate()) && candidateDate !in completedDates) {
+                    val candidate = LocalDateTime.of(candidateDate, effectiveTime)
+                    if (candidate.isAfter(now)) return candidate
+                }
+                cursor = cursor.plusMonths(rule.interval.coerceAtLeast(1).toLong())
+                if (cursor.isAfter(now.toLocalDate().plusYears(2))) return null
+            }
+        }
+        RecurrenceFrequency.MonthlyNthDay -> {
+            val targetDow = rule.dayOfWeek?.value ?: startDate.dayOfWeek
+            var cursor = startDate.withDayOfMonth(1)
+            while (!cursor.isAfter(now.toLocalDate().plusYears(2))) {
+                val candidateDate = nthDayOfWeekInMonth(cursor.year, cursor.month, rule.weekOfMonth, targetDow)
+                if (candidateDate != null && !candidateDate.isBefore(now.toLocalDate()) && candidateDate !in completedDates && !candidateDate.isBefore(startDate)) {
+                    val candidate = LocalDateTime.of(candidateDate, effectiveTime)
+                    if (candidate.isAfter(now)) return candidate
+                }
+                cursor = cursor.plusMonths(rule.interval.coerceAtLeast(1).toLong())
+            }
+            return null
+        }
+        else -> {
+            val stepDays = recurrenceStepDays() ?: return null
+            val firstCandidate = LocalDateTime.of(startDate, effectiveTime)
+            if (firstCandidate.isAfter(now) && startDate !in completedDates) return firstCandidate
+
+            var candidateDate = startDate.plusDays(
+                daysUntilNextCandidate(
+                    startDate = startDate,
+                    nowDate = now.toLocalDate(),
+                    stepDays = stepDays,
+                ),
+            )
+            var candidate = LocalDateTime.of(candidateDate, effectiveTime)
+            while (!candidate.isAfter(now) || candidateDate in completedDates) {
+                candidateDate = candidateDate.plusDays(stepDays)
+                candidate = LocalDateTime.of(candidateDate, effectiveTime)
+            }
+            return candidate
+        }
     }
-    return candidate
+}
+
+private fun nthDayOfWeekInMonth(year: Int, month: java.time.Month, weekOfMonth: WeekOfMonth?, targetDow: JavaDayOfWeek): LocalDate? {
+    val firstOfMonth = LocalDate.of(year, month, 1)
+    val lastOfMonth = firstOfMonth.withDayOfMonth(firstOfMonth.lengthOfMonth())
+    if (weekOfMonth == WeekOfMonth.Last) {
+        var cursor = lastOfMonth
+        while (cursor.month == month) {
+            if (cursor.dayOfWeek == targetDow) return cursor
+            cursor = cursor.minusDays(1)
+        }
+        return null
+    }
+    val targetOrdinal = weekOfMonth?.weekNumber ?: 1
+    var cursor = firstOfMonth
+    var occurrence = 0
+    while (cursor.month == month) {
+        if (cursor.dayOfWeek == targetDow) {
+            occurrence++
+            if (occurrence == targetOrdinal) return cursor
+        }
+        cursor = cursor.plusDays(1)
+    }
+    return null
 }
 
 private fun LifeItem.effectiveReminderTime(globalSettings: NotificationSettings): LocalTime =
@@ -97,6 +170,9 @@ private fun LifeItem.recurrenceStepDays(): Long? {
         RecurrenceFrequency.None -> null
         RecurrenceFrequency.Daily -> safeInterval
         RecurrenceFrequency.Weekly -> safeInterval * 7L
+        RecurrenceFrequency.WeeklyDays -> 1L
+        RecurrenceFrequency.MonthlyDay -> 1L
+        RecurrenceFrequency.MonthlyNthDay -> 1L
         RecurrenceFrequency.Custom -> safeInterval
     }
 }

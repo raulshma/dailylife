@@ -13,6 +13,7 @@ import com.raulshma.dailylife.domain.StorageError
 import com.raulshma.dailylife.domain.StorageOperation
 import com.raulshma.dailylife.domain.TaskStatus
 import com.raulshma.dailylife.domain.stepDays
+import com.raulshma.dailylife.domain.BackupSnapshot
 import java.time.LocalDate
 import java.time.LocalDateTime
 import kotlinx.coroutines.CoroutineScope
@@ -241,6 +242,41 @@ class InMemoryDailyLifeRepository(
                 },
             )
         }
+    }
+
+    override fun importSnapshot(snapshot: BackupSnapshot) {
+        updateStoredState(persist = true) { current ->
+            val existingIds = current.items.map { it.id }.toSet()
+            val newItems = snapshot.items.filter { it.id !in existingIds }
+            val existingDates = current.items.flatMap { it.completionHistory }.map {
+                Pair(it.itemId, it.occurrenceDate to it.completedAt)
+            }.toSet()
+            val mergedItems = snapshot.items.map { snapshotItem ->
+                val existing = current.items.firstOrNull { it.id == snapshotItem.id }
+                if (existing != null) {
+                    val newRecords = snapshotItem.completionHistory.filter { record ->
+                        Pair(snapshotItem.id, record.occurrenceDate to record.completedAt) !in existingDates
+                    }
+                    existing.copy(
+                        completionHistory = existing.completionHistory + newRecords,
+                    )
+                } else {
+                    snapshotItem
+                }
+            }
+            current.copy(
+                items = current.items + newItems,
+                notificationSettings = snapshot.notificationSettings,
+            )
+        }
+    }
+
+    override fun toggleArchive(itemId: Long) {
+        updateItem(itemId) { it.copy(isArchived = !it.isArchived) }
+    }
+
+    override fun toggleShowArchived() {
+        updateFilters { it.copy(showArchived = !it.showArchived) }
     }
 
     private fun updateFilters(block: (DailyLifeFilters) -> DailyLifeFilters) {

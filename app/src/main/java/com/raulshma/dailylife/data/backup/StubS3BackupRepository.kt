@@ -48,7 +48,8 @@ class StubS3BackupRepository @Inject constructor() : S3BackupRepository {
         if (!validateConnection(settings)) {
             return BackupResult.Failure("Invalid or incomplete S3 settings")
         }
-        // TODO: download latest snapshot, decrypt if needed, deserialize
         return BackupResult.Failure("Restore not yet implemented")
     }
+
+    override suspend fun restoreLatestSnapshot(settings: S3BackupSettings): BackupSnapshot? = null
 }

@@ -1,5 +1,6 @@
 package com.raulshma.dailylife.data
 
+import com.raulshma.dailylife.domain.BackupSnapshot
 import com.raulshma.dailylife.domain.CompletionRecord
 import com.raulshma.dailylife.domain.DailyLifeState
 import com.raulshma.dailylife.domain.ItemNotificationSettings
@@ -60,4 +61,10 @@ interface DailyLifeRepository {
     fun updateCompletionRecord(itemId: Long, record: CompletionRecord)
 
     fun deleteCompletionRecord(itemId: Long, occurrenceDate: LocalDate, completedAt: LocalDateTime)
+
+    fun importSnapshot(snapshot: BackupSnapshot)
+
+    fun toggleArchive(itemId: Long)
+
+    fun toggleShowArchived()
 }

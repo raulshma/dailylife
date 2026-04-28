@@ -16,6 +16,7 @@ import com.raulshma.dailylife.data.media.MediaThumbnailGenerator
 import com.raulshma.dailylife.data.security.BackupEncryptionManager
 import com.raulshma.dailylife.data.security.MediaEncryptionManager
 import com.raulshma.dailylife.notifications.AndroidReminderScheduler
+import com.raulshma.dailylife.notifications.GeofenceManager
 import com.raulshma.dailylife.notifications.ReminderScheduler
 import dagger.Module
 import dagger.Provides
@@ -127,4 +128,10 @@ object DailyLifeModule {
     fun provideReminderScheduler(
         @ApplicationContext context: Context,
     ): ReminderScheduler = AndroidReminderScheduler(context)
+
+    @Provides
+    @Singleton
+    fun provideGeofenceManager(
+        application: android.app.Application,
+    ): GeofenceManager = GeofenceManager(application)
 }

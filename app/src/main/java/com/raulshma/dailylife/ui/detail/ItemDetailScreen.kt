@@ -59,6 +59,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Label
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Done
@@ -70,6 +71,7 @@ import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
@@ -171,14 +173,17 @@ fun ItemDetailScreen(
     onDelete: () -> Unit,
     onNavigateToItem: (Long) -> Unit = {},
     onViewHistory: () -> Unit = {},
+    onStartFocusTimer: () -> Unit = {},
 ) {
     val haptic = LocalHapticFeedback.current
     val occurrenceStats = item.occurrenceStats()
     val hasVisualMedia = item.inferImagePreviewUrl() != null ||
         item.inferVideoPlaybackUrl() != null ||
-        item.inferLocationPreview() != null
+        item.inferLocationPreview() != null ||
+        item.inferPdfUrl() != null
     val hasVideoMedia = item.inferVideoPlaybackUrl() != null
     val hasAudioMedia = item.inferAudioUrl() != null
+    val isPdfItem = item.inferPdfUrl() != null
 
     var contentVisible by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -380,7 +385,7 @@ fun ItemDetailScreen(
                                         }
                                     }
                                 }
-                            } else {
+                            } else if (!isPdfItem) {
                                  when {
                                     dragAccumulator <= -120f && !showDetails -> {
                                         showDetails = true
@@ -398,6 +403,10 @@ fun ItemDetailScreen(
                                         chromeInteractionTick += 1
                                     }
                                 }
+                                dragAccumulator = 0f
+                                dragVisualOffsetPx = 0f
+                            } else {
+                                // PDF: reset drag state without triggering actions
                                 dragAccumulator = 0f
                                 dragVisualOffsetPx = 0f
                             }
@@ -422,10 +431,11 @@ fun ItemDetailScreen(
                         }
 
                         if (dragAxisLocked) {
-                            change.consume()
                             if (isHorizontalDrag) {
+                                change.consume()
                                 horizontalDragOffset += dragAmount.x
-                            } else {
+                            } else if (!isPdfItem) {
+                                change.consume()
                                 dragAccumulator += dragAmount.y
                                 if (dragAmount.y < -2f) {
                                     chromeVisible = true
@@ -1000,6 +1010,8 @@ private fun AttachmentHeroSection(
 private fun PdfDetailViewer(pdfUrl: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var pageBitmaps by remember(pdfUrl) { mutableStateOf<List<Bitmap>>(emptyList()) }
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
 
     DisposableEffect(pdfUrl) {
         val job = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
@@ -1036,22 +1048,78 @@ private fun PdfDetailViewer(pdfUrl: String, modifier: Modifier = Modifier) {
             CircularProgressIndicator(color = Color.White.copy(alpha = 0.7f))
         }
     } else {
-        LazyColumn(
-            modifier = modifier.background(Color.Black),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            item { Spacer(modifier = Modifier.height(16.dp)) }
-            items(pageBitmaps, key = { it.hashCode() }) { bitmap ->
-                Image(
-                    bitmap = bitmap.asImageBitmap(),
-                    contentDescription = "PDF page",
+        Box(modifier = modifier.background(Color.Black)) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                item { Spacer(modifier = Modifier.height(16.dp)) }
+                items(pageBitmaps, key = { it.hashCode() }) { bitmap ->
+                    Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = "PDF page",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .graphicsLayer {
+                                scaleX = scale
+                                scaleY = scale
+                                translationX = offset.x
+                                translationY = offset.y
+                            },
+                        contentScale = ContentScale.FillWidth,
+                    )
+                }
+                item { Spacer(modifier = Modifier.height(16.dp)) }
+            }
+
+            if (scale > 1.05f) {
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    contentScale = ContentScale.FillWidth,
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                val newScale = (scale * zoom).coerceIn(1f, 5f)
+                                if (newScale <= 1.05f) {
+                                    scale = 1f
+                                    offset = Offset.Zero
+                                } else {
+                                    scale = newScale
+                                    offset += pan
+                                }
+                            }
+                        }
                 )
             }
-            item { Spacer(modifier = Modifier.height(16.dp)) }
+
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp)
+                    .navigationBarsPadding(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilledTonalIconButton(
+                    onClick = {
+                        scale = (scale * 1.3f).coerceAtMost(5f)
+                    },
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = "Zoom in", tint = Color.White)
+                }
+                FilledTonalIconButton(
+                    onClick = {
+                        val newScale = scale / 1.3f
+                        if (newScale <= 1.05f) {
+                            scale = 1f
+                            offset = Offset.Zero
+                        } else {
+                            scale = newScale
+                        }
+                    },
+                ) {
+                    Icon(Icons.Filled.Remove, contentDescription = "Zoom out", tint = Color.White)
+                }
+            }
         }
     }
 }

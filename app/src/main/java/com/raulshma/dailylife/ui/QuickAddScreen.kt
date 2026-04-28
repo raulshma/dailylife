@@ -130,12 +130,15 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.raulshma.dailylife.data.media.MediaThumbnailGenerator
 import com.raulshma.dailylife.data.security.EncryptionProgress
+import com.raulshma.dailylife.domain.DayOfWeek
+import com.raulshma.dailylife.domain.GeofenceTrigger
 import com.raulshma.dailylife.domain.ItemNotificationSettings
 import com.raulshma.dailylife.domain.LifeItemDraft
 import com.raulshma.dailylife.domain.LifeItemType
 import com.raulshma.dailylife.domain.RecurrenceFrequency
 import com.raulshma.dailylife.domain.RecurrenceRule
 import com.raulshma.dailylife.domain.TaskStatus
+import com.raulshma.dailylife.domain.WeekOfMonth
 import com.raulshma.dailylife.ui.capture.AudioRecorder
 import com.raulshma.dailylife.ui.capture.SpeechTranscriber
 import com.raulshma.dailylife.ui.capture.hasAudioPermission
@@ -210,7 +213,14 @@ private fun QuickAddContent(
     var notificationsEnabled by rememberSaveable { mutableStateOf(initialDraft.notificationsEnabled) }
     var overrideTime by rememberSaveable { mutableStateOf(initialDraft.overrideTime) }
     var recurring by rememberSaveable { mutableStateOf(initialDraft.recurring) }
-    
+    var recurrenceFrequency by rememberSaveable { mutableStateOf(initialDraft.recurrenceFrequency) }
+    var recurrenceDaysOfWeek by rememberSaveable { mutableStateOf(initialDraft.recurrenceDaysOfWeek) }
+    var recurrenceDayOfWeek by rememberSaveable { mutableStateOf(initialDraft.recurrenceDayOfWeek) }
+    var recurrenceWeekOfMonth by rememberSaveable { mutableStateOf(initialDraft.recurrenceWeekOfMonth) }
+    var geofenceLatitude by rememberSaveable { mutableStateOf(initialDraft.geofenceLatitude) }
+    var geofenceLongitude by rememberSaveable { mutableStateOf(initialDraft.geofenceLongitude) }
+    var geofenceTrigger by rememberSaveable { mutableStateOf(initialDraft.geofenceTrigger) }
+
     var showAdvanced by rememberSaveable { mutableStateOf(initialDraft.showAdvanced) }
     var showReminderOptions by rememberSaveable { mutableStateOf(initialDraft.showReminderOptions) }
     
@@ -237,9 +247,30 @@ private fun QuickAddContent(
         notificationsEnabled = notificationsEnabled,
         overrideTime = overrideTime,
         recurring = recurring,
+        recurrenceFrequency = recurrenceFrequency,
+        recurrenceDaysOfWeek = recurrenceDaysOfWeek,
+        recurrenceDayOfWeek = recurrenceDayOfWeek,
+        recurrenceWeekOfMonth = recurrenceWeekOfMonth,
+        geofenceLatitude = geofenceLatitude,
+        geofenceLongitude = geofenceLongitude,
+        geofenceTrigger = geofenceTrigger,
         showAdvanced = showAdvanced,
         showReminderOptions = showReminderOptions,
     )
+
+    fun parseRecurrenceRule(): RecurrenceRule {
+        val freq = RecurrenceFrequency.entries.firstOrNull { it.name.equals(recurrenceFrequency, ignoreCase = true) }
+            ?: RecurrenceFrequency.None
+        if (freq == RecurrenceFrequency.None) return RecurrenceRule()
+        return RecurrenceRule(
+            frequency = freq,
+            daysOfWeek = recurrenceDaysOfWeek.split(",").mapNotNull { s ->
+                DayOfWeek.entries.firstOrNull { it.name.equals(s.trim(), ignoreCase = true) }
+            }.toSet(),
+            dayOfWeek = DayOfWeek.entries.firstOrNull { it.name.equals(recurrenceDayOfWeek, ignoreCase = true) },
+            weekOfMonth = WeekOfMonth.entries.firstOrNull { it.name.equals(recurrenceWeekOfMonth, ignoreCase = true) },
+        )
+    }
 
     fun buildDraftPayload(): LifeItemDraft = LifeItemDraft(
         type = inferredType ?: selectedType,
@@ -250,10 +281,14 @@ private fun QuickAddContent(
         isPinned = pinned,
         taskStatus = if (selectedType == LifeItemType.Task) TaskStatus.Open else null,
         reminderAt = parseReminderDateTime(reminderDate, reminderTime),
-        recurrenceRule = if (recurring) RecurrenceRule(RecurrenceFrequency.Daily) else RecurrenceRule(),
+        recurrenceRule = parseRecurrenceRule(),
         notificationSettings = ItemNotificationSettings(
             enabled = notificationsEnabled,
             timeOverride = parseTimeOrNull(overrideTime),
+            geofenceLatitude = geofenceLatitude.toDoubleOrNull(),
+            geofenceLongitude = geofenceLongitude.toDoubleOrNull(),
+            geofenceTrigger = GeofenceTrigger.entries.firstOrNull { it.name.equals(geofenceTrigger, ignoreCase = true) }
+                ?: GeofenceTrigger.Arrival,
         ),
     )
 
@@ -269,6 +304,13 @@ private fun QuickAddContent(
         notificationsEnabled = true
         overrideTime = ""
         recurring = false
+        recurrenceFrequency = RecurrenceFrequency.None.name
+        recurrenceDaysOfWeek = ""
+        recurrenceDayOfWeek = ""
+        recurrenceWeekOfMonth = ""
+        geofenceLatitude = ""
+        geofenceLongitude = ""
+        geofenceTrigger = "Arrival"
         showAdvanced = false
         showReminderOptions = false
     }

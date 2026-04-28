@@ -1,6 +1,8 @@
 package com.raulshma.dailylife.ui
 
 import android.os.Build
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -118,6 +120,9 @@ fun SettingsScreen(
                     onBackupNow = onBackupNow,
                     onClearResult = onClearResult,
                 )
+            }
+            item {
+                AppSettingsSection()
             }
             item {
                 Spacer(modifier = Modifier.height(24.dp))
@@ -540,4 +545,118 @@ private fun HorizontalDivider() {
         thickness = 1.dp,
         color = MaterialTheme.colorScheme.outlineVariant,
     )
+}
+
+@Composable
+private fun AppSettingsSection() {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("dailylife_prefs", android.content.Context.MODE_PRIVATE) }
+    var lockEnabled by rememberSaveable { mutableStateOf(prefs.getBoolean("lock_enabled", false)) }
+    var dynamicColor by rememberSaveable { mutableStateOf(prefs.getBoolean("dynamic_color", true)) }
+
+    val authenticators = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        BiometricManager.Authenticators.BIOMETRIC_STRONG or
+            BiometricManager.Authenticators.DEVICE_CREDENTIAL
+    } else {
+        BiometricManager.Authenticators.BIOMETRIC_WEAK or
+            BiometricManager.Authenticators.DEVICE_CREDENTIAL
+    }
+
+    fun confirmAndEnableLock(enabled: Boolean) {
+        if (!enabled) {
+            lockEnabled = false
+            prefs.edit().putBoolean("lock_enabled", false).apply()
+            return
+        }
+        val activity = context as? androidx.fragment.app.FragmentActivity ?: return
+        val biometricManager = BiometricManager.from(context)
+        val canAuth = biometricManager.canAuthenticate(authenticators) == BiometricManager.BIOMETRIC_SUCCESS
+                || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                && context.getSystemService(android.app.KeyguardManager::class.java)?.isDeviceSecure == true)
+        if (!canAuth) return
+
+        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            .setTitle("Confirm app lock")
+            .setDescription("Authenticate to enable app lock")
+            .setAllowedAuthenticators(authenticators)
+            .build()
+
+        BiometricPrompt(activity, object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                lockEnabled = true
+                prefs.edit().putBoolean("lock_enabled", true).apply()
+            }
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {}
+            override fun onAuthenticationFailed() {}
+        }).authenticate(promptInfo)
+    }
+
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(
+                    imageVector = Icons.Filled.NotificationsOff,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp),
+                )
+                Text("App settings", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            }
+            HorizontalDivider()
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("App lock (biometric/PIN)", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Require authentication to open the app",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = lockEnabled,
+                    onCheckedChange = { enabled -> confirmAndEnableLock(enabled) },
+                )
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                HorizontalDivider()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Dynamic colors (Material You)", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Use your wallpaper colors",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = dynamicColor,
+                        onCheckedChange = { enabled ->
+                            dynamicColor = enabled
+                            prefs.edit().putBoolean("dynamic_color", enabled).apply()
+                        },
+                    )
+                }
+            }
+        }
+    }
 }

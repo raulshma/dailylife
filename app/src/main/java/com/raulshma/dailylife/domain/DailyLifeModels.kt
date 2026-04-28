@@ -27,12 +27,36 @@ enum class RecurrenceFrequency(val label: String) {
     None("None"),
     Daily("Daily"),
     Weekly("Weekly"),
+    WeeklyDays("Specific days"),
+    MonthlyDay("Monthly"),
+    MonthlyNthDay("Monthly day of week"),
     Custom("Custom"),
+}
+
+enum class DayOfWeek(val label: String, val value: java.time.DayOfWeek) {
+    Monday("Mon", java.time.DayOfWeek.MONDAY),
+    Tuesday("Tue", java.time.DayOfWeek.TUESDAY),
+    Wednesday("Wed", java.time.DayOfWeek.WEDNESDAY),
+    Thursday("Thu", java.time.DayOfWeek.THURSDAY),
+    Friday("Fri", java.time.DayOfWeek.FRIDAY),
+    Saturday("Sat", java.time.DayOfWeek.SATURDAY),
+    Sunday("Sun", java.time.DayOfWeek.SUNDAY),
+}
+
+enum class WeekOfMonth(val label: String, val weekNumber: Int) {
+    First("1st", 1),
+    Second("2nd", 2),
+    Third("3rd", 3),
+    Fourth("4th", 4),
+    Last("Last", -1),
 }
 
 data class RecurrenceRule(
     val frequency: RecurrenceFrequency = RecurrenceFrequency.None,
     val interval: Int = 1,
+    val daysOfWeek: Set<DayOfWeek> = emptySet(),
+    val dayOfWeek: DayOfWeek? = null,
+    val weekOfMonth: WeekOfMonth? = null,
 )
 
 fun RecurrenceRule.stepDays(): Long {
@@ -41,6 +65,9 @@ fun RecurrenceRule.stepDays(): Long {
         RecurrenceFrequency.None -> Long.MAX_VALUE
         RecurrenceFrequency.Daily -> safeInterval
         RecurrenceFrequency.Weekly -> safeInterval * 7L
+        RecurrenceFrequency.WeeklyDays -> 1L
+        RecurrenceFrequency.MonthlyDay -> safeInterval * 28L
+        RecurrenceFrequency.MonthlyNthDay -> 1L
         RecurrenceFrequency.Custom -> safeInterval
     }
 }
@@ -59,7 +86,17 @@ data class ItemNotificationSettings(
     val timeOverride: LocalTime? = null,
     val flexibleWindowMinutes: Int? = null,
     val snoozeMinutes: Int? = null,
+    val geofenceLatitude: Double? = null,
+    val geofenceLongitude: Double? = null,
+    val geofenceRadiusMeters: Float = 200f,
+    val geofenceTrigger: GeofenceTrigger = GeofenceTrigger.Arrival,
 )
+
+enum class GeofenceTrigger(val label: String) {
+    Arrival("Arrival"),
+    Departure("Departure"),
+    Both("Both"),
+}
 
 data class CompletionRecord(
     val itemId: Long,
@@ -93,6 +130,7 @@ data class LifeItem(
     val recurrenceRule: RecurrenceRule = RecurrenceRule(),
     val notificationSettings: ItemNotificationSettings = ItemNotificationSettings(),
     val completionHistory: List<CompletionRecord> = emptyList(),
+    val isArchived: Boolean = false,
 ) {
     val isRecurring: Boolean
         get() = recurrenceRule.frequency != RecurrenceFrequency.None
@@ -130,14 +168,78 @@ data class LifeItem(
         val startDate = reminderAt?.toLocalDate() ?: createdAt.toLocalDate()
         if (startDate.isAfter(referenceDate)) return emptyList()
 
-        val stepDays = recurrenceRule.stepDays()
+        val rule = recurrenceRule
         val dates = mutableListOf<LocalDate>()
-        var occurrenceDate = startDate
-        while (!occurrenceDate.isAfter(referenceDate)) {
-            dates += occurrenceDate
-            occurrenceDate = occurrenceDate.plusDays(stepDays)
+
+        when (rule.frequency) {
+            RecurrenceFrequency.WeeklyDays -> {
+                val selectedDays = rule.daysOfWeek.map { it.value }.toSet()
+                if (selectedDays.isEmpty()) return emptyList()
+                var cursor = startDate
+                while (!cursor.isAfter(referenceDate)) {
+                    if (cursor.dayOfWeek in selectedDays) dates += cursor
+                    cursor = cursor.plusDays(1)
+                }
+            }
+            RecurrenceFrequency.MonthlyDay -> {
+                val dayOfMonth = startDate.dayOfMonth
+                var cursor = startDate
+                while (!cursor.isAfter(referenceDate)) {
+                    val maxDay = cursor.lengthOfMonth()
+                    val effectiveDay = dayOfMonth.coerceAtMost(maxDay)
+                    val candidate = cursor.withDayOfMonth(effectiveDay)
+                    if (!candidate.isAfter(referenceDate)) dates += candidate
+                    cursor = cursor.plusMonths(rule.interval.coerceAtLeast(1).toLong())
+                }
+            }
+            RecurrenceFrequency.MonthlyNthDay -> {
+                val targetDow = rule.dayOfWeek?.value ?: startDate.dayOfWeek
+                val targetWeek = rule.weekOfMonth
+                var cursor = startDate.withDayOfMonth(1)
+                while (!cursor.isAfter(referenceDate)) {
+                    val candidate = nthDayOfWeekInMonth(cursor.year, cursor.month, targetWeek, targetDow)
+                    if (candidate != null && !candidate.isAfter(referenceDate) && !candidate.isBefore(startDate)) {
+                        dates += candidate
+                    }
+                    cursor = cursor.plusMonths(rule.interval.coerceAtLeast(1).toLong())
+                }
+            }
+            else -> {
+                val stepDays = rule.stepDays()
+                var occurrenceDate = startDate
+                while (!occurrenceDate.isAfter(referenceDate)) {
+                    dates += occurrenceDate
+                    occurrenceDate = occurrenceDate.plusDays(stepDays)
+                }
+            }
         }
         return dates
+    }
+
+    companion object {
+        private fun nthDayOfWeekInMonth(year: Int, month: java.time.Month, weekOfMonth: WeekOfMonth?, targetDow: java.time.DayOfWeek): LocalDate? {
+            val firstOfMonth = LocalDate.of(year, month, 1)
+            val lastOfMonth = firstOfMonth.withDayOfMonth(firstOfMonth.lengthOfMonth())
+            if (weekOfMonth == WeekOfMonth.Last) {
+                var cursor = lastOfMonth
+                while (cursor.month == month) {
+                    if (cursor.dayOfWeek == targetDow) return cursor
+                    cursor = cursor.minusDays(1)
+                }
+                return null
+            }
+            val targetOrdinal = weekOfMonth?.weekNumber ?: 1
+            var cursor = firstOfMonth
+            var occurrence = 0
+            while (cursor.month == month) {
+                if (cursor.dayOfWeek == targetDow) {
+                    occurrence++
+                    if (occurrence == targetOrdinal) return cursor
+                }
+                cursor = cursor.plusDays(1)
+            }
+            return null
+        }
     }
 
     private fun List<LocalDate>.currentStreak(
@@ -275,6 +377,7 @@ data class DailyLifeFilters(
     val dateRangeStart: LocalDate? = null,
     val dateRangeEnd: LocalDate? = null,
     val favoritesOnly: Boolean = false,
+    val showArchived: Boolean = false,
 )
 
 data class DailyLifeState(
@@ -312,5 +415,6 @@ private fun LifeItem.matches(filters: DailyLifeFilters): Boolean {
         (filters.selectedType == null || type == filters.selectedType) &&
         (filters.selectedTag == null || tags.contains(filters.selectedTag)) &&
         matchesDateRange &&
-        (!filters.favoritesOnly || isFavorite)
+        (!filters.favoritesOnly || isFavorite) &&
+        (filters.showArchived || !isArchived)
 }
