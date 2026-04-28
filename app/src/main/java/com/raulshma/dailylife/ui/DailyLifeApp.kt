@@ -172,9 +172,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.SubcomposeAsyncImage
 import com.raulshma.dailylife.data.media.AudioWaveformGenerator
-import com.raulshma.dailylife.data.media.MediaThumbnailGenerator
-import com.raulshma.dailylife.data.media.PdfThumbnailGenerator
-import com.raulshma.dailylife.data.security.MediaEncryptionManager
+import com.raulshma.dailylife.data.security.MediaDecryptCoordinator
 import com.raulshma.dailylife.domain.DailyLifeFilters
 import com.raulshma.dailylife.domain.DailyLifeState
 import com.raulshma.dailylife.domain.ItemNotificationSettings
@@ -243,6 +241,9 @@ private sealed class Screen {
 
 internal val LocalSharedTransitionScope = staticCompositionLocalOf<SharedTransitionScope?> { null }
 internal val LocalAnimatedVisibilityScope = compositionLocalOf<AnimatedVisibilityScope?> { null }
+internal val LocalDecryptCoordinator = staticCompositionLocalOf<MediaDecryptCoordinator> {
+    error("No MediaDecryptCoordinator provided")
+}
 
 data class QuickAddDraft(
     val typeName: String = LifeItemType.Thought.name,
@@ -445,7 +446,7 @@ fun DailyLifeApp(
 
     DisposableEffect(Unit) {
         onDispose {
-            MediaEncryptionManager(context).clearDecryptedCache()
+            viewModel.decryptCoordinator.clearCache()
         }
     }
 
@@ -542,6 +543,7 @@ fun DailyLifeApp(
     val photosGridState = rememberLazyStaggeredGridState()
     val timelineListState = rememberLazyListState()
 
+    CompositionLocalProvider(LocalDecryptCoordinator provides viewModel.decryptCoordinator) {
     SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
         AnimatedContent(
             modifier = Modifier.fillMaxSize(),
@@ -857,6 +859,7 @@ fun DailyLifeApp(
                 encryptionProgress = encryptionProgress,
             )
         }
+    }
     }
 
 }
@@ -1759,16 +1762,13 @@ internal fun PdfPreview(item: LifeItem) {
 
 @Composable
 internal fun rememberPdfThumbnail(item: LifeItem): String? {
-    val context = LocalContext.current
+    val coordinator = LocalDecryptCoordinator.current
     val pdfUrl = rememberDecryptedMediaUri(item.inferPdfUrl())
     return produceState<String?>(initialValue = null, key1 = item.id, key2 = pdfUrl) {
         value = if (pdfUrl == null) {
             null
         } else {
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                val generator = PdfThumbnailGenerator(context)
-                generator.generatePdfThumbnail(android.net.Uri.parse(pdfUrl), context)?.toString()
-            }
+            coordinator.generatePdfThumbnail(pdfUrl)
         }
     }.value
 }
@@ -2185,15 +2185,12 @@ private val OsmMlatPattern =
 
 @Composable
 internal fun rememberDecryptedMediaUri(uriString: String?): String? {
-    val context = LocalContext.current
+    val coordinator = LocalDecryptCoordinator.current
     return produceState<String?>(initialValue = null, key1 = uriString) {
         value = if (uriString == null) {
             null
         } else if (uriString.endsWith(".enc")) {
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                val manager = MediaEncryptionManager(context)
-                manager.decryptToCache(android.net.Uri.parse(uriString), context)?.toString()
-            }
+            coordinator.decrypt(uriString)
         } else {
             uriString
         }
@@ -2202,16 +2199,13 @@ internal fun rememberDecryptedMediaUri(uriString: String?): String? {
 
 @Composable
 internal fun rememberVideoThumbnail(item: LifeItem): String? {
-    val context = LocalContext.current
+    val coordinator = LocalDecryptCoordinator.current
     val videoUrl = rememberDecryptedMediaUri(item.inferVideoPlaybackUrl())
     return produceState<String?>(initialValue = null, key1 = item.id, key2 = videoUrl) {
         value = if (videoUrl == null) {
             null
         } else {
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                val generator = MediaThumbnailGenerator(context)
-                generator.generateVideoThumbnail(android.net.Uri.parse(videoUrl), context)?.toString()
-            }
+            coordinator.generateVideoThumbnail(videoUrl)
         }
     }.value
 }

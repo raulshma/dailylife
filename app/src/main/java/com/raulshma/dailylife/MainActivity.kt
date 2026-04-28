@@ -9,9 +9,18 @@ import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.raulshma.dailylife.domain.LifeItemType
 import com.raulshma.dailylife.ui.DailyLifeApp
@@ -19,7 +28,10 @@ import com.raulshma.dailylife.ui.DailyLifeViewModel
 import com.raulshma.dailylife.ui.LockScreen
 import com.raulshma.dailylife.ui.OnboardingScreen
 import com.raulshma.dailylife.ui.QuickAddDraft
+import com.raulshma.dailylife.ui.theme.DailyLifeDuration
+import com.raulshma.dailylife.ui.theme.DailyLifeEasing
 import com.raulshma.dailylife.ui.theme.DailyLifeTheme
+import com.raulshma.dailylife.ui.theme.DailyLifeTween
 import dagger.hilt.android.AndroidEntryPoint
 import org.osmdroid.config.Configuration
 import java.io.File
@@ -55,26 +67,52 @@ class MainActivity : AppCompatActivity() {
 
         setContent {
             DailyLifeTheme {
-                when {
-                    showOnboarding -> {
-                        OnboardingScreen(
-                            onComplete = {
-                                prefs.edit().putBoolean("onboarding_complete", true).apply()
-                                showOnboarding = false
-                                if (lockEnabled) isLocked = true else isLocked = false
-                            },
+                AnimatedContent(
+                    targetState = when {
+                        showOnboarding -> 0
+                        isLocked -> 1
+                        else -> 2
+                    },
+                    transitionSpec = {
+                        (fadeIn(
+                            animationSpec = tween(DailyLifeDuration.MEDIUM, easing = DailyLifeEasing.Enter),
+                        ) + scaleIn(
+                            animationSpec = tween(DailyLifeDuration.MEDIUM, easing = DailyLifeEasing.Enter),
+                            initialScale = 0.96f,
+                        )).togetherWith(
+                            fadeOut(
+                                animationSpec = tween(DailyLifeDuration.SHORT),
+                            ) + scaleOut(
+                                animationSpec = tween(DailyLifeDuration.SHORT),
+                                targetScale = 1.02f,
+                            ),
                         )
-                    }
-                    isLocked -> {
-                        LockScreen(onUnlocked = { isLocked = false })
-                    }
-                    else -> {
-                        val viewModel: DailyLifeViewModel = hiltViewModel()
-                        DailyLifeApp(
-                            viewModel = viewModel,
-                            shareDraft = shareDraft,
-                            onShareDraftConsumed = { shareDraft = null },
-                        )
+                    },
+                    label = "screenTransition",
+                ) { screenState ->
+                    when (screenState) {
+                        0 -> {
+                            OnboardingScreen(
+                                onComplete = {
+                                    prefs.edit().putBoolean("onboarding_complete", true).apply()
+                                    showOnboarding = false
+                                    if (lockEnabled) isLocked = true else isLocked = false
+                                },
+                            )
+                        }
+                        1 -> {
+                            Box(contentAlignment = Alignment.Center) {
+                                LockScreen(onUnlocked = { isLocked = false })
+                            }
+                        }
+                        else -> {
+                            val viewModel: DailyLifeViewModel = hiltViewModel()
+                            DailyLifeApp(
+                                viewModel = viewModel,
+                                shareDraft = shareDraft,
+                                onShareDraftConsumed = { shareDraft = null },
+                            )
+                        }
                     }
                 }
             }

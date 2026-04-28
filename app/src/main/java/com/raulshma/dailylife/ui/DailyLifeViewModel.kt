@@ -12,6 +12,7 @@ import com.raulshma.dailylife.data.DailyLifeRepository
 import com.raulshma.dailylife.data.backup.S3BackupRepository
 import com.raulshma.dailylife.data.RoomDailyLifeStore
 import com.raulshma.dailylife.data.security.EncryptionProgress
+import com.raulshma.dailylife.data.security.MediaDecryptCoordinator
 import com.raulshma.dailylife.data.security.MediaEncryptionManager
 import com.raulshma.dailylife.domain.CompletionRecord
 import com.raulshma.dailylife.domain.BackupResult
@@ -45,6 +46,7 @@ class DailyLifeViewModel @Inject constructor(
     private val repository: DailyLifeRepository,
     private val reminderScheduler: ReminderScheduler,
     private val mediaEncryptionManager: MediaEncryptionManager,
+    val decryptCoordinator: MediaDecryptCoordinator,
     private val s3BackupRepository: S3BackupRepository,
     private val roomStore: RoomDailyLifeStore,
     private val geofenceManager: GeofenceManager,
