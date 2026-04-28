@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2F5D8C;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4F6F52;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="url(#bg)" />
+
+  <!-- Book/journal body -->
+  <rect x="140" y="140" width="232" height="260" rx="16" fill="#FAF9F6" opacity="0.95" />
+
+  <!-- Book spine shadow -->
+  <rect x="140" y="140" width="14" height="260" rx="4" fill="#9A5B36" opacity="0.6" />
+
+  <!-- Lines representing journal entries -->
+  <rect x="170" y="176" width="120" height="6" rx="3" fill="#2F5D8C" opacity="0.7" />
+  <rect x="170" y="196" width="170" height="6" rx="3" fill="#2F5D8C" opacity="0.4" />
+  <rect x="170" y="216" width="90" height="6" rx="3" fill="#2F5D8C" opacity="0.4" />
+
+  <!-- Checkbox / task -->
+  <rect x="170" y="248" width="18" height="18" rx="4" fill="none" stroke="#4F6F52" stroke-width="2.5" />
+  <polyline points="174,258 178,262 186,254" fill="none" stroke="#4F6F52" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+  <rect x="198" y="252" width="100" height="6" rx="3" fill="#4F6F52" opacity="0.4" />
+
+  <!-- Camera / photo icon -->
+  <rect x="170" y="284" width="30" height="22" rx="4" fill="#9A5B36" opacity="0.6" />
+  <circle cx="196" cy="294" r="6" fill="none" stroke="#FAF9F6" stroke-width="1.5" />
+  <polygon points="176,284 180,278 186,278 190,284" fill="#9A5B36" opacity="0.6" />
+  <rect x="210" y="288" width="80" height="6" rx="3" fill="#9A5B36" opacity="0.4" />
+
+  <!-- Location pin -->
+  <path d="M178,340 C178,336 182,332 186,332 C190,332 194,336 194,340 C194,346 186,354 186,354 C186,354 178,346 178,340Z" fill="#4F6F52" opacity="0.7" />
+  <circle cx="186" cy="340" r="2.5" fill="#FAF9F6" />
+  <rect x="202" y="342" width="60" height="6" rx="3" fill="#4F6F52" opacity="0.4" />
+
+  <!-- Bookmark ribbon -->
+  <path d="M360,140 L360,180 L348,170 L336,180 L336,140" fill="#9A5B36" opacity="0.8" />
+</svg>
