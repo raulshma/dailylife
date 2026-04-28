@@ -79,6 +79,7 @@ jobs:
 
       - name: Rename APK Outputs
         run: |
+          VERSION="${{ steps.version.outputs.apk_version }}"
           shopt -s nullglob
           apks=(app/build/outputs/apk/release/*.apk)
           if [ ${#apks[@]} -eq 0 ]; then
@@ -87,7 +88,9 @@ jobs:
           fi
           for apk in "${apks[@]}"; do
             filename=$(basename "$apk")
-            new_filename="dailylife-${filename#app-}"
+            stripped="${filename#app-}"
+            arch="${stripped%%-*}"
+            new_filename="dailylife-v${VERSION}-${arch}.apk"
             mv "$apk" "$new_filename"
           done
 
