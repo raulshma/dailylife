@@ -244,6 +244,7 @@ class InMemoryDailyLifeRepositoryTest {
             seedItems = emptyList(),
             store = FileDailyLifeStore(storeFile),
         )
+        Thread.sleep(100)
         val restoredItem = restored.state.value.items.single()
 
         assertEquals(item.id, restoredItem.id)
@@ -279,6 +280,7 @@ class InMemoryDailyLifeRepositoryTest {
             seedItems = emptyList(),
             store = ThrowingLoadStore,
         )
+        Thread.sleep(100)
 
         val storageError = repository.state.value.storageError
 

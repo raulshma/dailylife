@@ -8,6 +8,8 @@ import android.os.BatteryManager
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
 import com.raulshma.dailylife.data.DailyLifeRepository
 import com.raulshma.dailylife.data.backup.S3BackupRepository
 import com.raulshma.dailylife.data.RoomDailyLifeStore
@@ -18,10 +20,13 @@ import com.raulshma.dailylife.domain.CompletionRecord
 import com.raulshma.dailylife.domain.BackupResult
 import com.raulshma.dailylife.domain.BackupSnapshot
 import com.raulshma.dailylife.domain.ItemNotificationSettings
+import com.raulshma.dailylife.domain.LifeItem
 import com.raulshma.dailylife.domain.LifeItemDraft
 import com.raulshma.dailylife.domain.LifeItemType
 import com.raulshma.dailylife.domain.NotificationSettings
 import com.raulshma.dailylife.domain.S3BackupSettings
+import com.raulshma.dailylife.data.CollectionCounts
+import com.raulshma.dailylife.domain.SnapshotStats
 import com.raulshma.dailylife.domain.TaskStatus
 import com.raulshma.dailylife.domain.inferImagePreviewUrl
 import com.raulshma.dailylife.domain.inferVideoPlaybackUrl
@@ -53,6 +58,12 @@ class DailyLifeViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
     val state = repository.state
+    val pagingItems = repository.pagingItems.cachedIn(viewModelScope)
+    val allTags = repository.allTags
+    val snapshotStats = repository.snapshotStats
+    val collectionCounts = repository.collectionCounts
+    val taggedItemsForGraph = repository.taggedItemsForGraph
+    val allItemIds = repository.allItemIds
 
     private val _s3BackupSettings = MutableStateFlow(S3BackupSettings())
     val s3BackupSettings: StateFlow<S3BackupSettings> = _s3BackupSettings.asStateFlow()
@@ -63,12 +74,25 @@ class DailyLifeViewModel @Inject constructor(
     private val _encryptionProgress = MutableStateFlow<EncryptionProgress?>(null)
     val encryptionProgress: StateFlow<EncryptionProgress?> = _encryptionProgress.asStateFlow()
 
+    private val _selectedItem = MutableStateFlow<LifeItem?>(null)
+    val selectedItem: StateFlow<LifeItem?> = _selectedItem.asStateFlow()
+
     private var saveJob: Job? = null
 
     init {
-        repository.rolloverMissedOccurrences()
-        syncReminderSchedule()
+        viewModelScope.launch { repository.rolloverMissedOccurrences() }
+        viewModelScope.launch { syncReminderSchedule() }
         viewModelScope.launch { _s3BackupSettings.value = roomStore.loadS3BackupSettings() }
+    }
+
+    fun selectItem(itemId: Long) {
+        viewModelScope.launch {
+            _selectedItem.value = repository.getItem(itemId)
+        }
+    }
+
+    fun clearSelectedItem() {
+        _selectedItem.value = null
     }
 
     fun addItem(draft: LifeItemDraft) {
@@ -115,31 +139,47 @@ class DailyLifeViewModel @Inject constructor(
         repository.selectCollection(itemIds)
     }
 
+    fun selectTypes(types: Set<LifeItemType>?) {
+        repository.selectTypes(types)
+    }
+
     fun toggleFavorite(itemId: Long) {
-        repository.toggleFavorite(itemId)
+        viewModelScope.launch {
+            repository.toggleFavorite(itemId)
+            refreshSelectedItem(itemId)
+        }
     }
 
     fun togglePinned(itemId: Long) {
-        repository.togglePinned(itemId)
+        viewModelScope.launch {
+            repository.togglePinned(itemId)
+            refreshSelectedItem(itemId)
+        }
     }
 
     fun updateTaskStatus(itemId: Long, status: TaskStatus) {
-        repository.updateTaskStatus(itemId, status)
+        viewModelScope.launch {
+            repository.updateTaskStatus(itemId, status)
+            refreshSelectedItem(itemId)
+        }
     }
 
     fun markOccurrenceCompleted(itemId: Long) {
         val location = lastKnownLocation()
         val batteryLevel = currentBatteryLevel()
         val appVersion = currentAppVersion()
-        repository.markOccurrenceCompleted(
-            itemId = itemId,
-            occurrenceDate = LocalDate.now(),
-            latitude = location?.first,
-            longitude = location?.second,
-            batteryLevel = batteryLevel,
-            appVersion = appVersion,
-        )
-        syncReminderSchedule()
+        viewModelScope.launch {
+            repository.markOccurrenceCompleted(
+                itemId = itemId,
+                occurrenceDate = LocalDate.now(),
+                latitude = location?.first,
+                longitude = location?.second,
+                batteryLevel = batteryLevel,
+                appVersion = appVersion,
+            )
+            refreshSelectedItem(itemId)
+            syncReminderSchedule()
+        }
     }
 
     private fun lastKnownLocation(): Pair<Double, Double>? {
@@ -177,13 +217,17 @@ class DailyLifeViewModel @Inject constructor(
     }
 
     fun updateNotificationSettings(settings: NotificationSettings) {
-        repository.updateNotificationSettings(settings)
-        syncReminderSchedule()
+        viewModelScope.launch {
+            repository.updateNotificationSettings(settings)
+            syncReminderSchedule()
+        }
     }
 
     fun updateItemNotifications(itemId: Long, settings: ItemNotificationSettings) {
-        repository.updateItemNotifications(itemId, settings)
-        syncReminderSchedule()
+        viewModelScope.launch {
+            repository.updateItemNotifications(itemId, settings)
+            syncReminderSchedule()
+        }
     }
 
     fun clearStorageError() {
@@ -197,14 +241,15 @@ class DailyLifeViewModel @Inject constructor(
 
     fun performS3Backup() {
         viewModelScope.launch {
-            val currentState = repository.state.value
+            val allItems = repository.getAllItems()
             val settings = _s3BackupSettings.value
+            val currentState = state.value
             val snapshot = BackupSnapshot(
-                items = currentState.items,
+                items = allItems,
                 notificationSettings = currentState.notificationSettings,
                 exportedAt = Instant.now(),
             )
-            val mediaPaths: List<String> = currentState.items
+            val mediaPaths: List<String> = allItems
                 .flatMap { item ->
                     listOfNotNull(item.inferImagePreviewUrl(), item.inferVideoPlaybackUrl())
                         .filter { it.startsWith("file://") || it.startsWith("content://") }
@@ -228,31 +273,32 @@ class DailyLifeViewModel @Inject constructor(
             }
             val encryptedDraft = draft.copy(body = encryptedBody)
             repository.updateItem(encryptedDraft, itemId)
+            refreshSelectedItem(itemId)
             syncReminderSchedule()
             _encryptionProgress.value = null
         }
     }
 
     fun deleteItem(itemId: Long) {
-        repository.deleteItem(itemId)
-        syncReminderSchedule()
+        viewModelScope.launch {
+            repository.deleteItem(itemId)
+            syncReminderSchedule()
+        }
     }
 
     fun updateCompletionRecord(itemId: Long, record: CompletionRecord) {
-        repository.updateCompletionRecord(itemId, record)
+        viewModelScope.launch { repository.updateCompletionRecord(itemId, record) }
     }
 
     fun deleteCompletionRecord(itemId: Long, occurrenceDate: LocalDate, completedAt: LocalDateTime) {
-        repository.deleteCompletionRecord(itemId, occurrenceDate, completedAt)
+        viewModelScope.launch { repository.deleteCompletionRecord(itemId, occurrenceDate, completedAt) }
     }
 
-    private fun syncReminderSchedule() {
-        val currentState = repository.state.value
-        reminderScheduler.sync(
-            items = currentState.items,
-            settings = currentState.notificationSettings,
-        )
-        geofenceManager.syncGeofences(currentState.items)
+    private suspend fun syncReminderSchedule() {
+        val items = repository.getAllItems()
+        val settings = state.value.notificationSettings
+        reminderScheduler.sync(items = items, settings = settings)
+        geofenceManager.syncGeofences(items)
     }
 
     fun restoreFromS3() {
@@ -289,10 +335,14 @@ class DailyLifeViewModel @Inject constructor(
     }
 
     fun toggleArchive(itemId: Long) {
-        repository.toggleArchive(itemId)
+        viewModelScope.launch { repository.toggleArchive(itemId) }
     }
 
     fun toggleShowArchived() {
         repository.toggleShowArchived()
+    }
+
+    private suspend fun refreshSelectedItem(itemId: Long) {
+        _selectedItem.value = repository.getItem(itemId)
     }
 }

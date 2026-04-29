@@ -379,44 +379,17 @@ data class DailyLifeFilters(
     val favoritesOnly: Boolean = false,
     val showArchived: Boolean = false,
     val collectionItemIds: Set<Long>? = null,
+    val selectedTypes: Set<LifeItemType>? = null,
 )
 
 data class DailyLifeState(
-    val items: List<LifeItem> = emptyList(),
     val filters: DailyLifeFilters = DailyLifeFilters(),
     val notificationSettings: NotificationSettings = NotificationSettings(),
     val storageError: StorageError? = null,
-) {
-    val allTags: List<String>
-        get() = items.flatMap { it.tags }.distinct().sorted()
+)
 
-    val visibleItems: List<LifeItem>
-        get() = items
-            .filter { item -> item.matches(filters) }
-            .sortedWith(
-                compareByDescending<LifeItem> { it.isPinned }
-                    .thenByDescending { it.createdAt },
-            )
-}
-
-private fun LifeItem.matches(filters: DailyLifeFilters): Boolean {
-    val normalizedQuery = filters.query.trim().lowercase()
-    val createdDate = createdAt.toLocalDate()
-    val startDate = listOfNotNull(filters.dateRangeStart, filters.dateRangeEnd).minOrNull()
-    val endDate = listOfNotNull(filters.dateRangeStart, filters.dateRangeEnd).maxOrNull()
-    val matchesQuery = normalizedQuery.isEmpty() ||
-        title.lowercase().contains(normalizedQuery) ||
-        body.lowercase().contains(normalizedQuery) ||
-        type.label.lowercase().contains(normalizedQuery) ||
-        tags.any { tag -> tag.lowercase().contains(normalizedQuery) }
-    val matchesDateRange = (startDate == null || !createdDate.isBefore(startDate)) &&
-        (endDate == null || !createdDate.isAfter(endDate))
-
-    return matchesQuery &&
-        (filters.selectedType == null || type == filters.selectedType) &&
-        (filters.selectedTag == null || tags.contains(filters.selectedTag)) &&
-        matchesDateRange &&
-        (!filters.favoritesOnly || isFavorite) &&
-        (filters.showArchived || !isArchived) &&
-        (filters.collectionItemIds == null || id in filters.collectionItemIds)
-}
+data class SnapshotStats(
+    val itemCount: Int = 0,
+    val tagCount: Int = 0,
+    val completedCount: Int = 0,
+)

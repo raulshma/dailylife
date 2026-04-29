@@ -2,9 +2,12 @@ package com.raulshma.dailylife.data
 
 import com.raulshma.dailylife.data.db.DailyLifeDatabase
 
+@Suppress("unused")
 class RoomBackedDailyLifeRepository(
     database: DailyLifeDatabase,
-) : DailyLifeRepository by InMemoryDailyLifeRepository(
-    seedItems = emptyList(),
-    store = RoomDailyLifeStore(database),
-)
+) {
+    private val delegate = InMemoryDailyLifeRepository(
+        seedItems = emptyList(),
+        store = RoomDailyLifeStore(database),
+    )
+}

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -37,8 +38,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.IconButton
+import com.raulshma.dailylife.ui.components.ShimmerBox
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -242,7 +243,12 @@ fun LocationPickerSheet(
                     singleLine = true,
                     trailingIcon = {
                         if (isSearching) {
-                            CircularProgressIndicator(modifier = Modifier.padding(12.dp).size(24.dp), strokeWidth = 2.dp)
+                            ShimmerBox(
+                                modifier = Modifier
+                                    .padding(12.dp)
+                                    .size(24.dp),
+                                shape = CircleShape,
+                            )
                         } else {
                             IconButton(onClick = ::performSearch) {
                                 Icon(Icons.Filled.Search, "Search")

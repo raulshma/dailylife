@@ -11,6 +11,8 @@ import androidx.room.PrimaryKey
         Index("type"),
         Index("isFavorite"),
         Index("isArchived"),
+        Index("isPinned"),
+        Index(value = ["isPinned", "createdAt"]),
     ],
 )
 data class LifeItemEntity(

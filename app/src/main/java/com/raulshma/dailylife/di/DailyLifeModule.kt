@@ -4,7 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.room.Room
 import com.raulshma.dailylife.data.DailyLifeRepository
-import com.raulshma.dailylife.data.RoomBackedDailyLifeRepository
+import com.raulshma.dailylife.data.RoomPaginatedDailyLifeRepository
 import com.raulshma.dailylife.data.RoomDailyLifeStore
 import com.raulshma.dailylife.data.backup.OkHttpS3BackupRepository
 import com.raulshma.dailylife.data.backup.S3BackupRepository
@@ -94,7 +94,7 @@ object DailyLifeModule {
     fun provideDailyLifeRepository(
         database: DailyLifeDatabase,
     ): DailyLifeRepository {
-        return RoomBackedDailyLifeRepository(database)
+        return RoomPaginatedDailyLifeRepository(database.dailyLifeDao())
     }
 
     @Provides

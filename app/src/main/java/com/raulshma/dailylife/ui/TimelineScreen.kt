@@ -32,15 +32,28 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.paging.LoadState
+import androidx.paging.compose.LazyPagingItems
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
 import com.raulshma.dailylife.ui.components.SharedElementKeys
 import com.raulshma.dailylife.ui.components.CompletionRipple
+import com.raulshma.dailylife.ui.components.TimelineSkeletonItem
 import com.raulshma.dailylife.domain.*
 import java.time.LocalDate
+
+internal sealed class TimelineEntry {
+    data class DateHeader(val date: LocalDate) : TimelineEntry()
+    data class Item(val index: Int) : TimelineEntry()
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun TimelineScreen(
     state: DailyLifeState,
+    pagingItems: LazyPagingItems<LifeItem>,
+    snapshotStats: SnapshotStats,
+    allTags: List<String>,
     contentPadding: PaddingValues,
     skipStaggerAnimation: Boolean,
     listState: LazyListState,
@@ -57,37 +70,46 @@ fun TimelineScreen(
     onCompleted: (Long) -> Unit,
     onStorageErrorDismissed: () -> Unit,
 ) {
-    val groupedItems = remember(state.visibleItems) {
-        state.visibleItems.groupBy { it.createdAt.toLocalDate() }
+    val entries = remember(pagingItems.itemSnapshotList) {
+        val snapshot = pagingItems.itemSnapshotList
+        val result = mutableListOf<TimelineEntry>()
+        var lastDate: LocalDate? = null
+        for (i in snapshot.indices) {
+            val item = snapshot[i] ?: continue
+            val date = item.createdAt.toLocalDate()
+            if (date != lastDate) {
+                result.add(TimelineEntry.DateHeader(date))
+                lastDate = date
+            }
+            result.add(TimelineEntry.Item(i))
+        }
+        result
     }
-    
+    val isEmpty = entries.isEmpty() && pagingItems.loadState.refresh !is LoadState.Loading
+
     var showAdvancedFilters by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Sticky Top Section
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = contentPadding.calculateTopPadding())
                 .background(MaterialTheme.colorScheme.surface)
         ) {
-            // Search Bar
             SearchBarRow(
                 query = state.filters.query,
                 onSearchChanged = onSearchChanged,
                 onOpenFilters = { showAdvancedFilters = true }
             )
 
-            // Quick Filters Carousel
             QuickFiltersCarousel(
-                state = state,
+                filters = state.filters,
                 onFavoritesOnlyToggled = onFavoritesOnlyToggled,
                 onTypeSelected = onTypeSelected,
                 onOpenFilters = { showAdvancedFilters = true }
             )
         }
 
-        // Timeline Items
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f),
@@ -99,10 +121,16 @@ fun TimelineScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            item {
-                SnapshotRow(state = state)
+            if (pagingItems.loadState.refresh is LoadState.Loading && !isEmpty) {
+                items(count = 3, key = { "refresh-skeleton-$it" }) {
+                    TimelineSkeletonItem(modifier = Modifier.animateItem())
+                }
             }
-            
+
+            item {
+                SnapshotRow(snapshotStats = snapshotStats)
+            }
+
             state.storageError?.let { storageError ->
                 item(key = "storage-error") {
                     StorageWarningCard(
@@ -112,35 +140,109 @@ fun TimelineScreen(
                 }
             }
 
-            if (groupedItems.isEmpty()) {
-                item {
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = true,
-                        enter = androidx.compose.animation.fadeIn(
-                            com.raulshma.dailylife.ui.theme.DailyLifeTween.content<Float>()
-                        ) + androidx.compose.animation.slideInVertically(
-                            com.raulshma.dailylife.ui.theme.DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>(),
-                            initialOffsetY = { it / 4 }
-                        ),
-                    ) {
-                        EmptyTimeline()
+            if (isEmpty) {
+                if (pagingItems.loadState.refresh is LoadState.Error) {
+                    val error = (pagingItems.loadState.refresh as LoadState.Error).error
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Text(
+                                text = "Something went wrong",
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Text(
+                                text = error.localizedMessage ?: "Couldn't load items",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            Button(onClick = { pagingItems.retry() }) {
+                                Text("Retry")
+                            }
+                        }
+                    }
+                } else {
+                    item {
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = true,
+                            enter = androidx.compose.animation.fadeIn(
+                                com.raulshma.dailylife.ui.theme.DailyLifeTween.content<Float>()
+                            ) + androidx.compose.animation.slideInVertically(
+                                com.raulshma.dailylife.ui.theme.DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>(),
+                                initialOffsetY = { it / 4 }
+                            ),
+                        ) {
+                            EmptyTimeline()
+                        }
                     }
                 }
             } else {
-                groupedItems.forEach { (date, itemsForDate) ->
-                    item(key = "date-$date") {
-                        DateHeader(date = date)
+                items(
+                    count = entries.size,
+                    key = { index ->
+                        when (val entry = entries[index]) {
+                            is TimelineEntry.DateHeader -> "date-${entry.date}"
+                            is TimelineEntry.Item -> {
+                                val item = pagingItems[entry.index]
+                                "item-${item?.id ?: entry.index}"
+                            }
+                        }
+                    },
+                ) { index ->
+                    when (val entry = entries[index]) {
+                        is TimelineEntry.DateHeader -> {
+                            DateHeader(date = entry.date)
+                        }
+                        is TimelineEntry.Item -> {
+                            val item = pagingItems[entry.index]
+                            if (item != null) {
+                                LifeItemCard(
+                                    item = item,
+                                    onClick = { onItemSelected(item.id) },
+                                    onFavoriteToggled = { onFavoriteToggled(item.id) },
+                                    onPinnedToggled = { onPinnedToggled(item.id) },
+                                    onTaskStatusChanged = { status -> onTaskStatusChanged(item.id, status) },
+                                    onCompleted = { onCompleted(item.id) },
+                                    modifier = Modifier.animateItem(),
+                                )
+                            }
+                        }
                     }
-                    items(itemsForDate, key = { it.id }) { item ->
-                        LifeItemCard(
-                            item = item,
-                            onClick = { onItemSelected(item.id) },
-                            onFavoriteToggled = { onFavoriteToggled(item.id) },
-                            onPinnedToggled = { onPinnedToggled(item.id) },
-                            onTaskStatusChanged = { status -> onTaskStatusChanged(item.id, status) },
-                            onCompleted = { onCompleted(item.id) },
-                            modifier = Modifier.animateItem(),
-                        )
+                }
+
+                pagingItems.apply {
+                    when (loadState.append) {
+                        is LoadState.Loading -> {
+                            item(key = "append-loading") {
+                                TimelineSkeletonItem(modifier = Modifier.animateItem())
+                            }
+                        }
+                        is LoadState.Error -> {
+                            val error = (loadState.append as LoadState.Error).error
+                            item(key = "append-error") {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text(
+                                        text = error.localizedMessage ?: "Couldn't load more items",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                    TextButton(onClick = { retry() }) {
+                                        Text("Retry")
+                                    }
+                                }
+                            }
+                        }
+                        is LoadState.NotLoading -> Unit
                     }
                 }
             }
@@ -154,7 +256,8 @@ fun TimelineScreen(
             sheetState = sheetState
         ) {
             AdvancedFiltersSheet(
-                state = state,
+                filters = state.filters,
+                allTags = allTags,
                 onTypeSelected = onTypeSelected,
                 onTagSelected = onTagSelected,
                 onDateRangeChanged = onDateRangeChanged,
@@ -203,7 +306,7 @@ private fun SearchBarRow(
                 .onFocusChanged { focusState -> isFocused = focusState.isFocused },
             placeholder = { Text("Search your timeline") },
             leadingIcon = {
-                IconButton(onClick = { /* Menu or search action */ }) {
+                IconButton(onClick = { }) {
                     Icon(
                         imageVector = Icons.Filled.Search,
                         contentDescription = "Search",
@@ -254,12 +357,11 @@ private fun SearchBarRow(
 
 @Composable
 private fun QuickFiltersCarousel(
-    state: DailyLifeState,
+    filters: DailyLifeFilters,
     onFavoritesOnlyToggled: () -> Unit,
     onTypeSelected: (LifeItemType?) -> Unit,
     onOpenFilters: () -> Unit
 ) {
-    val filters = state.filters
     LazyRow(
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
@@ -295,9 +397,8 @@ private fun QuickFiltersCarousel(
                 }
             )
         }
-        
+
         item {
-            // Also show an active indicator if tags or dates are filtered
             if (filters.selectedTag != null || filters.dateRangeStart != null || filters.dateRangeEnd != null) {
                 FilterChip(
                     selected = true,
@@ -315,7 +416,8 @@ private fun QuickFiltersCarousel(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AdvancedFiltersSheet(
-    state: DailyLifeState,
+    filters: DailyLifeFilters,
+    allTags: List<String>,
     onTypeSelected: (LifeItemType?) -> Unit,
     onTagSelected: (String?) -> Unit,
     onDateRangeChanged: (LocalDate?, LocalDate?) -> Unit,
@@ -323,7 +425,6 @@ private fun AdvancedFiltersSheet(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    val filters = state.filters
 
     Column(
         modifier = Modifier
@@ -349,7 +450,6 @@ private fun AdvancedFiltersSheet(
             }
         }
 
-        // Date Range
         Text("Date Range", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -391,7 +491,6 @@ private fun AdvancedFiltersSheet(
             }
         }
 
-        // Types
         Text("Item Type", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -413,14 +512,13 @@ private fun AdvancedFiltersSheet(
             }
         }
 
-        // Tags
-        if (state.allTags.isNotEmpty()) {
+        if (allTags.isNotEmpty()) {
             Text("Tags", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                state.allTags.forEach { tag ->
+                allTags.forEach { tag ->
                     FilterChip(
                         selected = filters.selectedTag == tag,
                         onClick = { onTagSelected(if (filters.selectedTag == tag) null else tag) },
@@ -436,7 +534,7 @@ private fun AdvancedFiltersSheet(
                 }
             }
         }
-        
+
         Spacer(modifier = Modifier.height(8.dp))
         Button(
             onClick = onDismiss,
@@ -775,5 +873,3 @@ private fun CompactMetaPill(
         )
     }
 }
-
-

@@ -32,15 +32,14 @@ class InMemoryDailyLifeRepository(
     private val store: DailyLifeStore? = null,
     private val persistScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val persistDebounceMs: Long = PERSIST_DEBOUNCE_MS,
-) : DailyLifeRepository {
-
+) {
     private val _state = MutableStateFlow(
-        DailyLifeState(
+        InMemoryState(
             items = seedItems,
             notificationSettings = NotificationSettings(),
         ),
     )
-    override val state: StateFlow<DailyLifeState> = _state.asStateFlow()
+    val state: StateFlow<InMemoryState> = _state.asStateFlow()
 
     private var nextId = (seedItems.maxOfOrNull { it.id } ?: 0L) + 1L
 
@@ -65,7 +64,7 @@ class InMemoryDailyLifeRepository(
         }
     }
 
-    override fun addItem(draft: LifeItemDraft): LifeItem {
+    fun addItem(draft: LifeItemDraft): LifeItem {
         val now = LocalDateTime.now()
         val item = LifeItem(
             id = nextId++,
@@ -81,64 +80,31 @@ class InMemoryDailyLifeRepository(
             recurrenceRule = draft.recurrenceRule,
             notificationSettings = draft.notificationSettings,
         )
-
         updateStoredState(persist = true) { current -> current.copy(items = listOf(item) + current.items) }
         return item
     }
 
-    override fun updateSearchQuery(query: String) {
-        updateFilters { it.copy(query = query) }
-    }
+    fun updateSearchQuery(query: String) { updateFilters { it.copy(query = query) } }
+    fun selectType(type: LifeItemType?) { updateFilters { it.copy(selectedType = type) } }
+    fun selectTag(tag: String?) { updateFilters { it.copy(selectedTag = tag) } }
+    fun updateDateRange(start: LocalDate?, end: LocalDate?) { updateFilters { it.copy(dateRangeStart = start, dateRangeEnd = end) } }
+    fun toggleFavoritesOnly() { updateFilters { it.copy(favoritesOnly = !it.favoritesOnly) } }
+    fun clearFilters() { _state.update { current -> current.copy(filters = DailyLifeFilters()) } }
+    fun selectCollection(itemIds: Set<Long>?) { updateFilters { it.copy(collectionItemIds = itemIds) } }
+    fun toggleShowArchived() { updateFilters { it.copy(showArchived = !it.showArchived) } }
 
-    override fun selectType(type: LifeItemType?) {
-        updateFilters { it.copy(selectedType = type) }
-    }
+    fun toggleFavorite(itemId: Long) { updateItem(itemId) { it.copy(isFavorite = !it.isFavorite) } }
+    fun togglePinned(itemId: Long) { updateItem(itemId) { it.copy(isPinned = !it.isPinned) } }
+    fun updateTaskStatus(itemId: Long, status: TaskStatus) { updateItem(itemId) { it.copy(taskStatus = status) } }
 
-    override fun selectTag(tag: String?) {
-        updateFilters { it.copy(selectedTag = tag) }
-    }
-
-    override fun updateDateRange(start: LocalDate?, end: LocalDate?) {
-        updateFilters {
-            it.copy(
-                dateRangeStart = start,
-                dateRangeEnd = end,
-            )
-        }
-    }
-
-    override fun toggleFavoritesOnly() {
-        updateFilters { it.copy(favoritesOnly = !it.favoritesOnly) }
-    }
-
-    override fun clearFilters() {
-        _state.update { current -> current.copy(filters = DailyLifeFilters()) }
-    }
-
-    override fun selectCollection(itemIds: Set<Long>?) {
-        updateFilters { it.copy(collectionItemIds = itemIds) }
-    }
-
-    override fun toggleFavorite(itemId: Long) {
-        updateItem(itemId) { it.copy(isFavorite = !it.isFavorite) }
-    }
-
-    override fun togglePinned(itemId: Long) {
-        updateItem(itemId) { it.copy(isPinned = !it.isPinned) }
-    }
-
-    override fun updateTaskStatus(itemId: Long, status: TaskStatus) {
-        updateItem(itemId) { it.copy(taskStatus = status) }
-    }
-
-    override fun markOccurrenceCompleted(
+    fun markOccurrenceCompleted(
         itemId: Long,
-        occurrenceDate: LocalDate,
-        completedAt: LocalDateTime,
-        latitude: Double?,
-        longitude: Double?,
-        batteryLevel: Int?,
-        appVersion: String?,
+        occurrenceDate: LocalDate = LocalDate.now(),
+        completedAt: LocalDateTime = LocalDateTime.now(),
+        latitude: Double? = null,
+        longitude: Double? = null,
+        batteryLevel: Int? = null,
+        appVersion: String? = null,
     ) {
         updateItem(itemId) { item ->
             val record = CompletionRecord(
@@ -157,37 +123,26 @@ class InMemoryDailyLifeRepository(
         }
     }
 
-    override fun updateNotificationSettings(settings: NotificationSettings) {
+    fun updateNotificationSettings(settings: NotificationSettings) {
         updateStoredState(persist = true) { current -> current.copy(notificationSettings = settings) }
     }
 
-    override fun updateItemNotifications(itemId: Long, settings: ItemNotificationSettings) {
+    fun updateItemNotifications(itemId: Long, settings: ItemNotificationSettings) {
         updateItem(itemId) { it.copy(notificationSettings = settings) }
     }
 
-    override fun rolloverMissedOccurrences(referenceDate: LocalDate) {
+    fun rolloverMissedOccurrences(referenceDate: LocalDate = LocalDate.now()) {
         val currentItems = _state.value.items
         val updatedItems = currentItems.map { item ->
             if (!item.isRecurring) return@map item
-
-            val completedDates = item.completionHistory
-                .filterNot { it.missed }
-                .map { it.occurrenceDate }
-                .toSet()
-            val missedDates = item.completionHistory
-                .filter { it.missed }
-                .map { it.occurrenceDate }
-                .toSet()
+            val completedDates = item.completionHistory.filterNot { it.missed }.map { it.occurrenceDate }.toSet()
+            val missedDates = item.completionHistory.filter { it.missed }.map { it.occurrenceDate }.toSet()
             val startDate = item.reminderAt?.toLocalDate() ?: item.createdAt.toLocalDate()
             val stepDays = item.recurrenceRule.stepDays()
-
             val newMissedRecords = mutableListOf<CompletionRecord>()
             var occurrenceDate = startDate
             while (!occurrenceDate.isAfter(referenceDate)) {
-                if (occurrenceDate.isBefore(referenceDate) &&
-                    occurrenceDate !in completedDates &&
-                    occurrenceDate !in missedDates
-                ) {
+                if (occurrenceDate.isBefore(referenceDate) && occurrenceDate !in completedDates && occurrenceDate !in missedDates) {
                     newMissedRecords += CompletionRecord(
                         itemId = item.id,
                         occurrenceDate = occurrenceDate,
@@ -197,24 +152,16 @@ class InMemoryDailyLifeRepository(
                 }
                 occurrenceDate = occurrenceDate.plusDays(stepDays)
             }
-
-            if (newMissedRecords.isNotEmpty()) {
-                item.copy(completionHistory = item.completionHistory + newMissedRecords)
-            } else {
-                item
-            }
+            if (newMissedRecords.isNotEmpty()) item.copy(completionHistory = item.completionHistory + newMissedRecords) else item
         }
-
         if (updatedItems != currentItems) {
             updateStoredState(persist = true) { current -> current.copy(items = updatedItems) }
         }
     }
 
-    override fun clearStorageError() {
-        _state.update { current -> current.copy(storageError = null) }
-    }
+    fun clearStorageError() { _state.update { it.copy(storageError = null) } }
 
-    override fun updateItem(draft: LifeItemDraft, itemId: Long): LifeItem {
+    fun updateItem(draft: LifeItemDraft, itemId: Long): LifeItem {
         updateItem(itemId) { existing ->
             existing.copy(
                 type = draft.type,
@@ -232,34 +179,29 @@ class InMemoryDailyLifeRepository(
         return _state.value.items.first { it.id == itemId }
     }
 
-    override fun deleteItem(itemId: Long) {
+    fun deleteItem(itemId: Long) {
         updateStoredState(persist = true) { current ->
             current.copy(items = current.items.filter { it.id != itemId })
         }
     }
 
-    override fun updateCompletionRecord(itemId: Long, record: CompletionRecord) {
+    fun updateCompletionRecord(itemId: Long, record: CompletionRecord) {
         updateItem(itemId) { item ->
             item.copy(
                 completionHistory = item.completionHistory.map {
-                    if (it.occurrenceDate == record.occurrenceDate && it.completedAt == record.completedAt) record
-                    else it
+                    if (it.occurrenceDate == record.occurrenceDate && it.completedAt == record.completedAt) record else it
                 },
             )
         }
     }
 
-    override fun deleteCompletionRecord(itemId: Long, occurrenceDate: LocalDate, completedAt: LocalDateTime) {
+    fun deleteCompletionRecord(itemId: Long, occurrenceDate: LocalDate, completedAt: LocalDateTime) {
         updateItem(itemId) { item ->
-            item.copy(
-                completionHistory = item.completionHistory.filterNot {
-                    it.occurrenceDate == occurrenceDate && it.completedAt == completedAt
-                },
-            )
+            item.copy(completionHistory = item.completionHistory.filterNot { it.occurrenceDate == occurrenceDate && it.completedAt == completedAt })
         }
     }
 
-    override fun importSnapshot(snapshot: BackupSnapshot) {
+    fun importSnapshot(snapshot: BackupSnapshot) {
         updateStoredState(persist = true) { current ->
             val existingIds = current.items.map { it.id }.toSet()
             val newItems = snapshot.items.filter { it.id !in existingIds }
@@ -272,9 +214,7 @@ class InMemoryDailyLifeRepository(
                     val newRecords = snapshotItem.completionHistory.filter { record ->
                         Pair(snapshotItem.id, record.occurrenceDate to record.completedAt) !in existingDates
                     }
-                    existing.copy(
-                        completionHistory = existing.completionHistory + newRecords,
-                    )
+                    existing.copy(completionHistory = existing.completionHistory + newRecords)
                 } else {
                     snapshotItem
                 }
@@ -286,13 +226,7 @@ class InMemoryDailyLifeRepository(
         }
     }
 
-    override fun toggleArchive(itemId: Long) {
-        updateItem(itemId) { it.copy(isArchived = !it.isArchived) }
-    }
-
-    override fun toggleShowArchived() {
-        updateFilters { it.copy(showArchived = !it.showArchived) }
-    }
+    fun toggleArchive(itemId: Long) { updateItem(itemId) { it.copy(isArchived = !it.isArchived) } }
 
     private fun updateFilters(block: (DailyLifeFilters) -> DailyLifeFilters) {
         _state.update { current -> current.copy(filters = block(current.filters)) }
@@ -300,65 +234,39 @@ class InMemoryDailyLifeRepository(
 
     private fun updateItem(itemId: Long, block: (LifeItem) -> LifeItem) {
         updateStoredState(persist = true) { current ->
-            current.copy(
-                items = current.items.map { item ->
-                    if (item.id == itemId) block(item) else item
-                },
-            )
+            current.copy(items = current.items.map { item -> if (item.id == itemId) block(item) else item })
         }
     }
 
-    private fun updateStoredState(persist: Boolean = false, block: (DailyLifeState) -> DailyLifeState) {
-        var updatedState: DailyLifeState? = null
-        _state.update { current ->
-            block(current).also { updatedState = it }
-        }
-        if (persist) {
-            updatedState?.let { schedulePersist(it) }
-        }
+    private fun updateStoredState(persist: Boolean = false, block: (InMemoryState) -> InMemoryState) {
+        var updatedState: InMemoryState? = null
+        _state.update { current -> block(current).also { updatedState = it } }
+        if (persist) { updatedState?.let { schedulePersist(it) } }
     }
 
-    private fun schedulePersist(state: DailyLifeState) {
+    private fun schedulePersist(state: InMemoryState) {
         val writableStore = store ?: return
         persistJob?.cancel()
         persistJob = persistScope.launch {
             delay(persistDebounceMs)
             runCatching {
-                writableStore.save(
-                    PersistedDailyLifeState(
-                        items = state.items,
-                        notificationSettings = state.notificationSettings,
-                        nextId = nextId,
-                    ),
-                )
+                writableStore.save(PersistedDailyLifeState(items = state.items, notificationSettings = state.notificationSettings, nextId = nextId))
             }.onSuccess {
-                if (state.storageError?.operation == StorageOperation.Save) {
-                    clearStorageError()
-                }
+                if (state.storageError?.operation == StorageOperation.Save) { clearStorageError() }
             }.onFailure { error ->
-                _state.update { current ->
-                    current.copy(storageError = error.toStorageError(StorageOperation.Save))
-                }
+                _state.update { current -> current.copy(storageError = error.toStorageError(StorageOperation.Save)) }
             }
         }
     }
 
-    private fun LifeItemType.defaultTaskStatus(): TaskStatus? =
-        if (this == LifeItemType.Task) TaskStatus.Open else null
-
-    private fun normalizeTags(tags: Set<String>): Set<String> =
-        tags.map { it.trim().removePrefix("#").lowercase() }
-            .filter { it.isNotEmpty() }
-            .toSet()
+    private fun LifeItemType.defaultTaskStatus(): TaskStatus? = if (this == LifeItemType.Task) TaskStatus.Open else null
+    private fun normalizeTags(tags: Set<String>): Set<String> = tags.map { it.trim().removePrefix("#").lowercase() }.filter { it.isNotEmpty() }.toSet()
 
     private fun Throwable.toStorageError(operation: StorageOperation): StorageError {
-        val reason = localizedMessage?.takeIf { it.isNotBlank() }
-            ?: this::class.java.simpleName
+        val reason = localizedMessage?.takeIf { it.isNotBlank() } ?: this::class.java.simpleName
         val message = when (operation) {
-            StorageOperation.Load ->
-                "DailyLife couldn't load local data. Starter data is shown for now. Reason: $reason"
-            StorageOperation.Save ->
-                "DailyLife couldn't save local changes. The latest edit is visible, but may not survive app restart. Reason: $reason"
+            StorageOperation.Load -> "DailyLife couldn't load local data. Starter data is shown for now. Reason: $reason"
+            StorageOperation.Save -> "DailyLife couldn't save local changes. The latest edit is visible, but may not survive app restart. Reason: $reason"
         }
         return StorageError(operation = operation, message = message)
     }
@@ -368,3 +276,22 @@ class InMemoryDailyLifeRepository(
     }
 }
 
+data class InMemoryState(
+    val items: List<LifeItem> = emptyList(),
+    val filters: DailyLifeFilters = DailyLifeFilters(),
+    val notificationSettings: NotificationSettings = NotificationSettings(),
+    val storageError: StorageError? = null,
+) {
+    val visibleItems: List<LifeItem> = items.filter { item ->
+        val matchesType = filters.selectedType == null || item.type == filters.selectedType
+        val matchesTypes = filters.selectedTypes == null || item.type in filters.selectedTypes
+        val matchesTag = filters.selectedTag == null || filters.selectedTag in item.tags
+        val matchesQuery = filters.query.isBlank() || item.title.contains(filters.query, ignoreCase = true) || item.body.contains(filters.query, ignoreCase = true)
+        val matchesFavorites = !filters.favoritesOnly || item.isFavorite
+        val matchesDateStart = filters.dateRangeStart == null || !item.createdAt.toLocalDate().isBefore(filters.dateRangeStart)
+        val matchesDateEnd = filters.dateRangeEnd == null || !item.createdAt.toLocalDate().isAfter(filters.dateRangeEnd)
+        val matchesCollection = filters.collectionItemIds == null || item.id in filters.collectionItemIds
+        val matchesArchived = filters.showArchived || !item.isArchived
+        matchesType && matchesTypes && matchesTag && matchesQuery && matchesFavorites && matchesDateStart && matchesDateEnd && matchesCollection && matchesArchived
+    }.sortedByDescending { it.createdAt }
+}

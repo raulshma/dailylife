@@ -84,4 +84,12 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
     }
 }
 
-val ALL_MIGRATIONS = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_life_items_isPinned ON life_items(isPinned)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_life_items_isPinned_createdAt ON life_items(isPinned, createdAt)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_completion_records_uniqueKey ON completion_records(itemId, occurrenceDate, completedAt)")
+    }
+}
+
+val ALL_MIGRATIONS = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)

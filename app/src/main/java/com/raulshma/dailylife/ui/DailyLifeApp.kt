@@ -195,6 +195,12 @@ import com.raulshma.dailylife.domain.inferImagePreviewUrl
 import com.raulshma.dailylife.domain.inferPdfUrl
 import com.raulshma.dailylife.domain.inferTypeFromText
 import com.raulshma.dailylife.domain.inferVideoPlaybackUrl
+import com.raulshma.dailylife.data.CollectionCounts
+import com.raulshma.dailylife.domain.SnapshotStats
+import com.raulshma.dailylife.ui.TimelineEntry
+import androidx.paging.LoadState
+import androidx.paging.compose.LazyPagingItems
+import androidx.paging.compose.collectAsLazyPagingItems
 import com.raulshma.dailylife.ui.capture.AudioRecorder
 import com.raulshma.dailylife.ui.capture.LocationPickerSheet
 import com.raulshma.dailylife.ui.capture.SpeechTranscriber
@@ -204,6 +210,7 @@ import com.raulshma.dailylife.ui.capture.rememberMediaCaptureLauncher
 import com.raulshma.dailylife.ui.components.AnimatedCounter
 import com.raulshma.dailylife.ui.components.PressableCard
 import com.raulshma.dailylife.ui.components.ShimmerBox
+import com.raulshma.dailylife.ui.components.SkeletonMosaicTile
 import com.raulshma.dailylife.ui.components.StaggeredEnter
 import com.raulshma.dailylife.ui.components.rememberStaggeredVisibility
 import com.raulshma.dailylife.ui.components.SharedElementKeys
@@ -390,13 +397,18 @@ fun DailyLifeApp(
 ) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val pagingItems = viewModel.pagingItems.collectAsLazyPagingItems()
+    val allTags by viewModel.allTags.collectAsStateWithLifecycle(initialValue = emptyList())
+    val snapshotStats by viewModel.snapshotStats.collectAsStateWithLifecycle(initialValue = SnapshotStats())
+    val collectionCounts by viewModel.collectionCounts.collectAsStateWithLifecycle(initialValue = CollectionCounts())
+    val graphItems by viewModel.taggedItemsForGraph.collectAsStateWithLifecycle(initialValue = emptyList())
     var showQuickAdd by rememberSaveable { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showLocationPicker by rememberSaveable { mutableStateOf(false) }
     var selectedItemId by rememberSaveable { mutableStateOf<Long?>(null) }
     var selectedTabName by rememberSaveable { mutableStateOf(HomeTab.Photos.name) }
     val selectedTab = HomeTab.entries.firstOrNull { it.name == selectedTabName } ?: HomeTab.Photos
-    val selectedItem = state.items.firstOrNull { it.id == selectedItemId }
+    val selectedItem by viewModel.selectedItem.collectAsStateWithLifecycle()
     val s3Settings by viewModel.s3BackupSettings.collectAsStateWithLifecycle()
     val lastBackupResult by viewModel.lastBackupResult.collectAsStateWithLifecycle()
     val encryptionProgress by viewModel.encryptionProgress.collectAsStateWithLifecycle()
@@ -431,7 +443,10 @@ fun DailyLifeApp(
         when {
             focusTimerItemId != null -> focusTimerItemId = null
             completionHistoryItemId != null -> completionHistoryItemId = null
-            selectedItemId != null -> selectedItemId = null
+            selectedItemId != null -> {
+                selectedItemId = null
+                viewModel.clearSelectedItem()
+            }
             showSettings -> showSettings = false
         }
     }
@@ -546,7 +561,7 @@ fun DailyLifeApp(
         },
     )
 
-    val visibleItemIds = remember(state.visibleItems) { state.visibleItems.map { it.id } }
+    val visibleItemIds by viewModel.allItemIds.collectAsStateWithLifecycle(initialValue = emptyList())
     val photosGridState = rememberLazyStaggeredGridState()
     val timelineListState = rememberLazyListState()
 
@@ -625,6 +640,11 @@ fun DailyLifeApp(
                 when (currentScreen) {
                     is Screen.Main -> MainScaffold(
                         state = state,
+                        pagingItems = pagingItems,
+                        snapshotStats = snapshotStats,
+                        collectionCounts = collectionCounts,
+                        graphItems = graphItems,
+                        allTags = allTags,
                         selectedTab = selectedTab,
                         skipStaggerAnimation = skipStaggerAnimation,
                         photosGridState = photosGridState,
@@ -636,6 +656,7 @@ fun DailyLifeApp(
                         onItemSelected = {
                             skipStaggerAnimation = true
                             selectedItemId = it
+                            viewModel.selectItem(it)
                         },
                         onStorageErrorDismissed = viewModel::clearStorageError,
                         onSearchChanged = viewModel::updateSearchQuery,
@@ -648,8 +669,24 @@ fun DailyLifeApp(
                         onPinnedToggled = viewModel::togglePinned,
                         onTaskStatusChanged = viewModel::updateTaskStatus,
                         onCompleted = viewModel::markOccurrenceCompleted,
-                        onCollectionSelected = { itemIds ->
-                            viewModel.selectCollection(itemIds)
+                        onCollectionSelected = { collection ->
+                            when (collection) {
+                                "favorites" -> {
+                                    viewModel.toggleFavoritesOnly()
+                                }
+                                "videos" -> {
+                                    viewModel.selectTypes(setOf(LifeItemType.Video))
+                                }
+                                "pdfs" -> {
+                                    viewModel.selectType(LifeItemType.Pdf)
+                                }
+                                "places" -> {
+                                    viewModel.selectType(LifeItemType.Location)
+                                }
+                                "notes" -> {
+                                    viewModel.selectTypes(setOf(LifeItemType.Note, LifeItemType.Thought, LifeItemType.Task, LifeItemType.Reminder))
+                                }
+                            }
                             selectedTabName = HomeTab.Search.name
                         },
                         onShowQuickAdd = { showQuickAdd = true },
@@ -658,12 +695,14 @@ fun DailyLifeApp(
                     )
 
                     is Screen.Detail -> selectedItem?.let { item ->
-                        val navigableItemIds = state.visibleItems.map { it.id }
                         ItemDetailScreen(
                             item = item,
                             globalSettings = state.notificationSettings,
-                            navigableItemIds = navigableItemIds,
-                            onBack = { selectedItemId = null },
+                            navigableItemIds = visibleItemIds,
+                            onBack = {
+                                selectedItemId = null
+                                viewModel.clearSelectedItem()
+                            },
                             onFavoriteToggled = { viewModel.toggleFavorite(item.id) },
                             onPinnedToggled = { viewModel.togglePinned(item.id) },
                             onCompleted = { viewModel.markOccurrenceCompleted(item.id) },
@@ -695,8 +734,12 @@ fun DailyLifeApp(
                             onDelete = {
                                 viewModel.deleteItem(item.id)
                                 selectedItemId = null
+                                viewModel.clearSelectedItem()
                             },
-                            onNavigateToItem = { selectedItemId = it },
+                            onNavigateToItem = {
+                                selectedItemId = it
+                                viewModel.selectItem(it)
+                            },
                             onViewHistory = { completionHistoryItemId = item.id },
                             onStartFocusTimer = { focusTimerItemId = item.id },
                         )
@@ -705,10 +748,13 @@ fun DailyLifeApp(
                     }
 
                     is Screen.CompletionHistory -> {
-                        val historyItem = state.items.firstOrNull { it.id == currentScreen.itemId }
+                        LaunchedEffect(currentScreen.itemId) {
+                            viewModel.selectItem(currentScreen.itemId)
+                        }
+                        val historyItem by viewModel.selectedItem.collectAsStateWithLifecycle()
                         if (historyItem != null) {
                             com.raulshma.dailylife.ui.detail.CompletionHistoryScreen(
-                                item = historyItem,
+                                item = historyItem!!,
                                 onBack = { completionHistoryItemId = null },
                                 onUpdateRecord = { itemId, record ->
                                     viewModel.updateCompletionRecord(itemId, record)
@@ -723,13 +769,16 @@ fun DailyLifeApp(
                     }
 
                     is Screen.FocusTimer -> {
-                        val focusItem = state.items.firstOrNull { it.id == currentScreen.itemId }
+                        LaunchedEffect(currentScreen.itemId) {
+                            viewModel.selectItem(currentScreen.itemId)
+                        }
+                        val focusItem by viewModel.selectedItem.collectAsStateWithLifecycle()
                         if (focusItem != null) {
                             com.raulshma.dailylife.ui.focus.FocusTimerScreen(
-                                itemTitle = focusItem.title.ifBlank { focusItem.type.label },
+                                itemTitle = focusItem!!.title.ifBlank { focusItem!!.type.label },
                                 onBack = { focusTimerItemId = null },
                                 onSessionComplete = { sessionCount ->
-                                    viewModel.markOccurrenceCompleted(focusItem.id)
+                                    focusItem?.let { viewModel.markOccurrenceCompleted(it.id) }
                                 },
                             )
                         } else {
@@ -806,7 +855,7 @@ fun DailyLifeApp(
                     quickAddLocationCallback = onLocationSelected
                     showLocationPicker = true
                 },
-                allTags = state.allTags,
+                allTags = allTags,
                 encryptionProgress = encryptionProgress,
             )
         }
@@ -863,7 +912,7 @@ fun DailyLifeApp(
                     editLocationCallback = onLocationSelected
                     showLocationPicker = true
                 },
-                allTags = state.allTags,
+                allTags = allTags,
                 isEditMode = true,
                 encryptionProgress = encryptionProgress,
             )
@@ -877,6 +926,11 @@ fun DailyLifeApp(
 @Composable
 private fun MainScaffold(
     state: DailyLifeState,
+    pagingItems: LazyPagingItems<LifeItem>,
+    snapshotStats: SnapshotStats,
+    collectionCounts: CollectionCounts,
+    graphItems: List<LifeItem>,
+    allTags: List<String>,
     selectedTab: HomeTab,
     skipStaggerAnimation: Boolean,
     photosGridState: LazyStaggeredGridState,
@@ -894,7 +948,7 @@ private fun MainScaffold(
     onPinnedToggled: (Long) -> Unit,
     onTaskStatusChanged: (Long, TaskStatus) -> Unit,
     onCompleted: (Long) -> Unit,
-    onCollectionSelected: (Set<Long>) -> Unit,
+    onCollectionSelected: (String) -> Unit,
     onShowQuickAdd: () -> Unit,
     onShowSettings: () -> Unit,
     contentPadding: PaddingValues,
@@ -968,7 +1022,8 @@ private fun MainScaffold(
             when (currentTab) {
                 HomeTab.Photos -> {
                     PhotosMosaicScreen(
-                        state = state,
+                        pagingItems = pagingItems,
+                        storageError = state.storageError,
                         contentPadding = paddingValues,
                         skipStaggerAnimation = skipStaggerAnimation,
                         gridState = photosGridState,
@@ -980,6 +1035,9 @@ private fun MainScaffold(
                 HomeTab.Search -> {
                     TimelineScreen(
                         state = state,
+                        pagingItems = pagingItems,
+                        snapshotStats = snapshotStats,
+                        allTags = allTags,
                         contentPadding = paddingValues,
                         skipStaggerAnimation = skipStaggerAnimation,
                         listState = timelineListState,
@@ -1000,7 +1058,7 @@ private fun MainScaffold(
 
                 HomeTab.Collections -> {
                     CollectionsScreen(
-                        state = state,
+                        collectionCounts = collectionCounts,
                         contentPadding = paddingValues,
                         onCollectionSelected = onCollectionSelected,
                     )
@@ -1008,7 +1066,7 @@ private fun MainScaffold(
 
                 HomeTab.Graph -> {
                     GraphViewScreen(
-                        items = state.visibleItems,
+                        items = graphItems,
                         contentPadding = paddingValues,
                         onItemSelected = onItemSelected,
                     )
@@ -1021,16 +1079,30 @@ private fun MainScaffold(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PhotosMosaicScreen(
-    state: DailyLifeState,
+    pagingItems: LazyPagingItems<LifeItem>,
+    storageError: StorageError?,
     contentPadding: PaddingValues,
     skipStaggerAnimation: Boolean,
     gridState: LazyStaggeredGridState,
     onItemSelected: (Long) -> Unit,
     onStorageErrorDismissed: () -> Unit,
 ) {
-    val groupedItems = remember(state.visibleItems) {
-        state.visibleItems.groupBy { it.createdAt.toLocalDate() }
+    val entries = remember(pagingItems.itemSnapshotList) {
+        val snapshot = pagingItems.itemSnapshotList
+        val result = mutableListOf<TimelineEntry>()
+        var lastDate: LocalDate? = null
+        for (i in snapshot.indices) {
+            val item = snapshot[i] ?: continue
+            val date = item.createdAt.toLocalDate()
+            if (date != lastDate) {
+                result.add(TimelineEntry.DateHeader(date))
+                lastDate = date
+            }
+            result.add(TimelineEntry.Item(i))
+        }
+        result
     }
+    val isEmpty = entries.isEmpty() && pagingItems.loadState.refresh !is LoadState.Loading
 
     LazyVerticalStaggeredGrid(
         columns = StaggeredGridCells.Adaptive(minSize = 132.dp),
@@ -1045,7 +1117,16 @@ private fun PhotosMosaicScreen(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalItemSpacing = 8.dp,
     ) {
-        state.storageError?.let { storageError ->
+        if (pagingItems.loadState.refresh is LoadState.Loading && !isEmpty) {
+            items(count = 6, key = { "refresh-skeleton-$it" }) {
+                SkeletonMosaicTile(
+                    height = listOf(222.dp, 164.dp, 198.dp, 156.dp, 190.dp, 172.dp)[it % 6],
+                    modifier = Modifier.animateItem(),
+                )
+            }
+        }
+
+        storageError?.let { storageError ->
             item(key = "storage-error", span = StaggeredGridItemSpan.FullLine) {
                 StorageWarningCard(
                     error = storageError,
@@ -1054,50 +1135,120 @@ private fun PhotosMosaicScreen(
             }
         }
 
-        if (groupedItems.isEmpty()) {
-            item(key = "empty-state", span = StaggeredGridItemSpan.FullLine) {
-                EmptyPhotosScreen()
-            }
-        } else {
-            var globalIndex = 0
-            groupedItems.forEach { (date, itemsForDate) ->
-                val dateIdx = globalIndex
-                globalIndex++
-                item(key = "date-$date", span = StaggeredGridItemSpan.FullLine) {
-                    if (skipStaggerAnimation) {
-                        DateHeader(date = date)
-                    } else {
-                        val dateVisible = rememberStaggeredVisibility(dateIdx, baseDelayMs = 40, maxDelayMs = 300)
-                        AnimatedVisibility(
-                            visibleState = dateVisible,
-                            enter = StaggeredEnter,
-                        ) {
-                            DateHeader(date = date)
+        if (isEmpty) {
+            if (pagingItems.loadState.refresh is LoadState.Error) {
+                val error = (pagingItems.loadState.refresh as LoadState.Error).error
+                item(key = "refresh-error", span = StaggeredGridItemSpan.FullLine) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(
+                            text = "Something went wrong",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            text = error.localizedMessage ?: "Couldn't load items",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        Button(onClick = { pagingItems.retry() }) {
+                            Text("Retry")
                         }
                     }
                 }
-                staggeredItems(itemsForDate, key = { it.id }) { item ->
-                    val itemIdx = globalIndex
-                    globalIndex++
-                    if (skipStaggerAnimation) {
-                        MediaMosaicTile(
-                            item = item,
-                            onClick = { onItemSelected(item.id) },
-                            modifier = Modifier.animateItem(),
-                        )
-                    } else {
-                        val tileVisible = rememberStaggeredVisibility(itemIdx, baseDelayMs = 45, maxDelayMs = 450)
-                        AnimatedVisibility(
-                            visibleState = tileVisible,
-                            enter = StaggeredEnter,
+            } else {
+                item(key = "empty-state", span = StaggeredGridItemSpan.FullLine) {
+                    EmptyPhotosScreen()
+                }
+            }
+        } else {
+            var globalIndex = 0
+            entries.forEach { entry ->
+                when (entry) {
+                    is TimelineEntry.DateHeader -> {
+                        val dateIdx = globalIndex
+                        globalIndex++
+                        item(key = "date-${entry.date}", span = StaggeredGridItemSpan.FullLine) {
+                            if (skipStaggerAnimation) {
+                                DateHeader(date = entry.date)
+                            } else {
+                                val dateVisible = rememberStaggeredVisibility(dateIdx, baseDelayMs = 40, maxDelayMs = 300)
+                                AnimatedVisibility(
+                                    visibleState = dateVisible,
+                                    enter = StaggeredEnter,
+                                ) {
+                                    DateHeader(date = entry.date)
+                                }
+                            }
+                        }
+                    }
+                    is TimelineEntry.Item -> {
+                        val itemIdx = globalIndex
+                        globalIndex++
+                        item(
+                            key = pagingItems[entry.index]?.id ?: entry.index,
                         ) {
-                            MediaMosaicTile(
-                                item = item,
-                                onClick = { onItemSelected(item.id) },
+                            val item = pagingItems[entry.index] ?: return@item
+                            if (skipStaggerAnimation) {
+                                MediaMosaicTile(
+                                    item = item,
+                                    onClick = { onItemSelected(item.id) },
+                                    modifier = Modifier.animateItem(),
+                                )
+                            } else {
+                                val tileVisible = rememberStaggeredVisibility(itemIdx, baseDelayMs = 45, maxDelayMs = 450)
+                                AnimatedVisibility(
+                                    visibleState = tileVisible,
+                                    enter = StaggeredEnter,
+                                ) {
+                                    MediaMosaicTile(
+                                        item = item,
+                                        onClick = { onItemSelected(item.id) },
+                                        modifier = Modifier.animateItem(),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            pagingItems.apply {
+                when (loadState.append) {
+                    is LoadState.Loading -> {
+                        items(count = 3, key = { "append-skeleton-$it" }) {
+                            SkeletonMosaicTile(
+                                height = listOf(222.dp, 164.dp, 198.dp)[it % 3],
                                 modifier = Modifier.animateItem(),
                             )
                         }
                     }
+                    is LoadState.Error -> {
+                        val error = (loadState.append as LoadState.Error).error
+                        item(key = "append-error", span = StaggeredGridItemSpan.FullLine) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text(
+                                    text = error.localizedMessage ?: "Couldn't load more items",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                                TextButton(onClick = { retry() }) {
+                                    Text("Retry")
+                                }
+                            }
+                        }
+                    }
+                    is LoadState.NotLoading -> Unit
                 }
             }
         }
@@ -1106,53 +1257,25 @@ private fun PhotosMosaicScreen(
 
 @Composable
 private fun CollectionsScreen(
-    state: DailyLifeState,
+    collectionCounts: CollectionCounts,
     contentPadding: PaddingValues,
-    onCollectionSelected: (Set<Long>) -> Unit,
+    onCollectionSelected: (String) -> Unit,
 ) {
-    data class FilteredCollections(
-        val favorites: List<LifeItem>,
-        val videos: List<LifeItem>,
-        val pdfs: List<LifeItem>,
-        val places: List<LifeItem>,
-        val notes: List<LifeItem>,
+    val collectionsData = listOf(
+        Triple("Favorites", "Pinned and loved memories", Icons.Filled.Star) to "favorites",
+        Triple("Videos", "Tap to open playback items", Icons.Filled.Videocam) to "videos",
+        Triple("PDFs", "Documents and scanned pages", Icons.Filled.PictureAsPdf) to "pdfs",
+        Triple("Places", "Items with map context", Icons.Filled.LocationOn) to "places",
+        Triple("Notes & Thoughts", "Text-first memories and reminders", Icons.Filled.EditNote) to "notes",
     )
 
-    val filtered = remember(state.visibleItems) {
-        val favorites = mutableListOf<LifeItem>()
-        val videos = mutableListOf<LifeItem>()
-        val pdfs = mutableListOf<LifeItem>()
-        val places = mutableListOf<LifeItem>()
-        val notesList = mutableListOf<LifeItem>()
-        for (item in state.visibleItems) {
-            if (item.isFavorite) favorites += item
-            when (item.type) {
-                LifeItemType.Video -> videos += item
-                LifeItemType.Pdf -> pdfs += item
-                LifeItemType.Location -> places += item
-                LifeItemType.Note, LifeItemType.Thought, LifeItemType.Task, LifeItemType.Reminder -> notesList += item
-                else -> {}
-            }
-            if (item.type != LifeItemType.Pdf && item.inferPdfUrl() != null) pdfs += item
-            if (item.type != LifeItemType.Location && item.inferLocationPreview() != null) places += item
-        }
-        FilteredCollections(favorites, videos, pdfs, places, notesList)
-    }
-    val favoriteItems = filtered.favorites
-    val videoItems = filtered.videos
-    val pdfItems = filtered.pdfs
-    val placeItems = filtered.places
-    val notes = filtered.notes
-
-    val collectionsData = remember(favoriteItems.size, videoItems.size, pdfItems.size, placeItems.size, notes.size) {
-        listOf(
-            Triple("Favorites", "Pinned and loved memories", Icons.Filled.Star) to favoriteItems,
-            Triple("Videos", "Tap to open playback items", Icons.Filled.Videocam) to videoItems,
-            Triple("PDFs", "Documents and scanned pages", Icons.Filled.PictureAsPdf) to pdfItems,
-            Triple("Places", "Items with map context", Icons.Filled.LocationOn) to placeItems,
-            Triple("Notes & Thoughts", "Text-first memories and reminders", Icons.Filled.EditNote) to notes,
-        )
-    }
+    val counts = listOf(
+        collectionCounts.favorites,
+        collectionCounts.videos,
+        collectionCounts.pdfs,
+        collectionCounts.places,
+        collectionCounts.notes,
+    )
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -1174,15 +1297,15 @@ private fun CollectionsScreen(
                 )
             }
         }
-        itemsIndexed(collectionsData) { index, (meta, items) ->
+        itemsIndexed(collectionsData) { index, (meta, _) ->
             val cardVisible = rememberStaggeredVisibility(index + 1, baseDelayMs = 70, maxDelayMs = 500)
             AnimatedVisibility(visibleState = cardVisible, enter = StaggeredEnter) {
                 CollectionCard(
                     title = meta.first,
                     subtitle = meta.second,
-                    count = items.size,
+                    count = counts[index],
                     icon = meta.third,
-                    onClick = { onCollectionSelected(items.map { it.id }.toSet()) },
+                    onClick = { onCollectionSelected(collectionsData[index].second) },
                 )
             }
         }
@@ -1885,26 +2008,24 @@ internal fun StorageWarningCard(
 }
 
 @Composable
-internal fun SnapshotRow(state: DailyLifeState) {
-    val today = LocalDate.now()
-    val completionCount = state.items.sumOf { it.occurrenceStats(today).completedCount }
+internal fun SnapshotRow(snapshotStats: SnapshotStats) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         AnimatedSnapshotPill(
             label = "Items",
-            value = state.items.size,
+            value = snapshotStats.itemCount,
             modifier = Modifier.weight(1f),
         )
         AnimatedSnapshotPill(
             label = "Tags",
-            value = state.allTags.size,
+            value = snapshotStats.tagCount,
             modifier = Modifier.weight(1f),
         )
         AnimatedSnapshotPill(
             label = "Done",
-            value = completionCount,
+            value = snapshotStats.completedCount,
             modifier = Modifier.weight(1f),
         )
     }

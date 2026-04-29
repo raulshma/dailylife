@@ -77,7 +77,6 @@ import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
@@ -1047,7 +1046,12 @@ private fun PdfDetailViewer(pdfUrl: String, modifier: Modifier = Modifier) {
 
     if (pageBitmaps.isEmpty()) {
         Box(modifier = modifier.background(Color.Black), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = Color.White.copy(alpha = 0.7f))
+            ShimmerBox(
+                modifier = Modifier.fillMaxSize(),
+                shape = RoundedCornerShape(0.dp),
+                baseColor = Color.DarkGray,
+                highlightColor = Color.White.copy(alpha = 0.08f),
+            )
         }
     } else {
         Box(modifier = modifier.background(Color.Black)) {

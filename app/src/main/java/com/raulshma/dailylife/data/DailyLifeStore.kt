@@ -77,9 +77,12 @@ class FileDailyLifeStore(
     }
 }
 
+@Suppress("unused")
 class FileBackedDailyLifeRepository(
     file: File,
-) : DailyLifeRepository by InMemoryDailyLifeRepository(store = FileDailyLifeStore(file))
+) {
+    private val delegate = InMemoryDailyLifeRepository(store = FileDailyLifeStore(file))
+}
 
 private fun Properties.writeItems(items: List<LifeItem>) {
     setProperty("items.count", items.size.toString())
