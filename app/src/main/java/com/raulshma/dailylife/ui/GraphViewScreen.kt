@@ -54,7 +54,7 @@ import kotlin.math.sqrt
 fun GraphViewScreen(
     items: List<LifeItem>,
     contentPadding: PaddingValues,
-    onItemSelected: (Long) -> Unit,
+    onItemSelected: (Long, LifeItem?) -> Unit,
 ) {
     val textMeasurer = rememberTextMeasurer()
     val graph = remember(items) { buildTagGraph(items) }
@@ -152,7 +152,7 @@ fun GraphViewScreen(
                                 sqrt(dx * dx + dy * dy) < NodeRadius * 2.5f
                             }
                             selectedNodeId = tapped?.itemId
-                            tapped?.let { onItemSelected(it.itemId) }
+                            tapped?.let { onItemSelected(it.itemId, null) }
                         }
                     },
             ) {

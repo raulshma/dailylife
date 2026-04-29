@@ -85,7 +85,8 @@ class DailyLifeViewModel @Inject constructor(
         viewModelScope.launch { _s3BackupSettings.value = roomStore.loadS3BackupSettings() }
     }
 
-    fun selectItem(itemId: Long) {
+    fun selectItem(itemId: Long, preload: LifeItem? = null) {
+        if (preload != null) _selectedItem.value = preload
         viewModelScope.launch {
             _selectedItem.value = repository.getItem(itemId)
         }

@@ -63,7 +63,7 @@ fun TimelineScreen(
     onDateRangeChanged: (LocalDate?, LocalDate?) -> Unit,
     onFavoritesOnlyToggled: () -> Unit,
     onClearFilters: () -> Unit,
-    onItemSelected: (Long) -> Unit,
+    onItemSelected: (Long, LifeItem?) -> Unit,
     onFavoriteToggled: (Long) -> Unit,
     onPinnedToggled: (Long) -> Unit,
     onTaskStatusChanged: (Long, TaskStatus) -> Unit,
@@ -200,7 +200,7 @@ fun TimelineScreen(
                             if (item != null) {
                                 LifeItemCard(
                                     item = item,
-                                    onClick = { onItemSelected(item.id) },
+                                    onClick = { onItemSelected(item.id, item) },
                                     onFavoriteToggled = { onFavoriteToggled(item.id) },
                                     onPinnedToggled = { onPinnedToggled(item.id) },
                                     onTaskStatusChanged = { status -> onTaskStatusChanged(item.id, status) },

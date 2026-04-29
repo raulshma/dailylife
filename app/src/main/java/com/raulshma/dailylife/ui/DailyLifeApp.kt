@@ -108,6 +108,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.material3.Slider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -115,6 +116,7 @@ import kotlinx.coroutines.withContext
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DividerDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -173,7 +175,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.layout.ContentScale
-import coil.compose.SubcomposeAsyncImage
+import coil.compose.rememberAsyncImagePainter
+import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.raulshma.dailylife.data.media.AudioWaveformGenerator
 import com.raulshma.dailylife.data.security.MediaDecryptCoordinator
@@ -429,6 +432,7 @@ fun DailyLifeApp(
     var focusTimerItemId by rememberSaveable { mutableStateOf<Long?>(null) }
     var pendingQuickAddSave by remember { mutableStateOf(false) }
     var pendingEditSave by remember { mutableStateOf(false) }
+    var preloadedDetailItem by remember { mutableStateOf<LifeItem?>(null) }
 
     val screen = when {
         focusTimerItemId != null -> Screen.FocusTimer(focusTimerItemId!!)
@@ -654,10 +658,11 @@ fun DailyLifeApp(
                             if (it == HomeTab.Photos) viewModel.clearFilters()
                             selectedTabName = it.name
                         },
-                        onItemSelected = {
+                        onItemSelected = { id, item ->
                             skipStaggerAnimation = true
-                            selectedItemId = it
-                            viewModel.selectItem(it)
+                            preloadedDetailItem = item
+                            selectedItemId = id
+                            viewModel.selectItem(id, item)
                         },
                         onStorageErrorDismissed = viewModel::clearStorageError,
                         onSearchChanged = viewModel::updateSearchQuery,
@@ -696,13 +701,14 @@ fun DailyLifeApp(
                         contentPadding = PaddingValues(),
                     )
 
-                    is Screen.Detail -> selectedItem?.let { item ->
+                    is Screen.Detail -> (selectedItem ?: preloadedDetailItem)?.let { item ->
                         ItemDetailScreen(
                             item = item,
                             globalSettings = state.notificationSettings,
                             navigableItemIds = visibleItemIds,
                             onBack = {
                                 selectedItemId = null
+                                preloadedDetailItem = null
                                 viewModel.clearSelectedItem()
                             },
                             onFavoriteToggled = { viewModel.toggleFavorite(item.id) },
@@ -736,17 +742,22 @@ fun DailyLifeApp(
                             onDelete = {
                                 viewModel.deleteItem(item.id)
                                 selectedItemId = null
+                                preloadedDetailItem = null
                                 viewModel.clearSelectedItem()
                             },
                             onNavigateToItem = {
+                                preloadedDetailItem = null
                                 selectedItemId = it
                                 viewModel.selectItem(it)
                             },
                             onViewHistory = { completionHistoryItemId = item.id },
                             onStartFocusTimer = { focusTimerItemId = item.id },
                         )
-                    } ?: run {
-                        selectedItemId = null
+                    } ?: Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator()
                     }
 
                     is Screen.CompletionHistory -> {
@@ -974,7 +985,7 @@ private fun MainScaffold(
     photosGridState: LazyStaggeredGridState,
     timelineListState: LazyListState,
     onTabSelected: (HomeTab) -> Unit,
-    onItemSelected: (Long) -> Unit,
+    onItemSelected: (Long, LifeItem?) -> Unit,
     onStorageErrorDismissed: () -> Unit,
     onSearchChanged: (String) -> Unit,
     onTypeSelected: (LifeItemType?) -> Unit,
@@ -1154,7 +1165,7 @@ private fun PhotosMosaicScreen(
     contentPadding: PaddingValues,
     skipStaggerAnimation: Boolean,
     gridState: LazyStaggeredGridState,
-    onItemSelected: (Long) -> Unit,
+    onItemSelected: (Long, LifeItem?) -> Unit,
     onStorageErrorDismissed: () -> Unit,
 ) {
     val entries = remember(pagingItems.itemSnapshotList) {
@@ -1179,13 +1190,13 @@ private fun PhotosMosaicScreen(
         state = gridState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
-            start = 10.dp,
+            start = 2.dp,
             top = contentPadding.calculateTopPadding() + 10.dp,
-            end = 10.dp,
+            end = 2.dp,
             bottom = contentPadding.calculateBottomPadding() + 92.dp,
         ),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalItemSpacing = 8.dp,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalItemSpacing = 2.dp,
     ) {
         if (pagingItems.loadState.refresh is LoadState.Loading && !isEmpty) {
             items(count = 6, key = { "refresh-skeleton-$it" }) {
@@ -1267,7 +1278,7 @@ private fun PhotosMosaicScreen(
                                 if (skipStaggerAnimation) {
                                     MediaMosaicTile(
                                         item = item,
-                                        onClick = { onItemSelected(item.id) },
+                                        onClick = { onItemSelected(item.id, item) },
                                         modifier = Modifier.animateItem(),
                                     )
                                 } else {
@@ -1278,7 +1289,7 @@ private fun PhotosMosaicScreen(
                                     ) {
                                         MediaMosaicTile(
                                             item = item,
-                                            onClick = { onItemSelected(item.id) },
+                                            onClick = { onItemSelected(item.id, item) },
                                             modifier = Modifier.animateItem(),
                                         )
                                     }
@@ -1511,25 +1522,57 @@ internal fun ItemPreview(item: LifeItem, autoplayVideo: Boolean = false) {
         LifeItemType.Location -> LocationPreview(item = item)
         LifeItemType.Pdf -> PdfPreview(item = item)
         LifeItemType.Mixed -> {
-            when {
-                item.inferImagePreviewUrl() != null -> ImagePreview(item = item)
-                item.inferPdfUrl() != null -> PdfPreview(item = item)
-                item.inferLocationPreview() != null -> LocationPreview(item = item)
-                item.inferVideoPlaybackUrl() != null -> VideoPreview(item = item, autoplay = autoplayVideo)
-                item.inferAudioUrl() != null -> AudioPreview(item = item)
-                else -> TextPreview(item = item)
+            val previewType = rememberMixedPreviewType(item)
+            when (previewType) {
+                PreviewType.Image -> ImagePreview(item = item)
+                PreviewType.Pdf -> PdfPreview(item = item)
+                PreviewType.Location -> LocationPreview(item = item)
+                PreviewType.Video -> VideoPreview(item = item, autoplay = autoplayVideo)
+                PreviewType.Audio -> AudioPreview(item = item)
+                PreviewType.Text -> TextPreview(item = item)
             }
         }
 
         else -> {
-            when {
-                item.inferImagePreviewUrl() != null -> ImagePreview(item = item)
-                item.inferPdfUrl() != null -> PdfPreview(item = item)
-                item.inferVideoPlaybackUrl() != null -> VideoPreview(item = item, autoplay = autoplayVideo)
-                item.inferAudioUrl() != null -> AudioPreview(item = item)
-                item.inferLocationPreview() != null -> LocationPreview(item = item)
-                else -> TextPreview(item = item)
+            val previewType = rememberFallbackPreviewType(item)
+            when (previewType) {
+                PreviewType.Image -> ImagePreview(item = item)
+                PreviewType.Pdf -> PdfPreview(item = item)
+                PreviewType.Video -> VideoPreview(item = item, autoplay = autoplayVideo)
+                PreviewType.Audio -> AudioPreview(item = item)
+                PreviewType.Location -> LocationPreview(item = item)
+                PreviewType.Text -> TextPreview(item = item)
             }
+        }
+    }
+}
+
+private enum class PreviewType { Image, Pdf, Location, Video, Audio, Text }
+
+@Composable
+private fun rememberMixedPreviewType(item: LifeItem): PreviewType {
+    return remember(item.id, item.title, item.body) {
+        when {
+            item.inferImagePreviewUrl() != null -> PreviewType.Image
+            item.inferPdfUrl() != null -> PreviewType.Pdf
+            item.inferLocationPreview() != null -> PreviewType.Location
+            item.inferVideoPlaybackUrl() != null -> PreviewType.Video
+            item.inferAudioUrl() != null -> PreviewType.Audio
+            else -> PreviewType.Text
+        }
+    }
+}
+
+@Composable
+private fun rememberFallbackPreviewType(item: LifeItem): PreviewType {
+    return remember(item.id, item.title, item.body) {
+        when {
+            item.inferImagePreviewUrl() != null -> PreviewType.Image
+            item.inferPdfUrl() != null -> PreviewType.Pdf
+            item.inferVideoPlaybackUrl() != null -> PreviewType.Video
+            item.inferAudioUrl() != null -> PreviewType.Audio
+            item.inferLocationPreview() != null -> PreviewType.Location
+            else -> PreviewType.Text
         }
     }
 }
@@ -1569,48 +1612,63 @@ internal fun TextPreview(item: LifeItem) {
 @Composable
 internal fun ImagePreview(item: LifeItem) {
     val context = LocalContext.current
-    val rawImageUrl = item.inferImagePreviewUrl()
+    val rawImageUrl = remember(item.id, item.title, item.body) { item.inferImagePreviewUrl() }
     val imageUrl = rememberDecryptedMediaUri(rawImageUrl)
     val thumbhashPreview = remember(item.id, item.title, item.body) { item.thumbhashPreviewPalette() }
-    if (imageUrl != null) {
-        SubcomposeAsyncImage(
-            model = ImageRequest.Builder(context)
-                .data(imageUrl)
+
+    val imageRequest = remember(imageUrl) {
+        imageUrl?.let {
+            ImageRequest.Builder(context)
+                .data(it)
                 .size(600, 600)
-                .build(),
-            contentDescription = "Image preview",
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-            loading = {
-                ThumbhashShimmerPlaceholder(
-                    preview = thumbhashPreview,
-                    isVideo = false,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            },
-            error = {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Filled.PhotoCamera,
-                            contentDescription = "Photo placeholder",
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Photo",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        )
+                .memoryCachePolicy(CachePolicy.ENABLED)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .crossfade(true)
+                .build()
+        }
+    }
+    val painter = rememberAsyncImagePainter(model = imageRequest)
+    val painterState = painter.state
+
+    if (imageUrl != null) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Image(
+                painter = painter,
+                contentDescription = "Image preview",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+            when (painterState) {
+                is coil.compose.AsyncImagePainter.State.Loading ->
+                    ThumbhashShimmerPlaceholder(
+                        preview = thumbhashPreview,
+                        isVideo = false,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                is coil.compose.AsyncImagePainter.State.Error ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Filled.PhotoCamera,
+                                contentDescription = "Photo placeholder",
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Photo",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            )
+                        }
                     }
-                }
+                else -> {}
             }
-        )
+        }
     } else if (rawImageUrl != null) {
         ThumbhashShimmerPlaceholder(
             preview = thumbhashPreview,
@@ -1643,12 +1701,12 @@ internal fun ImagePreview(item: LifeItem) {
 
 @Composable
 internal fun VideoPreview(item: LifeItem, autoplay: Boolean = false) {
-    val rawVideoUrl = item.inferVideoPlaybackUrl()
+    val context = LocalContext.current
+    val rawVideoUrl = remember(item.id, item.title, item.body) { item.inferVideoPlaybackUrl() }
     val videoUrl = rememberDecryptedMediaUri(rawVideoUrl)
     val thumbhashPreview = remember(item.id, item.title, item.body) { item.thumbhashPreviewPalette() }
 
     if (autoplay && videoUrl != null) {
-        val context = LocalContext.current
         val lifecycleOwner = LocalLifecycleOwner.current
         var videoView by remember { mutableStateOf<android.widget.VideoView?>(null) }
 
@@ -1683,23 +1741,42 @@ internal fun VideoPreview(item: LifeItem, autoplay: Boolean = false) {
             }
         }
     } else {
-        val imageUrl = rememberDecryptedMediaUri(item.inferImagePreviewUrl())
+        val rawImageUrl = remember(item.id, item.title, item.body) { item.inferImagePreviewUrl() }
+        val imageUrl = rememberDecryptedMediaUri(rawImageUrl)
         val thumbUrl = rememberVideoThumbnail(item)
         val displayUrl = imageUrl ?: thumbUrl
+
+        val imageRequest = remember(displayUrl) {
+            displayUrl?.let {
+                ImageRequest.Builder(context)
+                    .data(it)
+                    .size(600, 600)
+                    .memoryCachePolicy(CachePolicy.ENABLED)
+                    .diskCachePolicy(CachePolicy.ENABLED)
+                    .crossfade(true)
+                    .build()
+            }
+        }
+        val painter = rememberAsyncImagePainter(model = imageRequest)
+        val painterState = painter.state
+
         Box(modifier = Modifier.fillMaxSize()) {
             if (displayUrl != null && videoUrl != null) {
-                SubcomposeAsyncImage(
-                    model = displayUrl,
+                Image(
+                    painter = painter,
                     contentDescription = "Video preview",
                     modifier = Modifier.fillMaxSize(),
-                    loading = {
+                    contentScale = ContentScale.Crop,
+                )
+                when (painterState) {
+                    is coil.compose.AsyncImagePainter.State.Loading ->
                         ThumbhashShimmerPlaceholder(
                             preview = thumbhashPreview,
                             isVideo = true,
                             modifier = Modifier.fillMaxSize(),
                         )
-                    },
-                )
+                    else -> {}
+                }
             } else if (rawVideoUrl != null) {
                 ThumbhashShimmerPlaceholder(
                     preview = thumbhashPreview,
@@ -1886,7 +1963,7 @@ internal fun AudioPreview(item: LifeItem) {
 
 @Composable
 internal fun LocationPreview(item: LifeItem) {
-    val location = item.inferLocationPreview()
+    val location = remember(item.id, item.title, item.body) { item.inferLocationPreview() }
     if (location != null) {
         Box(modifier = Modifier.fillMaxSize()) {
             OpenStreetMapPreview(
@@ -1927,30 +2004,43 @@ internal fun LocationPreview(item: LifeItem) {
 @Composable
 internal fun PdfPreview(item: LifeItem) {
     val context = LocalContext.current
-    val rawPdfUrl = item.inferPdfUrl()
+    val rawPdfUrl = remember(item.id, item.title, item.body) { item.inferPdfUrl() }
     val pdfUrl = rememberDecryptedMediaUri(rawPdfUrl)
     val thumbhashPreview = remember(item.id, item.title, item.body) { item.thumbhashPreviewPalette() }
     val thumbUrl = rememberPdfThumbnail(item)
     val displayUrl = thumbUrl ?: pdfUrl
 
+    val imageRequest = remember(displayUrl) {
+        displayUrl?.let {
+            ImageRequest.Builder(context)
+                .data(it)
+                .size(600, 600)
+                .memoryCachePolicy(CachePolicy.ENABLED)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .crossfade(true)
+                .build()
+        }
+    }
+    val painter = rememberAsyncImagePainter(model = imageRequest)
+    val painterState = painter.state
+
     Box(modifier = Modifier.fillMaxSize()) {
         if (displayUrl != null) {
-            SubcomposeAsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(displayUrl)
-                    .size(600, 600)
-                    .build(),
+            Image(
+                painter = painter,
                 contentDescription = "PDF preview",
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
-                loading = {
+            )
+            when (painterState) {
+                is coil.compose.AsyncImagePainter.State.Loading ->
                     ThumbhashShimmerPlaceholder(
                         preview = thumbhashPreview,
                         isVideo = false,
                         modifier = Modifier.fillMaxSize(),
                     )
-                },
-            )
+                else -> {}
+            }
         } else if (rawPdfUrl != null) {
             ThumbhashShimmerPlaceholder(
                 preview = thumbhashPreview,
@@ -1990,7 +2080,8 @@ internal fun PdfPreview(item: LifeItem) {
 @Composable
 internal fun rememberPdfThumbnail(item: LifeItem): String? {
     val coordinator = LocalDecryptCoordinator.current
-    val pdfUrl = rememberDecryptedMediaUri(item.inferPdfUrl())
+    val rawPdfUrl = remember(item.id, item.title, item.body) { item.inferPdfUrl() }
+    val pdfUrl = rememberDecryptedMediaUri(rawPdfUrl)
     return produceState<String?>(initialValue = null, key1 = item.id, key2 = pdfUrl) {
         value = if (pdfUrl == null) {
             null
@@ -2438,8 +2529,10 @@ internal fun rememberVideoThumbnail(item: LifeItem): String? {
 @Composable
 internal fun rememberAudioWaveform(item: LifeItem): List<Float> {
     val context = LocalContext.current
-    val rawAudioUrl = item.inferAudioUrl()
-        ?: item.body.split("\\s+".toRegex()).firstOrNull { it.startsWith("content://") || it.startsWith("file://") }
+    val rawAudioUrl = remember(item.id, item.title, item.body) {
+        item.inferAudioUrl()
+            ?: item.body.split("\\s+".toRegex()).firstOrNull { it.startsWith("content://") || it.startsWith("file://") }
+    }
     val decryptedUrl = rememberDecryptedMediaUri(rawAudioUrl)
     return produceState<List<Float>>(initialValue = emptyList(), key1 = item.id, key2 = decryptedUrl) {
         value = if (decryptedUrl == null) {
