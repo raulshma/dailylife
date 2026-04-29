@@ -111,6 +111,10 @@ class DailyLifeViewModel @Inject constructor(
         repository.clearFilters()
     }
 
+    fun selectCollection(itemIds: Set<Long>?) {
+        repository.selectCollection(itemIds)
+    }
+
     fun toggleFavorite(itemId: Long) {
         repository.toggleFavorite(itemId)
     }

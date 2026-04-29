@@ -378,6 +378,7 @@ data class DailyLifeFilters(
     val dateRangeEnd: LocalDate? = null,
     val favoritesOnly: Boolean = false,
     val showArchived: Boolean = false,
+    val collectionItemIds: Set<Long>? = null,
 )
 
 data class DailyLifeState(
@@ -416,5 +417,6 @@ private fun LifeItem.matches(filters: DailyLifeFilters): Boolean {
         (filters.selectedTag == null || tags.contains(filters.selectedTag)) &&
         matchesDateRange &&
         (!filters.favoritesOnly || isFavorite) &&
-        (filters.showArchived || !isArchived)
+        (filters.showArchived || !isArchived) &&
+        (filters.collectionItemIds == null || id in filters.collectionItemIds)
 }

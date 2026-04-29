@@ -30,6 +30,8 @@ interface DailyLifeRepository {
 
     fun clearFilters()
 
+    fun selectCollection(itemIds: Set<Long>?)
+
     fun toggleFavorite(itemId: Long)
 
     fun togglePinned(itemId: Long)

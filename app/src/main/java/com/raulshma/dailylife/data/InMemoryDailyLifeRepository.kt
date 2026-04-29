@@ -115,6 +115,10 @@ class InMemoryDailyLifeRepository(
         _state.update { current -> current.copy(filters = DailyLifeFilters()) }
     }
 
+    override fun selectCollection(itemIds: Set<Long>?) {
+        updateFilters { it.copy(collectionItemIds = itemIds) }
+    }
+
     override fun toggleFavorite(itemId: Long) {
         updateItem(itemId) { it.copy(isFavorite = !it.isFavorite) }
     }

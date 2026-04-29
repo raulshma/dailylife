@@ -629,7 +629,10 @@ fun DailyLifeApp(
                         skipStaggerAnimation = skipStaggerAnimation,
                         photosGridState = photosGridState,
                         timelineListState = timelineListState,
-                        onTabSelected = { selectedTabName = it.name },
+                        onTabSelected = {
+                            viewModel.selectCollection(null)
+                            selectedTabName = it.name
+                        },
                         onItemSelected = {
                             skipStaggerAnimation = true
                             selectedItemId = it
@@ -645,10 +648,9 @@ fun DailyLifeApp(
                         onPinnedToggled = viewModel::togglePinned,
                         onTaskStatusChanged = viewModel::updateTaskStatus,
                         onCompleted = viewModel::markOccurrenceCompleted,
-                        onCollectionSelected = { items ->
-                            val first = items.firstOrNull() ?: return@MainScaffold
-                            skipStaggerAnimation = true
-                            selectedItemId = first.id
+                        onCollectionSelected = { itemIds ->
+                            viewModel.selectCollection(itemIds)
+                            selectedTabName = HomeTab.Search.name
                         },
                         onShowQuickAdd = { showQuickAdd = true },
                         onShowSettings = { showSettings = true },
@@ -892,7 +894,7 @@ private fun MainScaffold(
     onPinnedToggled: (Long) -> Unit,
     onTaskStatusChanged: (Long, TaskStatus) -> Unit,
     onCompleted: (Long) -> Unit,
-    onCollectionSelected: (List<LifeItem>) -> Unit,
+    onCollectionSelected: (Set<Long>) -> Unit,
     onShowQuickAdd: () -> Unit,
     onShowSettings: () -> Unit,
     contentPadding: PaddingValues,
@@ -1106,7 +1108,7 @@ private fun PhotosMosaicScreen(
 private fun CollectionsScreen(
     state: DailyLifeState,
     contentPadding: PaddingValues,
-    onCollectionSelected: (List<LifeItem>) -> Unit,
+    onCollectionSelected: (Set<Long>) -> Unit,
 ) {
     data class FilteredCollections(
         val favorites: List<LifeItem>,
@@ -1180,7 +1182,7 @@ private fun CollectionsScreen(
                     subtitle = meta.second,
                     count = items.size,
                     icon = meta.third,
-                    onClick = { onCollectionSelected(items) },
+                    onClick = { onCollectionSelected(items.map { it.id }.toSet()) },
                 )
             }
         }
