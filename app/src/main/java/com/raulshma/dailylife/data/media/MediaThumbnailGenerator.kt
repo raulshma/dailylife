@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
 import androidx.core.content.FileProvider
 import com.raulshma.dailylife.data.security.MediaCacheManager
 import java.io.File
@@ -35,18 +36,34 @@ class MediaThumbnailGenerator(context: Context) {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(videoFile.absolutePath)
-            val raw = retriever.frameAtTime
-                ?: retriever.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
 
-            val bitmap = raw?.let { frame ->
-                val targetWidth = 320
-                val ratio = targetWidth.toFloat() / frame.width
-                val scaled = Bitmap.createScaledBitmap(frame, targetWidth, (frame.height * ratio).toInt(), true)
-                if (scaled !== frame) frame.recycle()
-                scaled
+            val targetWidth = 320
+            val targetHeight = 180
+
+            val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                retriever.getScaledFrameAtTime(
+                    1_000_000,
+                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                    targetWidth,
+                    targetHeight,
+                ) ?: retriever.frameAtTime
+            } else {
+                retriever.frameAtTime
+                    ?: retriever.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
             }
 
-            bitmap?.let {
+            val scaled = bitmap?.let { frame ->
+                if (frame.width > targetWidth) {
+                    val ratio = targetWidth.toFloat() / frame.width
+                    val result = Bitmap.createScaledBitmap(frame, targetWidth, (frame.height * ratio).toInt(), true)
+                    if (result !== frame) frame.recycle()
+                    result
+                } else {
+                    frame
+                }
+            }
+
+            scaled?.let {
                 FileOutputStream(thumbFile).use { fos ->
                     it.compress(Bitmap.CompressFormat.JPEG, 85, fos)
                 }

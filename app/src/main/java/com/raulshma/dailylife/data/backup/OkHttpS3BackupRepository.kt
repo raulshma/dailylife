@@ -82,10 +82,14 @@ class OkHttpS3BackupRepository @Inject constructor(
                     val mediaKey = "$prefix/media/$fileName"
                     val file = File(path.removePrefix("file://"))
                     if (settings.encryptBackups) {
-                        val fileBytes = file.readBytes()
-                        val encrypted = encryptionManager.encrypt(fileBytes)
-                        if (uploadObject(baseUrl, mediaKey, encrypted, settings)) {
-                            mediaUploaded++
+                        val encryptedTempFile = File(file.parent, "${file.name}.enc.tmp")
+                        try {
+                            encryptionManager.encryptFile(file, encryptedTempFile)
+                            if (uploadFileStream(baseUrl, mediaKey, encryptedTempFile, settings)) {
+                                mediaUploaded++
+                            }
+                        } finally {
+                            runCatching { encryptedTempFile.delete() }
                         }
                     } else {
                         if (uploadFileStream(baseUrl, mediaKey, file, settings)) {

@@ -109,7 +109,9 @@ import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.foundation.Canvas
 import androidx.compose.material3.Slider
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
@@ -171,6 +173,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
 import com.raulshma.dailylife.data.media.AudioWaveformGenerator
 import com.raulshma.dailylife.data.security.MediaDecryptCoordinator
 import com.raulshma.dailylife.domain.DailyLifeFilters
@@ -398,7 +401,11 @@ fun DailyLifeApp(
     val lastBackupResult by viewModel.lastBackupResult.collectAsStateWithLifecycle()
     val encryptionProgress by viewModel.encryptionProgress.collectAsStateWithLifecycle()
     var quickAddDraft by rememberSaveable(stateSaver = QuickAddDraftSaver) {
-        mutableStateOf(loadDraftFromPrefs(context))
+        mutableStateOf(QuickAddDraft())
+    }
+    LaunchedEffect(Unit) {
+        val loaded = withContext(Dispatchers.IO) { loadDraftFromPrefs(context) }
+        quickAddDraft = loaded
     }
     var showEditSheet by rememberSaveable { mutableStateOf(false) }
     var editItemId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -430,7 +437,7 @@ fun DailyLifeApp(
     }
 
     LaunchedEffect(quickAddDraft) {
-        saveDraftToPrefs(context, quickAddDraft)
+        withContext(Dispatchers.IO) { saveDraftToPrefs(context, quickAddDraft) }
     }
 
     LaunchedEffect(shareDraft) {
@@ -1101,24 +1108,39 @@ private fun CollectionsScreen(
     contentPadding: PaddingValues,
     onCollectionSelected: (List<LifeItem>) -> Unit,
 ) {
-    val favoriteItems = remember(state.visibleItems) { state.visibleItems.filter { it.isFavorite } }
-    val videoItems = remember(state.visibleItems) {
-        state.visibleItems.filter { it.type == LifeItemType.Video }
-    }
-    val pdfItems = remember(state.visibleItems) {
-        state.visibleItems.filter { it.type == LifeItemType.Pdf || it.inferPdfUrl() != null }
-    }
-    val placeItems = remember(state.visibleItems) {
-        state.visibleItems.filter { it.type == LifeItemType.Location || it.inferLocationPreview() != null }
-    }
-    val notes = remember(state.visibleItems) {
-        state.visibleItems.filter {
-            it.type == LifeItemType.Note ||
-                it.type == LifeItemType.Thought ||
-                it.type == LifeItemType.Task ||
-                it.type == LifeItemType.Reminder
+    data class FilteredCollections(
+        val favorites: List<LifeItem>,
+        val videos: List<LifeItem>,
+        val pdfs: List<LifeItem>,
+        val places: List<LifeItem>,
+        val notes: List<LifeItem>,
+    )
+
+    val filtered = remember(state.visibleItems) {
+        val favorites = mutableListOf<LifeItem>()
+        val videos = mutableListOf<LifeItem>()
+        val pdfs = mutableListOf<LifeItem>()
+        val places = mutableListOf<LifeItem>()
+        val notesList = mutableListOf<LifeItem>()
+        for (item in state.visibleItems) {
+            if (item.isFavorite) favorites += item
+            when (item.type) {
+                LifeItemType.Video -> videos += item
+                LifeItemType.Pdf -> pdfs += item
+                LifeItemType.Location -> places += item
+                LifeItemType.Note, LifeItemType.Thought, LifeItemType.Task, LifeItemType.Reminder -> notesList += item
+                else -> {}
+            }
+            if (item.type != LifeItemType.Pdf && item.inferPdfUrl() != null) pdfs += item
+            if (item.type != LifeItemType.Location && item.inferLocationPreview() != null) places += item
         }
+        FilteredCollections(favorites, videos, pdfs, places, notesList)
     }
+    val favoriteItems = filtered.favorites
+    val videoItems = filtered.videos
+    val pdfItems = filtered.pdfs
+    val placeItems = filtered.places
+    val notes = filtered.notes
 
     val collectionsData = remember(favoriteItems.size, videoItems.size, pdfItems.size, placeItems.size, notes.size) {
         listOf(
@@ -1349,12 +1371,16 @@ internal fun TextPreview(item: LifeItem) {
 
 @Composable
 internal fun ImagePreview(item: LifeItem) {
+    val context = LocalContext.current
     val rawImageUrl = item.inferImagePreviewUrl()
     val imageUrl = rememberDecryptedMediaUri(rawImageUrl)
     val thumbhashPreview = remember(item.id, item.title, item.body) { item.thumbhashPreviewPalette() }
     if (imageUrl != null) {
         SubcomposeAsyncImage(
-            model = imageUrl,
+            model = ImageRequest.Builder(context)
+                .data(imageUrl)
+                .size(600, 600)
+                .build(),
             contentDescription = "Image preview",
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop,
@@ -1703,6 +1729,7 @@ internal fun LocationPreview(item: LifeItem) {
 
 @Composable
 internal fun PdfPreview(item: LifeItem) {
+    val context = LocalContext.current
     val rawPdfUrl = item.inferPdfUrl()
     val pdfUrl = rememberDecryptedMediaUri(rawPdfUrl)
     val thumbhashPreview = remember(item.id, item.title, item.body) { item.thumbhashPreviewPalette() }
@@ -1712,7 +1739,10 @@ internal fun PdfPreview(item: LifeItem) {
     Box(modifier = Modifier.fillMaxSize()) {
         if (displayUrl != null) {
             SubcomposeAsyncImage(
-                model = displayUrl,
+                model = ImageRequest.Builder(context)
+                    .data(displayUrl)
+                    .size(600, 600)
+                    .build(),
                 contentDescription = "PDF preview",
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,

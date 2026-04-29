@@ -128,6 +128,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.raulshma.dailylife.data.media.MediaThumbnailGenerator
 import com.raulshma.dailylife.data.security.EncryptionProgress
 import com.raulshma.dailylife.domain.DayOfWeek
@@ -1251,7 +1252,10 @@ private fun AttachmentPreviewCard(
             when (attachmentType) {
                 AttachmentType.Image -> {
                     AsyncImage(
-                        model = uriStr,
+                        model = ImageRequest.Builder(context)
+                            .data(uriStr)
+                            .size(280, 200)
+                            .build(),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = androidx.compose.ui.layout.ContentScale.Crop
@@ -1260,7 +1264,10 @@ private fun AttachmentPreviewCard(
                 AttachmentType.Video -> {
                     if (videoThumbUri != null) {
                         AsyncImage(
-                            model = videoThumbUri,
+                            model = ImageRequest.Builder(context)
+                                .data(videoThumbUri)
+                                .size(280, 200)
+                                .build(),
                             contentDescription = "Video thumbnail",
                             modifier = Modifier.fillMaxSize(),
                             contentScale = androidx.compose.ui.layout.ContentScale.Crop

@@ -1,14 +1,13 @@
 package com.raulshma.dailylife.data.security
 
 import com.raulshma.dailylife.data.security.KeystoreHelper
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import javax.crypto.Cipher
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/**
- * Encrypts and decrypts backup payloads using AES/GCM with a key stored in Android Keystore.
- * The encryption format is: [12-byte IV][ciphertext][16-byte auth tag].
- */
 class BackupEncryptionManager {
 
     fun encrypt(plaintext: ByteArray): ByteArray {
@@ -19,6 +18,26 @@ class BackupEncryptionManager {
         val iv = cipher.iv
         val ciphertext = cipher.doFinal(plaintext)
         return iv + ciphertext
+    }
+
+    fun encryptFile(inputFile: File, outputFile: File) {
+        val key = getOrCreateKey()
+        val cipher = Cipher.getInstance(TRANSFORMATION).apply {
+            init(Cipher.ENCRYPT_MODE, key)
+        }
+        FileOutputStream(outputFile).use { fos ->
+            fos.write(cipher.iv)
+            FileInputStream(inputFile).use { fis ->
+                val buffer = ByteArray(CHUNK_SIZE)
+                var read: Int
+                while (fis.read(buffer).also { read = it } != -1) {
+                    val output = cipher.update(buffer, 0, read)
+                    if (output != null) fos.write(output)
+                }
+            }
+            val final = cipher.doFinal()
+            if (final != null) fos.write(final)
+        }
     }
 
     fun decrypt(encryptedData: ByteArray): ByteArray {
@@ -39,5 +58,6 @@ class BackupEncryptionManager {
         private const val KEY_SIZE = 256
         private const val GCM_TAG_LENGTH = 16
         private const val IV_LENGTH = 12
+        private const val CHUNK_SIZE = 64 * 1024
     }
 }

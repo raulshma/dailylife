@@ -6,7 +6,12 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "life_items",
-    indices = [Index("createdAt")],
+    indices = [
+        Index("createdAt"),
+        Index("type"),
+        Index("isFavorite"),
+        Index("isArchived"),
+    ],
 )
 data class LifeItemEntity(
     @PrimaryKey

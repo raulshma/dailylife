@@ -11,7 +11,7 @@ import androidx.room.TypeConverters
         NotificationSettingsEntity::class,
         S3BackupSettingsEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)

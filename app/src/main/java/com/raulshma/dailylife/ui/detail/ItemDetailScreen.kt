@@ -153,8 +153,10 @@ import kotlin.random.Random
 import java.io.File
 import java.time.format.DateTimeFormatter
 import kotlin.math.abs
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val CompletionTimeFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy 'at' h:mm a")
 
@@ -1617,7 +1619,9 @@ private fun DetailAudioPlayer(
     }
 
     LaunchedEffect(audioUrl) {
-        val bars = AudioWaveformGenerator().generateWaveform(context, Uri.parse(audioUrl), barCount)
+        val bars = withContext(Dispatchers.IO) {
+            AudioWaveformGenerator().generateWaveform(context, Uri.parse(audioUrl), barCount)
+        }
         waveformBars = bars
     }
 

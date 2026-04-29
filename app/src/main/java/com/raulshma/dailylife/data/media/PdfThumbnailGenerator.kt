@@ -2,6 +2,9 @@ package com.raulshma.dailylife.data.media
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
@@ -52,29 +55,27 @@ class PdfThumbnailGenerator(context: Context) {
         return try {
             val renderer = PdfRenderer(pfd)
             val page = renderer.openPage(0)
-            val bitmap = Bitmap.createBitmap(page.width, page.height, Bitmap.Config.ARGB_8888)
+
+            val targetWidth = 320
+            val targetHeight = (page.height.toFloat() / page.width * targetWidth).toInt()
+            val bitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            canvas.drawColor(Color.WHITE)
+            val matrix = Matrix()
+            matrix.postScale(
+                targetWidth.toFloat() / page.width,
+                targetHeight.toFloat() / page.height,
+            )
+            canvas.concat(matrix)
             page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
             page.close()
             renderer.close()
 
-            val targetWidth = 320
-            val ratio = targetWidth.toFloat() / bitmap.width
-            val scaled = if (bitmap.width > targetWidth) {
-                Bitmap.createScaledBitmap(bitmap, targetWidth, (bitmap.height * ratio).toInt(), true)
-            } else {
-                bitmap
-            }
-
             FileOutputStream(thumbFile).use { fos ->
-                scaled.compress(Bitmap.CompressFormat.JPEG, 85, fos)
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 85, fos)
             }
 
-            if (scaled !== bitmap) {
-                scaled.recycle()
-                bitmap.recycle()
-            } else {
-                bitmap.recycle()
-            }
+            bitmap.recycle()
 
             cacheManager.enforceSizeLimit(maxSizeBytes = ThumbCacheMaxSize)
             FileProvider.getUriForFile(context, "$packageName.fileprovider", thumbFile)

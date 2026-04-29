@@ -1,13 +1,28 @@
 package com.raulshma.dailylife.data.db
 
 import androidx.room.Dao
+import androidx.room.Embedded
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Relation
 import androidx.room.Transaction
+
+data class LifeItemWithCompletions(
+    @Embedded val item: LifeItemEntity,
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "itemId",
+    )
+    val completions: List<CompletionRecordEntity>,
+)
 
 @Dao
 interface DailyLifeDao {
+    @Transaction
+    @Query("SELECT * FROM life_items ORDER BY createdAt DESC")
+    suspend fun getItemsWithCompletions(): List<LifeItemWithCompletions>
+
     @Query("SELECT * FROM life_items ORDER BY createdAt DESC")
     suspend fun getAllItems(): List<LifeItemEntity>
 

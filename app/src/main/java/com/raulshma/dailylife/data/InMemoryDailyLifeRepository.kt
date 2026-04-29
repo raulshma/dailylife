@@ -34,25 +34,36 @@ class InMemoryDailyLifeRepository(
     private val persistDebounceMs: Long = PERSIST_DEBOUNCE_MS,
 ) : DailyLifeRepository {
 
-    private val loadResult: Result<PersistedDailyLifeState?> = runCatching {
-        kotlinx.coroutines.runBlocking { store?.load() }
-    }
-
-    private val persistedState: PersistedDailyLifeState? = loadResult.getOrNull()
-
     private val _state = MutableStateFlow(
         DailyLifeState(
-            items = persistedState?.items ?: seedItems,
-            notificationSettings = persistedState?.notificationSettings ?: NotificationSettings(),
-            storageError = loadResult.exceptionOrNull()?.toStorageError(StorageOperation.Load),
+            items = seedItems,
+            notificationSettings = NotificationSettings(),
         ),
     )
     override val state: StateFlow<DailyLifeState> = _state.asStateFlow()
 
-    private var nextId = persistedState?.nextId
-        ?: ((seedItems.maxOfOrNull { it.id } ?: 0L) + 1L)
+    private var nextId = (seedItems.maxOfOrNull { it.id } ?: 0L) + 1L
 
     private var persistJob: Job? = null
+
+    init {
+        store?.let { s ->
+            persistScope.launch {
+                val loadResult = runCatching { s.load() }
+                val persistedState = loadResult.getOrNull()
+                _state.update { current ->
+                    current.copy(
+                        items = persistedState?.items ?: current.items,
+                        notificationSettings = persistedState?.notificationSettings ?: current.notificationSettings,
+                        storageError = loadResult.exceptionOrNull()?.toStorageError(StorageOperation.Load),
+                    )
+                }
+                persistedState?.nextId?.let { nid ->
+                    nextId = nid.coerceAtLeast(nextId)
+                }
+            }
+        }
+    }
 
     override fun addItem(draft: LifeItemDraft): LifeItem {
         val now = LocalDateTime.now()

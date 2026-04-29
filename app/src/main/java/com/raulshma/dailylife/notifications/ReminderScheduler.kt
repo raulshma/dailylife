@@ -26,6 +26,10 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.max
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 
 interface ReminderScheduler {
@@ -126,7 +130,10 @@ class AndroidReminderScheduler(
 class DailyLifeReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
-            Intent.ACTION_BOOT_COMPLETED -> rescheduleStoredReminders(context)
+            Intent.ACTION_BOOT_COMPLETED -> {
+                val pendingResult = goAsync()
+                rescheduleStoredRemindersAsync(context, pendingResult)
+            }
             ActionShowReminder -> showReminder(context, intent)
             ActionSnoozeReminder -> snoozeReminder(context, intent)
         }
@@ -218,7 +225,9 @@ class DailyLifeReminderReceiver : BroadcastReceiver() {
             }
         }
 
-        rescheduleStoredReminders(context, dueAt.plusSeconds(1))
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            rescheduleStoredReminders(context, dueAt.plusSeconds(1))
+        }
     }
 
     private fun postBatchSummary(context: Context, contentIntent: PendingIntent) {
@@ -289,7 +298,21 @@ private fun ReminderScheduleRequest.toIntent(context: Context): Intent =
         putExtra(ExtraRespectDoNotDisturb, respectDoNotDisturb)
     }
 
-private fun rescheduleStoredReminders(
+private fun rescheduleStoredRemindersAsync(
+    context: Context,
+    pendingResult: BroadcastReceiver.PendingResult,
+    now: LocalDateTime = LocalDateTime.now(),
+) {
+    CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+        try {
+            rescheduleStoredReminders(context, now)
+        } finally {
+            pendingResult.finish()
+        }
+    }
+}
+
+private suspend fun rescheduleStoredReminders(
     context: Context,
     now: LocalDateTime = LocalDateTime.now(),
 ) {
@@ -305,7 +328,7 @@ private fun rescheduleStoredReminders(
             .addMigrations(*ALL_MIGRATIONS.toTypedArray())
             .build()
         try {
-            val snapshot = kotlinx.coroutines.runBlocking { RoomDailyLifeStore(database).load() } ?: return
+            val snapshot = RoomDailyLifeStore(database).load() ?: return
             AndroidReminderScheduler(context).sync(
                 items = snapshot.items,
                 settings = snapshot.notificationSettings,

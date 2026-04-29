@@ -15,7 +15,7 @@ import androidx.room.PrimaryKey
             onDelete = ForeignKey.CASCADE,
         ),
     ],
-    indices = [Index("itemId")],
+    indices = [Index("itemId"), Index("occurrenceDate")],
 )
 data class CompletionRecordEntity(
     @PrimaryKey(autoGenerate = true)

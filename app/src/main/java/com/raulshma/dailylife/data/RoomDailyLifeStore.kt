@@ -4,6 +4,7 @@ import com.raulshma.dailylife.data.db.CompletionRecordEntity
 import com.raulshma.dailylife.data.db.DailyLifeDao
 import com.raulshma.dailylife.data.db.DailyLifeDatabase
 import com.raulshma.dailylife.data.db.LifeItemEntity
+import com.raulshma.dailylife.data.db.LifeItemWithCompletions
 import com.raulshma.dailylife.data.db.NotificationSettingsEntity
 import com.raulshma.dailylife.data.db.S3BackupSettingsEntity
 import com.raulshma.dailylife.domain.CompletionRecord
@@ -28,18 +29,14 @@ class RoomDailyLifeStore(
     private val dao = database.dailyLifeDao()
 
     override suspend fun load(): PersistedDailyLifeState? {
-        val items = dao.getAllItems()
-        val completionRecords = dao.getAllCompletionRecords()
+        val itemsWithCompletions = dao.getItemsWithCompletions()
         val settingsEntity = dao.getNotificationSettings()
 
-        if (items.isEmpty() && settingsEntity == null) {
+        if (itemsWithCompletions.isEmpty() && settingsEntity == null) {
             return null
         }
 
-        val completionsByItemId = completionRecords.groupBy { it.itemId }
-        val lifeItems = items.map { entity ->
-            entity.toLifeItem(completionsByItemId[entity.id].orEmpty())
-        }
+        val lifeItems = itemsWithCompletions.map { it.item.toLifeItem(it.completions) }
 
         val fallbackNextId = (lifeItems.maxOfOrNull { it.id } ?: 0L) + 1L
 
