@@ -395,7 +395,7 @@ fun ItemDetailScreen(
                                         dragVisualOffsetPx = 0f
                                     }
 
-                                    dragAccumulator >= 220f && !showDetails && !chromeVisible -> {
+                                    dragAccumulator >= 180f && !showDetails -> {
                                         onBack()
                                     }
 
@@ -423,10 +423,10 @@ fun ItemDetailScreen(
                         if (!dragAxisLocked) {
                             totalDx += dragAmount.x
                             totalDy += dragAmount.y
-                            if (kotlin.math.abs(totalDx) > kotlin.math.abs(totalDy) * 1.5f && kotlin.math.abs(totalDx) > 10f) {
+                            if (kotlin.math.abs(totalDx) > kotlin.math.abs(totalDy) * 1.2f && kotlin.math.abs(totalDx) > 10f) {
                                 dragAxisLocked = true
                                 isHorizontalDrag = true
-                            } else if (kotlin.math.abs(totalDy) > kotlin.math.abs(totalDx) * 1.5f && kotlin.math.abs(totalDy) > 10f) {
+                            } else if (kotlin.math.abs(totalDy) > kotlin.math.abs(totalDx) * 1.2f && kotlin.math.abs(totalDy) > 10f) {
                                 dragAxisLocked = true
                                 isHorizontalDrag = false
                             }
@@ -439,7 +439,7 @@ fun ItemDetailScreen(
                             } else if (!isPdfItem) {
                                 change.consume()
                                 dragAccumulator += dragAmount.y
-                                if (dragAmount.y < -2f) {
+                                if (dragAmount.y < -8f) {
                                     chromeVisible = true
                                 }
                                 if (!showDetails) {
@@ -2150,7 +2150,7 @@ private fun AnimatedActionButton(
 @Composable
 private fun rememberDismissNestedScrollConnection(
     onDismiss: () -> Unit,
-    dismissThresholdPx: Float = 120f,
+    dismissThresholdPx: Float = 80f,
 ): NestedScrollConnection {
     var accumulatedDrag by remember { mutableStateOf(0f) }
     return remember {
@@ -2168,8 +2168,8 @@ private fun rememberDismissNestedScrollConnection(
                             accumulatedDrag = 0f
                         }
                         return available
-                    } else {
-                        accumulatedDrag = 0f
+                    } else if (available.y < 0) {
+                        accumulatedDrag = (accumulatedDrag + available.y).coerceAtLeast(0f)
                     }
                 }
                 return Offset.Zero
@@ -2179,7 +2179,7 @@ private fun rememberDismissNestedScrollConnection(
                 consumed: Velocity,
                 available: Velocity,
             ): Velocity {
-                if (available.y > 0 && accumulatedDrag > dismissThresholdPx * 0.4f) {
+                if (available.y > 0 && accumulatedDrag > dismissThresholdPx * 0.3f) {
                     onDismiss()
                     accumulatedDrag = 0f
                 }
