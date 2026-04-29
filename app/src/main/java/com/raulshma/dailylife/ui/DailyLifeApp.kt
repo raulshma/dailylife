@@ -141,6 +141,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -923,6 +924,42 @@ fun DailyLifeApp(
 
 }
 
+@Composable
+private fun LazyStaggeredGridState.isScrollingUp(): Boolean {
+    var previousIndex by remember { mutableStateOf(firstVisibleItemIndex) }
+    var previousScrollOffset by remember { mutableStateOf(firstVisibleItemScrollOffset) }
+    return remember {
+        derivedStateOf {
+            if (previousIndex != firstVisibleItemIndex) {
+                firstVisibleItemIndex < previousIndex
+            } else {
+                firstVisibleItemScrollOffset < previousScrollOffset
+            }.also {
+                previousIndex = firstVisibleItemIndex
+                previousScrollOffset = firstVisibleItemScrollOffset
+            }
+        }
+    }.value
+}
+
+@Composable
+private fun LazyListState.isScrollingUp(): Boolean {
+    var previousIndex by remember { mutableStateOf(firstVisibleItemIndex) }
+    var previousScrollOffset by remember { mutableStateOf(firstVisibleItemScrollOffset) }
+    return remember {
+        derivedStateOf {
+            if (previousIndex != firstVisibleItemIndex) {
+                firstVisibleItemIndex < previousIndex
+            } else {
+                firstVisibleItemScrollOffset < previousScrollOffset
+            }.also {
+                previousIndex = firstVisibleItemIndex
+                previousScrollOffset = firstVisibleItemScrollOffset
+            }
+        }
+    }.value
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MainScaffold(
@@ -954,6 +991,31 @@ private fun MainScaffold(
     onShowSettings: () -> Unit,
     contentPadding: PaddingValues,
 ) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val statusBarHeight = WindowInsets.safeDrawing.getTop(density)
+    val topBarHeightPx = with(density) { 64.dp.roundToPx() }
+    val totalTopPx = topBarHeightPx + statusBarHeight
+
+    val isScrollingUp = when (selectedTab) {
+        HomeTab.Photos -> photosGridState.isScrollingUp()
+        HomeTab.Search -> timelineListState.isScrollingUp()
+        else -> true
+    }
+    val isAtStart = when (selectedTab) {
+        HomeTab.Photos -> photosGridState.firstVisibleItemIndex == 0 &&
+            photosGridState.firstVisibleItemScrollOffset == 0
+        HomeTab.Search -> timelineListState.firstVisibleItemIndex == 0 &&
+            timelineListState.firstVisibleItemScrollOffset == 0
+        else -> true
+    }
+    val isCollapsed = !isScrollingUp && !isAtStart
+
+    val topBarOffset by animateFloatAsState(
+        targetValue = if (isCollapsed) -totalTopPx.toFloat() else 0f,
+        animationSpec = DailyLifeTween.content(),
+        label = "topBarOffset",
+    )
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -976,6 +1038,9 @@ private fun MainScaffold(
                             contentDescription = "Settings",
                         )
                     }
+                },
+                modifier = Modifier.graphicsLayer {
+                    translationY = topBarOffset
                 },
             )
         },
@@ -1013,6 +1078,10 @@ private fun MainScaffold(
             }
         },
     ) { paddingValues ->
+        val adjustedPadding = PaddingValues(
+            top = with(density) { (paddingValues.calculateTopPadding() + topBarOffset.toDp()).coerceAtLeast(0.dp) },
+            bottom = paddingValues.calculateBottomPadding(),
+        )
         AnimatedContent(
             targetState = selectedTab,
             transitionSpec = {
@@ -1025,7 +1094,7 @@ private fun MainScaffold(
                     PhotosMosaicScreen(
                         pagingItems = pagingItems,
                         storageError = state.storageError,
-                        contentPadding = paddingValues,
+                        contentPadding = adjustedPadding,
                         skipStaggerAnimation = skipStaggerAnimation,
                         gridState = photosGridState,
                         onItemSelected = onItemSelected,
@@ -1039,7 +1108,7 @@ private fun MainScaffold(
                         pagingItems = pagingItems,
                         snapshotStats = snapshotStats,
                         allTags = allTags,
-                        contentPadding = paddingValues,
+                        contentPadding = adjustedPadding,
                         skipStaggerAnimation = skipStaggerAnimation,
                         listState = timelineListState,
                         onSearchChanged = onSearchChanged,
@@ -1060,7 +1129,7 @@ private fun MainScaffold(
                 HomeTab.Collections -> {
                     CollectionsScreen(
                         collectionCounts = collectionCounts,
-                        contentPadding = paddingValues,
+                        contentPadding = adjustedPadding,
                         onCollectionSelected = onCollectionSelected,
                     )
                 }
@@ -1068,7 +1137,7 @@ private fun MainScaffold(
                 HomeTab.Graph -> {
                     GraphViewScreen(
                         items = graphItems,
-                        contentPadding = paddingValues,
+                        contentPadding = adjustedPadding,
                         onItemSelected = onItemSelected,
                     )
                 }
