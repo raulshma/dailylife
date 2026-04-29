@@ -650,7 +650,7 @@ fun DailyLifeApp(
                         photosGridState = photosGridState,
                         timelineListState = timelineListState,
                         onTabSelected = {
-                            viewModel.selectCollection(null)
+                            if (it == HomeTab.Photos) viewModel.clearFilters()
                             selectedTabName = it.name
                         },
                         onItemSelected = {
@@ -670,6 +670,7 @@ fun DailyLifeApp(
                         onTaskStatusChanged = viewModel::updateTaskStatus,
                         onCompleted = viewModel::markOccurrenceCompleted,
                         onCollectionSelected = { collection ->
+                            viewModel.clearFilters()
                             when (collection) {
                                 "favorites" -> {
                                     viewModel.toggleFavoritesOnly()
@@ -1098,7 +1099,7 @@ private fun PhotosMosaicScreen(
                 result.add(TimelineEntry.DateHeader(date))
                 lastDate = date
             }
-            result.add(TimelineEntry.Item(i))
+            result.add(TimelineEntry.Item(i, item.id))
         }
         result
     }
@@ -1190,26 +1191,28 @@ private fun PhotosMosaicScreen(
                         val itemIdx = globalIndex
                         globalIndex++
                         item(
-                            key = pagingItems[entry.index]?.id ?: entry.index,
+                            key = entry.id,
                         ) {
-                            val item = pagingItems[entry.index] ?: return@item
-                            if (skipStaggerAnimation) {
-                                MediaMosaicTile(
-                                    item = item,
-                                    onClick = { onItemSelected(item.id) },
-                                    modifier = Modifier.animateItem(),
-                                )
-                            } else {
-                                val tileVisible = rememberStaggeredVisibility(itemIdx, baseDelayMs = 45, maxDelayMs = 450)
-                                AnimatedVisibility(
-                                    visibleState = tileVisible,
-                                    enter = StaggeredEnter,
-                                ) {
+                            val item = if (entry.index < pagingItems.itemCount) pagingItems[entry.index] else null
+                            if (item != null) {
+                                if (skipStaggerAnimation) {
                                     MediaMosaicTile(
                                         item = item,
                                         onClick = { onItemSelected(item.id) },
                                         modifier = Modifier.animateItem(),
                                     )
+                                } else {
+                                    val tileVisible = rememberStaggeredVisibility(itemIdx, baseDelayMs = 45, maxDelayMs = 450)
+                                    AnimatedVisibility(
+                                        visibleState = tileVisible,
+                                        enter = StaggeredEnter,
+                                    ) {
+                                        MediaMosaicTile(
+                                            item = item,
+                                            onClick = { onItemSelected(item.id) },
+                                            modifier = Modifier.animateItem(),
+                                        )
+                                    }
                                 }
                             }
                         }

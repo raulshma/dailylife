@@ -44,7 +44,7 @@ import java.time.LocalDate
 
 internal sealed class TimelineEntry {
     data class DateHeader(val date: LocalDate) : TimelineEntry()
-    data class Item(val index: Int) : TimelineEntry()
+    data class Item(val index: Int, val id: Long) : TimelineEntry()
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -81,7 +81,7 @@ fun TimelineScreen(
                 result.add(TimelineEntry.DateHeader(date))
                 lastDate = date
             }
-            result.add(TimelineEntry.Item(i))
+            result.add(TimelineEntry.Item(i, item.id))
         }
         result
     }
@@ -106,6 +106,7 @@ fun TimelineScreen(
                 filters = state.filters,
                 onFavoritesOnlyToggled = onFavoritesOnlyToggled,
                 onTypeSelected = onTypeSelected,
+                onClearFilters = onClearFilters,
                 onOpenFilters = { showAdvancedFilters = true }
             )
         }
@@ -186,10 +187,7 @@ fun TimelineScreen(
                     key = { index ->
                         when (val entry = entries[index]) {
                             is TimelineEntry.DateHeader -> "date-${entry.date}"
-                            is TimelineEntry.Item -> {
-                                val item = pagingItems[entry.index]
-                                "item-${item?.id ?: entry.index}"
-                            }
+                            is TimelineEntry.Item -> "item-${entry.id}"
                         }
                     },
                 ) { index ->
@@ -198,7 +196,7 @@ fun TimelineScreen(
                             DateHeader(date = entry.date)
                         }
                         is TimelineEntry.Item -> {
-                            val item = pagingItems[entry.index]
+                            val item = if (entry.index < pagingItems.itemCount) pagingItems[entry.index] else null
                             if (item != null) {
                                 LifeItemCard(
                                     item = item,
@@ -360,8 +358,11 @@ private fun QuickFiltersCarousel(
     filters: DailyLifeFilters,
     onFavoritesOnlyToggled: () -> Unit,
     onTypeSelected: (LifeItemType?) -> Unit,
+    onClearFilters: () -> Unit,
     onOpenFilters: () -> Unit
 ) {
+    val hasActiveFilters = filters != DailyLifeFilters()
+
     LazyRow(
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
@@ -382,11 +383,12 @@ private fun QuickFiltersCarousel(
             )
         }
 
-        val quickTypes = listOf(LifeItemType.Note, LifeItemType.Task, LifeItemType.Photo, LifeItemType.Pdf, LifeItemType.Location)
+        val quickTypes = listOf(LifeItemType.Video, LifeItemType.Note, LifeItemType.Task, LifeItemType.Photo, LifeItemType.Pdf, LifeItemType.Location)
         items(quickTypes) { type ->
+            val isSelected = filters.selectedType == type || filters.selectedTypes?.contains(type) == true
             FilterChip(
-                selected = filters.selectedType == type,
-                onClick = { onTypeSelected(if (filters.selectedType == type) null else type) },
+                selected = isSelected,
+                onClick = { onTypeSelected(if (isSelected) null else type) },
                 label = { Text(type.label) },
                 leadingIcon = {
                     Icon(
@@ -406,6 +408,19 @@ private fun QuickFiltersCarousel(
                     label = { Text("More Active Filters") },
                     leadingIcon = {
                         Icon(Icons.Filled.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
+                    }
+                )
+            }
+        }
+
+        item {
+            if (hasActiveFilters) {
+                FilterChip(
+                    selected = false,
+                    onClick = onClearFilters,
+                    label = { Text("Clear") },
+                    leadingIcon = {
+                        Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(18.dp))
                     }
                 )
             }
