@@ -17,11 +17,17 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.raulshma.dailylife.ui.SplashScreen
+import kotlinx.coroutines.delay
 import com.raulshma.dailylife.domain.LifeItemType
 import com.raulshma.dailylife.ui.DailyLifeApp
 import com.raulshma.dailylife.ui.DailyLifeViewModel
@@ -65,55 +71,75 @@ class MainActivity : AppCompatActivity() {
             isLocked = false
         }
 
+        val isColdStart = savedInstanceState == null
+
         setContent {
+            var isSplashVisible by remember { mutableStateOf(isColdStart) }
+
+            LaunchedEffect(Unit) {
+                if (isSplashVisible) {
+                    // Splash initialization: preload data, warm caches, etc.
+                    // Minimum hold duration ensures the splash never flickers
+                    delay(1_500L)
+                    isSplashVisible = false
+                }
+            }
+
             DailyLifeTheme {
-                AnimatedContent(
-                    targetState = when {
-                        showOnboarding -> 0
-                        isLocked -> 1
-                        else -> 2
-                    },
-                    transitionSpec = {
-                        (fadeIn(
-                            animationSpec = tween(DailyLifeDuration.MEDIUM, easing = DailyLifeEasing.Enter),
-                        ) + scaleIn(
-                            animationSpec = tween(DailyLifeDuration.MEDIUM, easing = DailyLifeEasing.Enter),
-                            initialScale = 0.96f,
-                        )).togetherWith(
-                            fadeOut(
-                                animationSpec = tween(DailyLifeDuration.SHORT),
-                            ) + scaleOut(
-                                animationSpec = tween(DailyLifeDuration.SHORT),
-                                targetScale = 1.02f,
-                            ),
-                        )
-                    },
-                    label = "screenTransition",
-                ) { screenState ->
-                    when (screenState) {
-                        0 -> {
-                            OnboardingScreen(
-                                onComplete = {
-                                    prefs.edit().putBoolean("onboarding_complete", true).apply()
-                                    showOnboarding = false
-                                    if (lockEnabled) isLocked = true else isLocked = false
-                                },
+                Box(modifier = Modifier.fillMaxSize()) {
+                    AnimatedContent(
+                        modifier = Modifier.fillMaxSize(),
+                        targetState = when {
+                            showOnboarding -> 0
+                            isLocked -> 1
+                            else -> 2
+                        },
+                        transitionSpec = {
+                            (fadeIn(
+                                animationSpec = tween(DailyLifeDuration.MEDIUM, easing = DailyLifeEasing.Enter),
+                            ) + scaleIn(
+                                animationSpec = tween(DailyLifeDuration.MEDIUM, easing = DailyLifeEasing.Enter),
+                                initialScale = 0.96f,
+                            )).togetherWith(
+                                fadeOut(
+                                    animationSpec = tween(DailyLifeDuration.SHORT),
+                                ) + scaleOut(
+                                    animationSpec = tween(DailyLifeDuration.SHORT),
+                                    targetScale = 1.02f,
+                                ),
                             )
-                        }
-                        1 -> {
-                            Box(contentAlignment = Alignment.Center) {
-                                LockScreen(onUnlocked = { isLocked = false })
+                        },
+                        label = "screenTransition",
+                    ) { screenState ->
+                        when (screenState) {
+                            0 -> {
+                                OnboardingScreen(
+                                    onComplete = {
+                                        prefs.edit().putBoolean("onboarding_complete", true).apply()
+                                        showOnboarding = false
+                                        if (lockEnabled) isLocked = true else isLocked = false
+                                    },
+                                )
+                            }
+                            1 -> {
+                                Box(contentAlignment = Alignment.Center) {
+                                    LockScreen(onUnlocked = { isLocked = false })
+                                }
+                            }
+                            else -> {
+                                val viewModel: DailyLifeViewModel = hiltViewModel()
+                                DailyLifeApp(
+                                    viewModel = viewModel,
+                                    shareDraft = shareDraft,
+                                    onShareDraftConsumed = { shareDraft = null },
+                                )
                             }
                         }
-                        else -> {
-                            val viewModel: DailyLifeViewModel = hiltViewModel()
-                            DailyLifeApp(
-                                viewModel = viewModel,
-                                shareDraft = shareDraft,
-                                onShareDraftConsumed = { shareDraft = null },
-                            )
-                        }
                     }
+
+                    SplashScreen(
+                        visible = isSplashVisible,
+                    )
                 }
             }
         }
