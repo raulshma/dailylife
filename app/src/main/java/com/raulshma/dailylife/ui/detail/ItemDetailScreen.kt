@@ -160,6 +160,7 @@ import com.raulshma.dailylife.ui.components.ShimmerBox
 import com.raulshma.dailylife.ui.inferLocationPreview
 import com.raulshma.dailylife.ui.rememberDecryptedMediaUri
 import com.raulshma.dailylife.data.media.AudioWaveformGenerator
+import com.raulshma.dailylife.data.media.UriFileResolver
 import com.raulshma.dailylife.ui.theme.DailyLifeDuration
 import com.raulshma.dailylife.ui.theme.DailyLifeEasing
 import com.raulshma.dailylife.ui.theme.DailyLifeTween
@@ -1955,6 +1956,17 @@ private fun DetailContentSection(
     val context = LocalContext.current
     val displayBody = remember(item.id, item.title, item.body) { item.displayBody() }
 
+    val attachmentUrl = remember(item.id, item.title, item.body) {
+        item.inferImagePreviewUrl()
+            ?: item.inferVideoPlaybackUrl()
+            ?: item.inferAudioUrl()
+            ?: item.inferPdfUrl()
+    }
+    val attachmentSize = remember(attachmentUrl) {
+        attachmentUrl?.let { getAttachmentSize(context, it) }
+    }
+    val decryptedAttachmentUri = rememberDecryptedMediaUri(attachmentUrl)
+
     Column(
         modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -1972,7 +1984,7 @@ private fun DetailContentSection(
                 globalSettings = globalSettings,
                 canCopy = displayBody.isNotBlank() || item.aiSummary?.isNotBlank() == true,
                 onCopy = { copyItemToClipboard(context, item) },
-                onShare = { shareItem(context, item) },
+                onShare = { shareItem(context, item, decryptedAttachmentUri) },
             )
         }
 
@@ -2002,7 +2014,7 @@ private fun DetailContentSection(
                 ),
             ) {
                 DetailTextCard(
-                    title = "AI description",
+                    title = "Summarized",
                     icon = Icons.Filled.SmartToy,
                     text = savedAiSummary,
                 )
@@ -2068,6 +2080,7 @@ private fun DetailContentSection(
                 add("Missed" to occurrenceStats.missedCount.toString())
                 add("Current streak" to occurrenceStats.currentStreak.toString())
             }
+            attachmentSize?.let { add("Size" to formatFileSize(it)) }
         }
 
         AnimatedVisibility(
@@ -2285,7 +2298,7 @@ private fun AIToolsSection(
                     modifier = Modifier.size(18.dp),
                 )
                 Text(
-                    text = "AI Tools",
+                    text = "Generative Tools",
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.titleSmall,
@@ -2988,9 +3001,19 @@ private fun copyItemToClipboard(context: Context, item: LifeItem) {
     clipboard.setPrimaryClip(ClipData.newPlainText(item.title, buildShareText(item)))
 }
 
-private fun shareItem(context: Context, item: LifeItem) {
+private fun shareItem(context: Context, item: LifeItem, attachmentUri: String? = null) {
     val intent = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
+        if (attachmentUri != null) {
+            val uri = Uri.parse(attachmentUri)
+            val mimeType = runCatching { context.contentResolver.getType(uri) }.getOrNull()
+                ?: inferMimeType(attachmentUri)
+                ?: "*/*"
+            type = mimeType
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } else {
+            type = "text/plain"
+        }
         putExtra(Intent.EXTRA_SUBJECT, item.title)
         putExtra(Intent.EXTRA_TEXT, buildShareText(item))
     }
@@ -3010,7 +3033,7 @@ private fun buildShareText(item: LifeItem): String {
         }
         item.aiSummary?.trim()?.takeIf { it.isNotBlank() }?.let { summary ->
             appendLine()
-            appendLine("AI description")
+            appendLine("Summarized")
             appendLine(summary)
         }
         if (item.tags.isNotEmpty()) {
@@ -3018,6 +3041,39 @@ private fun buildShareText(item: LifeItem): String {
             appendLine(item.tags.joinToString(" ") { "#$it" })
         }
     }.trim()
+}
+
+private fun formatFileSize(bytes: Long): String {
+    if (bytes < 1024) return "$bytes B"
+    val kb = bytes / 1024.0
+    if (kb < 1024) return "%.1f KB".format(kb)
+    val mb = kb / 1024.0
+    if (mb < 1024) return "%.1f MB".format(mb)
+    val gb = mb / 1024.0
+    return "%.1f GB".format(gb)
+}
+
+private fun getAttachmentSize(context: Context, uriString: String): Long? {
+    return runCatching {
+        val uri = Uri.parse(uriString)
+        when (uri.scheme) {
+            "file", "content" -> {
+                UriFileResolver.resolveToFile(uri, context)?.length()?.takeIf { it > 0 }
+            }
+            else -> null
+        }
+    }.getOrNull()
+}
+
+private fun inferMimeType(uriString: String): String? {
+    val effective = if (uriString.endsWith(".enc", ignoreCase = true)) {
+        uriString.removeSuffix(".enc")
+    } else {
+        uriString
+    }
+    return android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(
+        effective.substringAfterLast('.', "").lowercase()
+    )
 }
 
 @Composable
