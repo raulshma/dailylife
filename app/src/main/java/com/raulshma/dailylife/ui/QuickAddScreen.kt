@@ -133,6 +133,7 @@ import coil.request.ImageRequest
 import com.raulshma.dailylife.data.media.MediaThumbnailGenerator
 import com.raulshma.dailylife.data.security.EncryptionProgress
 import com.raulshma.dailylife.domain.DayOfWeek
+import com.raulshma.dailylife.domain.EngineState
 import com.raulshma.dailylife.domain.GeofenceTrigger
 import com.raulshma.dailylife.domain.ItemNotificationSettings
 import com.raulshma.dailylife.domain.LifeItemDraft
@@ -169,6 +170,7 @@ internal fun QuickAddScreen(
     aiTagSuggestions: List<String> = emptyList(),
     aiRewrittenText: String = "",
     isAiGenerating: Boolean = false,
+    engineState: EngineState = EngineState.Idle,
     onGenerateSmartTitle: ((String) -> Unit)? = null,
     onSuggestTags: ((String, String) -> Unit)? = null,
     onRewriteText: ((String, WritingTone) -> Unit)? = null,
@@ -193,6 +195,7 @@ internal fun QuickAddScreen(
             aiTagSuggestions = aiTagSuggestions,
             aiRewrittenText = aiRewrittenText,
             isAiGenerating = isAiGenerating,
+            engineState = engineState,
             onGenerateSmartTitle = onGenerateSmartTitle,
             onSuggestTags = onSuggestTags,
             onRewriteText = onRewriteText,
@@ -221,6 +224,7 @@ private fun QuickAddContent(
     aiTagSuggestions: List<String> = emptyList(),
     aiRewrittenText: String = "",
     isAiGenerating: Boolean = false,
+    engineState: EngineState = EngineState.Idle,
     onGenerateSmartTitle: ((String) -> Unit)? = null,
     onSuggestTags: ((String, String) -> Unit)? = null,
     onRewriteText: ((String, WritingTone) -> Unit)? = null,
@@ -674,15 +678,23 @@ private fun QuickAddContent(
                             enabled = !isAiGenerating,
                             modifier = Modifier.size(32.dp),
                         ) {
-                            if (isAiGenerating && aiSmartTitle.isBlank()) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                            } else {
-                                Icon(
-                                    Icons.Filled.AutoAwesome,
-                                    contentDescription = "Generate title",
-                                    modifier = Modifier.size(18.dp),
-                                    tint = MaterialTheme.colorScheme.primary,
-                                )
+                            when {
+                                engineState is EngineState.LoadingModel || engineState is EngineState.Initializing -> {
+                                    LinearProgressIndicator(
+                                        modifier = Modifier.width(20.dp).height(2.dp),
+                                    )
+                                }
+                                isAiGenerating && aiSmartTitle.isBlank() -> {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                }
+                                else -> {
+                                    Icon(
+                                        Icons.Filled.AutoAwesome,
+                                        contentDescription = "Generate title",
+                                        modifier = Modifier.size(18.dp),
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
                             }
                         }
                     }
@@ -884,10 +896,18 @@ private fun QuickAddContent(
                             AssistChip(
                                 onClick = { onSuggestTags(title, body) },
                                 label = {
-                                    if (isAiGenerating && aiTagSuggestions.isEmpty()) {
-                                        CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp)
-                                    } else {
-                                        Text("AI Tags")
+                                    when {
+                                        engineState is EngineState.LoadingModel || engineState is EngineState.Initializing -> {
+                                            LinearProgressIndicator(
+                                                modifier = Modifier.width(48.dp).height(2.dp),
+                                            )
+                                        }
+                                        isAiGenerating && aiTagSuggestions.isEmpty() -> {
+                                            CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp)
+                                        }
+                                        else -> {
+                                            Text("AI Tags")
+                                        }
                                     }
                                 },
                                 leadingIcon = {

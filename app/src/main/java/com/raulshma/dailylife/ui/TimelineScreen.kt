@@ -71,6 +71,7 @@ fun TimelineScreen(
     onStorageErrorDismissed: () -> Unit,
     isAiSearchActive: Boolean = false,
     isAiGenerating: Boolean = false,
+    engineState: EngineState = EngineState.Idle,
     onToggleAiSearch: (() -> Unit)? = null,
     onAiSearchQuery: (String) -> Unit = {},
 ) {
@@ -107,6 +108,7 @@ fun TimelineScreen(
                 isAiSearchActive = isAiSearchActive,
                 onToggleAiSearch = onToggleAiSearch,
                 isAiGenerating = isAiGenerating,
+                engineState = engineState,
             )
 
             QuickFiltersCarousel(
@@ -281,6 +283,7 @@ private fun SearchBarRow(
     isAiSearchActive: Boolean = false,
     onToggleAiSearch: (() -> Unit)? = null,
     isAiGenerating: Boolean = false,
+    engineState: EngineState = EngineState.Idle,
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val animatedElevation by animateDpAsState(
@@ -324,12 +327,20 @@ private fun SearchBarRow(
             },
             trailingIcon = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (isAiGenerating) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
+                    when {
+                        engineState is EngineState.LoadingModel || engineState is EngineState.Initializing -> {
+                            LinearProgressIndicator(
+                                modifier = Modifier.width(24.dp).height(2.dp),
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+                        isAiGenerating -> {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
                     }
                     if (onToggleAiSearch != null) {
                         IconButton(onClick = onToggleAiSearch) {

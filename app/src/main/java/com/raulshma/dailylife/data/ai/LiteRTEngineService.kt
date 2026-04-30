@@ -1,19 +1,22 @@
 package com.raulshma.dailylife.data.ai
 
 import android.util.Log
+import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Content
-import com.google.ai.edge.litertlm.Engine
-import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.ConversationConfig
+import com.google.ai.edge.litertlm.Engine
+import com.google.ai.edge.litertlm.EngineConfig
 import com.google.ai.edge.litertlm.LogSeverity
 import com.raulshma.dailylife.domain.AIModel
 import com.raulshma.dailylife.domain.EngineState
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -52,16 +55,15 @@ class LiteRTEngineService @Inject constructor(
             unloadModelInternal()
             try {
                 _engineState.value = EngineState.LoadingModel(model.name)
-                delay(150)
                 Engine.setNativeMinLogSeverity(LogSeverity.ERROR)
                 val modelPath = modelManager.modelFile(model.id).absolutePath
                 val cacheDir = modelManager.modelCacheDir(model.id).absolutePath
                 val config = EngineConfig(
                     modelPath = modelPath,
+                    backend = Backend.CPU(),
                     cacheDir = cacheDir,
                 )
                 _engineState.value = EngineState.Initializing(model.name)
-                delay(100)
                 val eng = Engine(config)
                 eng.initialize()
                 engine = eng
@@ -92,140 +94,136 @@ class LiteRTEngineService @Inject constructor(
         _engineState.value = EngineState.Idle
     }
 
-    suspend fun generateText(
+    fun generateText(
         prompt: String,
         systemInstruction: String? = null,
-    ): Flow<String> = withContext(Dispatchers.IO) {
+    ): Flow<String> = flow {
         mutex.withLock {
             val eng = engine ?: throw IllegalStateException("No model loaded")
             val conversation = eng.createConversation(
                 ConversationConfig(
-                    systemInstruction = systemInstruction,
+                    systemInstruction = systemInstruction?.let { Contents.of(it) }
                 )
             )
             currentConversation?.close()
             currentConversation = conversation
-
-            val resultFlow = MutableStateFlow("")
-            val fullResponse = StringBuilder()
-
-            conversation.sendMessageAsync(prompt).collect { message ->
-                val text = message.contents?.items?.firstOrNull()?.let {
-                    (it as? Content.Text)?.text
-                } ?: ""
-                if (text.isNotEmpty()) {
-                    fullResponse.append(text)
-                    resultFlow.value = fullResponse.toString()
+            try {
+                val fullResponse = StringBuilder()
+                conversation.sendMessageAsync(prompt).collect { message ->
+                    val text = message.toString()
+                    if (text.isNotEmpty()) {
+                        fullResponse.append(text)
+                        emit(fullResponse.toString())
+                    }
                 }
+            } finally {
+                conversation.close()
             }
-            conversation.close()
-            resultFlow
         }
-    }
+    }.flowOn(Dispatchers.IO)
 
-    suspend fun generateWithImage(
+    fun generateWithImage(
         prompt: String,
         imageBytes: ByteArray,
         systemInstruction: String? = null,
-    ): Flow<String> = withContext(Dispatchers.IO) {
+    ): Flow<String> = flow {
         mutex.withLock {
             val eng = engine ?: throw IllegalStateException("No model loaded")
             val conversation = eng.createConversation(
                 ConversationConfig(
-                    systemInstruction = systemInstruction,
+                    systemInstruction = systemInstruction?.let { Contents.of(it) }
                 )
             )
             currentConversation?.close()
             currentConversation = conversation
-
-            val resultFlow = MutableStateFlow("")
-            val fullResponse = StringBuilder()
-
-            val contents = listOf(
-                Content.Text(prompt),
-                Content.ImageBytes(imageBytes),
-            )
-            conversation.sendMessageAsync(contents).collect { message ->
-                val text = message.contents?.items?.firstOrNull()?.let {
-                    (it as? Content.Text)?.text
-                } ?: ""
-                if (text.isNotEmpty()) {
-                    fullResponse.append(text)
-                    resultFlow.value = fullResponse.toString()
+            try {
+                val fullResponse = StringBuilder()
+                val contents = Contents.of(
+                    Content.Text(prompt),
+                    Content.ImageBytes(imageBytes),
+                )
+                conversation.sendMessageAsync(contents).collect { message ->
+                    val text = message.toString()
+                    if (text.isNotEmpty()) {
+                        fullResponse.append(text)
+                        emit(fullResponse.toString())
+                    }
                 }
+            } finally {
+                conversation.close()
             }
-            conversation.close()
-            resultFlow
         }
-    }
+    }.flowOn(Dispatchers.IO)
 
-    suspend fun generateWithAudio(
+    fun generateWithAudio(
         prompt: String,
         audioBytes: ByteArray,
         systemInstruction: String? = null,
-    ): Flow<String> = withContext(Dispatchers.IO) {
+    ): Flow<String> = flow {
         mutex.withLock {
             val eng = engine ?: throw IllegalStateException("No model loaded")
             val conversation = eng.createConversation(
                 ConversationConfig(
-                    systemInstruction = systemInstruction,
+                    systemInstruction = systemInstruction?.let { Contents.of(it) }
                 )
             )
             currentConversation?.close()
             currentConversation = conversation
-
-            val resultFlow = MutableStateFlow("")
-            val fullResponse = StringBuilder()
-
-            val contents = listOf(
-                Content.Text(prompt),
-                Content.AudioBytes(audioBytes),
-            )
-            conversation.sendMessageAsync(contents).collect { message ->
-                val text = message.contents?.items?.firstOrNull()?.let {
-                    (it as? Content.Text)?.text
-                } ?: ""
-                if (text.isNotEmpty()) {
-                    fullResponse.append(text)
-                    resultFlow.value = fullResponse.toString()
+            try {
+                val fullResponse = StringBuilder()
+                val contents = Contents.of(
+                    Content.Text(prompt),
+                    Content.AudioBytes(audioBytes),
+                )
+                conversation.sendMessageAsync(contents).collect { message ->
+                    val text = message.toString()
+                    if (text.isNotEmpty()) {
+                        fullResponse.append(text)
+                        emit(fullResponse.toString())
+                    }
                 }
+            } finally {
+                conversation.close()
             }
-            conversation.close()
-            resultFlow
         }
-    }
+    }.flowOn(Dispatchers.IO)
 
-    suspend fun chat(
+    fun chat(
         messages: List<Pair<String, String>>,
         systemInstruction: String? = null,
-    ): Flow<String> = withContext(Dispatchers.IO) {
+    ): Flow<String> = flow {
         mutex.withLock {
             val eng = engine ?: throw IllegalStateException("No model loaded")
+            val initialMessages = messages.dropLast(1).map { (role, text) ->
+                when (role) {
+                    "user" -> com.google.ai.edge.litertlm.Message.user(text)
+                    "model", "assistant" -> com.google.ai.edge.litertlm.Message.model(text)
+                    else -> com.google.ai.edge.litertlm.Message.user(text)
+                }
+            }
             val conversation = eng.createConversation(
                 ConversationConfig(
-                    systemInstruction = systemInstruction,
+                    systemInstruction = systemInstruction?.let { Contents.of(it) },
+                    initialMessages = initialMessages,
                 )
             )
             currentConversation?.close()
             currentConversation = conversation
-
-            val lastMessage = messages.last().second
-            val resultFlow = MutableStateFlow("")
-            val fullResponse = StringBuilder()
-
-            conversation.sendMessageAsync(lastMessage).collect { message ->
-                val text = message.contents?.items?.firstOrNull()?.let {
-                    (it as? Content.Text)?.text
-                } ?: ""
-                if (text.isNotEmpty()) {
-                    fullResponse.append(text)
-                    resultFlow.value = fullResponse.toString()
+            try {
+                val lastMessage = messages.last().second
+                val fullResponse = StringBuilder()
+                conversation.sendMessageAsync(lastMessage).collect { message ->
+                    val text = message.toString()
+                    if (text.isNotEmpty()) {
+                        fullResponse.append(text)
+                        emit(fullResponse.toString())
+                    }
                 }
+            } finally {
+                conversation.close()
             }
-            conversation.close()
-            resultFlow
         }
-    }
+    }.flowOn(Dispatchers.IO)
 
     fun cancelGeneration() {
         currentConversation?.cancelProcess()

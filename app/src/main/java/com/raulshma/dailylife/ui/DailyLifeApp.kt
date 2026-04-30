@@ -186,6 +186,7 @@ import com.raulshma.dailylife.data.media.AudioWaveformGenerator
 import com.raulshma.dailylife.data.security.MediaDecryptCoordinator
 import com.raulshma.dailylife.domain.DailyLifeFilters
 import com.raulshma.dailylife.domain.DailyLifeState
+import com.raulshma.dailylife.domain.EngineState
 import com.raulshma.dailylife.domain.ItemNotificationSettings
 import com.raulshma.dailylife.domain.LifeItem
 import com.raulshma.dailylife.domain.LifeItemDraft
@@ -736,6 +737,7 @@ fun DailyLifeApp(
                         onShowAIReflections = if (isAiEnabled) { { showAIReflections = true } } else null,
                         isAiSearchActive = if (isAiEnabled) isAiSearchActive else false,
                         isAiGenerating = isAiGenerating,
+                        engineState = engineState,
                         onToggleAiSearch = if (isAiEnabled) { { isAiSearchActive = !isAiSearchActive } } else null,
                         onAiSearchQuery = { viewModel.naturalLanguageSearch(it) },
                         contentPadding = PaddingValues(),
@@ -948,6 +950,7 @@ fun DailyLifeApp(
                 aiTagSuggestions = if (isAiEnabled) aiTagSuggestions else emptyList(),
                 aiRewrittenText = if (isAiEnabled) aiRewrittenText else "",
                 isAiGenerating = if (isAiEnabled) isAiGenerating else false,
+                engineState = if (isAiEnabled) engineState else EngineState.Idle,
                 onGenerateSmartTitle = if (isAiEnabled) { { viewModel.generateSmartTitle(it) } } else null,
                 onSuggestTags = if (isAiEnabled) { t, b -> viewModel.suggestTags(t, b) } else null,
                 onRewriteText = if (isAiEnabled) { text, tone -> viewModel.rewriteText(text, tone) } else null,
@@ -1020,6 +1023,7 @@ fun DailyLifeApp(
                 aiTagSuggestions = if (isAiEnabled) aiTagSuggestions else emptyList(),
                 aiRewrittenText = if (isAiEnabled) aiRewrittenText else "",
                 isAiGenerating = if (isAiEnabled) isAiGenerating else false,
+                engineState = if (isAiEnabled) engineState else EngineState.Idle,
                 onGenerateSmartTitle = if (isAiEnabled) { { viewModel.generateSmartTitle(it) } } else null,
                 onSuggestTags = if (isAiEnabled) { t, b -> viewModel.suggestTags(t, b) } else null,
                 onRewriteText = if (isAiEnabled) { text, tone -> viewModel.rewriteText(text, tone) } else null,
@@ -1105,6 +1109,7 @@ private fun MainScaffold(
     onShowAIReflections: (() -> Unit)? = null,
     isAiSearchActive: Boolean = false,
     isAiGenerating: Boolean = false,
+    engineState: EngineState = EngineState.Idle,
     onToggleAiSearch: (() -> Unit)? = null,
     onAiSearchQuery: (String) -> Unit = {},
     contentPadding: PaddingValues,
@@ -1285,6 +1290,7 @@ private fun MainScaffold(
                         onStorageErrorDismissed = onStorageErrorDismissed,
                         isAiSearchActive = isAiSearchActive,
                         isAiGenerating = isAiGenerating,
+                        engineState = engineState,
                         onToggleAiSearch = onToggleAiSearch,
                         onAiSearchQuery = onAiSearchQuery,
                     )

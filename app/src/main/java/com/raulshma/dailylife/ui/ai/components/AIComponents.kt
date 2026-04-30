@@ -167,9 +167,12 @@ fun AIModelLoadingOverlay(
                 when (state) {
                     is EngineState.LoadingModel -> {
                         Text(
-                            text = "Loading model...",
+                            text = "Moving model to memory...",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        LinearProgressIndicator(
+                            modifier = Modifier.width(120.dp).height(2.dp),
                         )
                     }
                     is EngineState.Initializing -> {
@@ -177,6 +180,9 @@ fun AIModelLoadingOverlay(
                             text = "Initializing engine...",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        LinearProgressIndicator(
+                            modifier = Modifier.width(120.dp).height(2.dp),
                         )
                     }
                     is EngineState.Ready -> {

@@ -8,6 +8,8 @@ import com.raulshma.dailylife.domain.WritingTone
 import com.raulshma.dailylife.domain.displayBody
 import com.raulshma.dailylife.domain.supports
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -35,6 +37,7 @@ class AIFeatureExecutor @Inject constructor(
 
     suspend fun generateSmartTitle(body: String): Flow<String> {
         ensureModelForFeature(AIFeature.SMART_TITLE)
+            ?: return flowOf("")
         val prompt = """Generate a short, concise title (max 8 words) for a journal entry with the following content. Return ONLY the title, nothing else.
 
 Content:
@@ -44,6 +47,7 @@ ${body.take(1000)}"""
 
     suspend fun suggestTags(title: String, body: String): Flow<List<String>> {
         ensureModelForFeature(AIFeature.TAG_SUGGESTION)
+            ?: return flowOf(emptyList())
         val prompt = """Suggest up to 5 relevant tags for this journal entry. Return ONLY comma-separated tags, nothing else. Use lowercase, no hashtags.
 
 Title: ${title.take(200)}
@@ -59,6 +63,7 @@ Content: ${body.take(1000)}"""
 
     suspend fun summarizeEntry(title: String, body: String): Flow<String> {
         ensureModelForFeature(AIFeature.SUMMARIZE)
+            ?: return flowOf("")
         val prompt = """Summarize this journal entry in 2-3 concise sentences. Focus on the key points and emotions expressed.
 
 Title: ${title.take(200)}
@@ -68,6 +73,7 @@ Content: ${body.take(2000)}"""
 
     suspend fun analyzeMood(title: String, body: String): Flow<MoodResult> {
         ensureModelForFeature(AIFeature.MOOD_ANALYSIS)
+            ?: return flowOf(MoodResult(moodLabel = "neutral", confidence = 0f))
         val prompt = """Analyze the emotional tone of this journal entry. Respond with EXACTLY this format: MOOD_LABEL|CONFIDENCE
 
 Where MOOD_LABEL is one of: happy, sad, anxious, calm, energetic, angry, grateful, neutral
@@ -88,6 +94,7 @@ Content: ${body.take(1000)}"""
 
     suspend fun generateReflection(entries: List<LifeItem>, startDate: LocalDate, endDate: LocalDate): Flow<String> {
         ensureModelForFeature(AIFeature.REFLECTION)
+            ?: return flowOf("")
         val dateFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy")
         val entriesSummary = entries.take(30).joinToString("\n") { entry ->
             val date = entry.createdAt.format(DateTimeFormatter.ofPattern("MMM d"))
@@ -103,18 +110,21 @@ $entriesSummary"""
 
     suspend fun describePhoto(imageBytes: ByteArray): Flow<String> {
         ensureModelForFeature(AIFeature.PHOTO_DESCRIPTION)
+            ?: return flowOf("")
         val prompt = "Describe this photo in 2-3 sentences. Focus on the main subjects, setting, and mood of the image."
         return engineService.generateWithImage(prompt, imageBytes)
     }
 
     suspend fun summarizeAudio(audioBytes: ByteArray): Flow<String> {
         ensureModelForFeature(AIFeature.AUDIO_SUMMARY)
+            ?: return flowOf("")
         val prompt = "Listen to this audio recording and provide a brief summary of its content in 2-3 sentences."
         return engineService.generateWithAudio(prompt, audioBytes)
     }
 
     suspend fun chatWithJournal(message: String, contextEntries: List<LifeItem>): Flow<String> {
         ensureModelForFeature(AIFeature.CHAT)
+            ?: return flowOf("")
         val context = if (contextEntries.isNotEmpty()) {
             "Recent journal context:\n" + contextEntries.take(10).joinToString("\n") { entry ->
                 val date = entry.createdAt.format(DateTimeFormatter.ofPattern("MMM d"))
@@ -130,6 +140,7 @@ $entriesSummary"""
 
     suspend fun rewriteText(text: String, tone: WritingTone): Flow<String> {
         ensureModelForFeature(AIFeature.WRITING_ASSISTANT)
+            ?: return flowOf("")
         val toneInstruction = when (tone) {
             WritingTone.FORMAL -> "Rewrite in a formal, professional tone"
             WritingTone.CASUAL -> "Rewrite in a casual, friendly tone"
@@ -146,6 +157,7 @@ ${text.take(2000)}"""
 
     suspend fun naturalLanguageSearch(query: String, availableTags: List<String>): Flow<String> {
         ensureModelForFeature(AIFeature.NL_SEARCH)
+            ?: return flowOf("")
         val tagsList = availableTags.take(50).joinToString(", ")
         val prompt = """Convert this natural language search query into structured filters for a journal app. Return ONLY a JSON object with these possible fields (omit fields that aren't relevant):
 - "query": text to search for in titles and content

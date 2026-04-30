@@ -27,6 +27,9 @@
 -keep class org.osmdroid.tileprovider.** { *; }
 -dontwarn org.osmdroid.**
 
+-keep class com.google.ai.edge.litertlm.** { *; }
+-dontwarn com.google.ai.edge.litertlm.**
+
 -keepclassmembers class * implements android.os.Parcelable {
     public static final ** CREATOR;
 }

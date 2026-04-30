@@ -211,7 +211,9 @@ fun AIChatScreen(
                                     aiExecutor.chatWithJournal(prompt, emptyList()).collect { chunk ->
                                         streamingText = chunk
                                     }
-                                    messages.add(ChatMessage(ChatRole.ASSISTANT, streamingText))
+                                    if (streamingText.isNotBlank()) {
+                                        messages.add(ChatMessage(ChatRole.ASSISTANT, streamingText))
+                                    }
                                 } catch (e: Exception) {
                                     messages.add(ChatMessage(ChatRole.ASSISTANT, "Error: ${e.message}"))
                                 } finally {
@@ -337,7 +339,9 @@ fun AIChatScreen(
                                     aiExecutor.chatWithJournal(text, emptyList()).collect { chunk ->
                                         streamingText = chunk
                                     }
-                                    messages.add(ChatMessage(ChatRole.ASSISTANT, streamingText))
+                                    if (streamingText.isNotBlank()) {
+                                        messages.add(ChatMessage(ChatRole.ASSISTANT, streamingText))
+                                    }
                                 } catch (e: Exception) {
                                     messages.add(ChatMessage(ChatRole.ASSISTANT, "Error: ${e.message}"))
                                 } finally {

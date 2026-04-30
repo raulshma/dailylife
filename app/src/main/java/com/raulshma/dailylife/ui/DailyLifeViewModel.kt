@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.os.BatteryManager
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -67,6 +68,9 @@ class DailyLifeViewModel @Inject constructor(
     val engineService: LiteRTEngineService,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
+    companion object {
+        private const val TAG = "DailyLifeViewModel"
+    }
     val state = repository.state
     val pagingItems = repository.pagingItems.cachedIn(viewModelScope)
     val allTags = repository.allTags
@@ -98,6 +102,13 @@ class DailyLifeViewModel @Inject constructor(
 
     private val _aiSmartTitle = MutableStateFlow("")
     val aiSmartTitle = _aiSmartTitle.asStateFlow()
+
+    private val _aiError = MutableStateFlow<String?>(null)
+    val aiError: StateFlow<String?> = _aiError.asStateFlow()
+
+    fun clearAiError() {
+        _aiError.value = null
+    }
 
     private val _aiTagSuggestions = MutableStateFlow<List<String>>(emptyList())
     val aiTagSuggestions = _aiTagSuggestions.asStateFlow()
@@ -400,11 +411,16 @@ class DailyLifeViewModel @Inject constructor(
     fun generateSmartTitle(body: String) {
         aiJob?.cancel()
         _aiSmartTitle.value = ""
+        _aiError.value = null
         _isAiGenerating.value = true
         aiJob = viewModelScope.launch {
             try {
                 aiExecutor.generateSmartTitle(body).collect { _aiSmartTitle.value = it }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    Log.w(TAG, "generateSmartTitle failed", e)
+                    _aiError.value = e.message
+                }
             } finally {
                 _isAiGenerating.value = false
             }
@@ -414,11 +430,16 @@ class DailyLifeViewModel @Inject constructor(
     fun suggestTags(title: String, body: String) {
         aiJob?.cancel()
         _aiTagSuggestions.value = emptyList()
+        _aiError.value = null
         _isAiGenerating.value = true
         aiJob = viewModelScope.launch {
             try {
                 aiExecutor.suggestTags(title, body).collect { _aiTagSuggestions.value = it }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    Log.w(TAG, "suggestTags failed", e)
+                    _aiError.value = e.message
+                }
             } finally {
                 _isAiGenerating.value = false
             }
@@ -428,11 +449,16 @@ class DailyLifeViewModel @Inject constructor(
     fun summarizeEntry(title: String, body: String) {
         aiJob?.cancel()
         _aiSummary.value = ""
+        _aiError.value = null
         _isAiGenerating.value = true
         aiJob = viewModelScope.launch {
             try {
                 aiExecutor.summarizeEntry(title, body).collect { _aiSummary.value = it }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    Log.w(TAG, "summarizeEntry failed", e)
+                    _aiError.value = e.message
+                }
             } finally {
                 _isAiGenerating.value = false
             }
@@ -442,11 +468,16 @@ class DailyLifeViewModel @Inject constructor(
     fun analyzeMood(title: String, body: String) {
         aiJob?.cancel()
         _aiMood.value = null
+        _aiError.value = null
         _isAiGenerating.value = true
         aiJob = viewModelScope.launch {
             try {
                 aiExecutor.analyzeMood(title, body).collect { _aiMood.value = it }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    Log.w(TAG, "analyzeMood failed", e)
+                    _aiError.value = e.message
+                }
             } finally {
                 _isAiGenerating.value = false
             }
@@ -456,11 +487,16 @@ class DailyLifeViewModel @Inject constructor(
     fun rewriteText(text: String, tone: WritingTone) {
         aiJob?.cancel()
         _aiRewrittenText.value = ""
+        _aiError.value = null
         _isAiGenerating.value = true
         aiJob = viewModelScope.launch {
             try {
                 aiExecutor.rewriteText(text, tone).collect { _aiRewrittenText.value = it }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    Log.w(TAG, "rewriteText failed", e)
+                    _aiError.value = e.message
+                }
             } finally {
                 _isAiGenerating.value = false
             }
@@ -470,11 +506,16 @@ class DailyLifeViewModel @Inject constructor(
     fun describePhoto(imageBytes: ByteArray) {
         aiJob?.cancel()
         _aiPhotoDescription.value = ""
+        _aiError.value = null
         _isAiGenerating.value = true
         aiJob = viewModelScope.launch {
             try {
                 aiExecutor.describePhoto(imageBytes).collect { _aiPhotoDescription.value = it }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    Log.w(TAG, "describePhoto failed", e)
+                    _aiError.value = e.message
+                }
             } finally {
                 _isAiGenerating.value = false
             }
@@ -484,11 +525,16 @@ class DailyLifeViewModel @Inject constructor(
     fun summarizeAudio(audioBytes: ByteArray) {
         aiJob?.cancel()
         _aiAudioSummary.value = ""
+        _aiError.value = null
         _isAiGenerating.value = true
         aiJob = viewModelScope.launch {
             try {
                 aiExecutor.summarizeAudio(audioBytes).collect { _aiAudioSummary.value = it }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    Log.w(TAG, "summarizeAudio failed", e)
+                    _aiError.value = e.message
+                }
             } finally {
                 _isAiGenerating.value = false
             }
@@ -498,12 +544,17 @@ class DailyLifeViewModel @Inject constructor(
     fun naturalLanguageSearch(query: String) {
         aiJob?.cancel()
         _aiSearchFilters.value = ""
+        _aiError.value = null
         _isAiGenerating.value = true
         aiJob = viewModelScope.launch {
             try {
                 val tags = allTags.firstOrNull() ?: emptyList()
                 aiExecutor.naturalLanguageSearch(query, tags).collect { _aiSearchFilters.value = it }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    Log.w(TAG, "naturalLanguageSearch failed", e)
+                    _aiError.value = e.message
+                }
             } finally {
                 _isAiGenerating.value = false
             }
