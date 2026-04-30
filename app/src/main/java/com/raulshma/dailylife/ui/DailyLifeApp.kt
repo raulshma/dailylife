@@ -773,7 +773,6 @@ fun DailyLifeApp(
                             navigableItemIds = visibleItemIds,
                             onBack = {
                                 selectedItemId = null
-                                preloadedDetailItem = null
                                 viewModel.clearSelectedItem()
                             },
                             onFavoriteToggled = { viewModel.toggleFavorite(item.id) },
@@ -1738,6 +1737,26 @@ private fun MediaMosaicTile(
     } else {
         Modifier
     }
+    val titleSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.sharedElement(
+                sharedContentState = rememberSharedContentState(key = SharedElementKeys.title(item.id)),
+                animatedVisibilityScope = animatedVisibilityScope,
+            )
+        }
+    } else {
+        Modifier
+    }
+    val badgeSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            Modifier.sharedElement(
+                sharedContentState = rememberSharedContentState(key = SharedElementKeys.typeBadge(item.id)),
+                animatedVisibilityScope = animatedVisibilityScope,
+            )
+        }
+    } else {
+        Modifier
+    }
 
     PressableCard(
         onClick = onClick,
@@ -1768,13 +1787,22 @@ private fun MediaMosaicTile(
                     )
                     .padding(10.dp),
             ) {
-                Text(
-                    text = item.title,
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelLarge,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        TypeBadge(type = item.type, modifier = badgeSharedModifier, boxSize = 28.dp)
+                        Text(
+                            text = item.title,
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelLarge,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = titleSharedModifier,
+                        )
+                    }
+                }
             }
         }
     }
