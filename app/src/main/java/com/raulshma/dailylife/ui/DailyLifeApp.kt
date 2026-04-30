@@ -27,6 +27,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -768,6 +769,7 @@ fun DailyLifeApp(
                         },
                         onShowQuickAdd = { showQuickAdd = true },
                         onShowSettings = { showSettings = true },
+                        isAiEnabled = isAiEnabled,
                         onShowAIChat = if (isAiEnabled) { { showAIChatList = true } } else null,
                         onShowAIReflections = if (isAiEnabled) { { showAIReflections = true } } else null,
                         onShowAIEnrichment = if (isAiEnabled) { { showAIEnrichment = true } } else null,
@@ -1248,6 +1250,7 @@ private fun MainScaffold(
     onCollectionSelected: (String) -> Unit,
     onShowQuickAdd: () -> Unit,
     onShowSettings: () -> Unit,
+    isAiEnabled: Boolean,
     onShowAIChat: (() -> Unit)? = null,
     onShowAIReflections: (() -> Unit)? = null,
     onShowAIEnrichment: (() -> Unit)? = null,
@@ -1289,11 +1292,17 @@ private fun MainScaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = "DailyLife",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Medium,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "DailyLife",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        if (isAiEnabled) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            AiStatusDot(engineState = engineState)
+                        }
+                    }
                 },
                 actions = {
                     val showDropdown = rememberSaveable { mutableStateOf(false) }
@@ -1469,6 +1478,42 @@ private fun MainScaffold(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AiStatusDot(
+    engineState: EngineState,
+    modifier: Modifier = Modifier,
+) {
+    val targetColor = when (engineState) {
+        EngineState.Idle -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
+        is EngineState.LoadingModel -> Color(0xFFFFD166)
+        is EngineState.Initializing -> Color(0xFF7BDFF2)
+        is EngineState.Ready -> Color(0xFF4BE38E)
+        is EngineState.Error -> MaterialTheme.colorScheme.error
+    }
+    val dotColor by animateColorAsState(targetValue = targetColor, label = "aiStatusDotColor")
+
+    Box(
+        modifier = modifier.size(12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(12.dp)
+                .background(dotColor.copy(alpha = 0.18f), CircleShape),
+        )
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .background(dotColor.copy(alpha = 0.5f), CircleShape),
+        )
+        Box(
+            modifier = Modifier
+                .size(4.dp)
+                .background(dotColor, CircleShape),
+        )
     }
 }
 
