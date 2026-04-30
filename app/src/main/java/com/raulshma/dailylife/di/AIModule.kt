@@ -1,6 +1,7 @@
 package com.raulshma.dailylife.di
 
 import com.raulshma.dailylife.data.ai.AIFeatureExecutor
+import com.raulshma.dailylife.data.ai.AIChatRepository
 import com.raulshma.dailylife.data.ai.LiteRTEngineService
 import com.raulshma.dailylife.data.ai.ModelManager
 import dagger.Module
@@ -18,5 +19,6 @@ object AIModule {
     fun provideAIFeatureExecutor(
         engineService: LiteRTEngineService,
         modelManager: ModelManager,
-    ): AIFeatureExecutor = AIFeatureExecutor(engineService, modelManager)
+        chatRepository: AIChatRepository,
+    ): AIFeatureExecutor = AIFeatureExecutor(engineService, modelManager, chatRepository)
 }

@@ -10,11 +10,15 @@ import androidx.room.TypeConverters
         CompletionRecordEntity::class,
         NotificationSettingsEntity::class,
         S3BackupSettingsEntity::class,
+        AIConversationEntity::class,
+        AIChatMessageEntity::class,
+        AIMetricsEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
 abstract class DailyLifeDatabase : RoomDatabase() {
     abstract fun dailyLifeDao(): DailyLifeDao
+    abstract fun aiConversationDao(): AIConversationDao
 }

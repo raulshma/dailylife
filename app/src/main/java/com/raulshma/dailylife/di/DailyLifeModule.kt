@@ -6,6 +6,7 @@ import androidx.room.Room
 import com.raulshma.dailylife.data.DailyLifeRepository
 import com.raulshma.dailylife.data.RoomPaginatedDailyLifeRepository
 import com.raulshma.dailylife.data.RoomDailyLifeStore
+import com.raulshma.dailylife.data.ai.AIChatRepository
 import com.raulshma.dailylife.data.backup.OkHttpS3BackupRepository
 import com.raulshma.dailylife.data.backup.S3BackupRepository
 import com.raulshma.dailylife.data.db.DailyLifeDatabase
@@ -134,4 +135,10 @@ object DailyLifeModule {
     fun provideGeofenceManager(
         application: android.app.Application,
     ): GeofenceManager = GeofenceManager(application)
+
+    @Provides
+    @Singleton
+    fun provideAIChatRepository(
+        database: DailyLifeDatabase,
+    ): AIChatRepository = AIChatRepository(database.aiConversationDao())
 }

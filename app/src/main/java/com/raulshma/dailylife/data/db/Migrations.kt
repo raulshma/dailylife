@@ -92,4 +92,59 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
     }
 }
 
-val ALL_MIGRATIONS = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS ai_conversations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                title TEXT NOT NULL DEFAULT '',
+                modelId TEXT,
+                createdAt INTEGER NOT NULL,
+                updatedAt INTEGER NOT NULL,
+                messageCount INTEGER NOT NULL DEFAULT 0,
+                isPinned INTEGER NOT NULL DEFAULT 0
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_ai_conversations_updatedAt ON ai_conversations(updatedAt)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_ai_conversations_isPinned ON ai_conversations(isPinned)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_ai_conversations_isPinned_updatedAt ON ai_conversations(isPinned, updatedAt)")
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS ai_chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                conversationId INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                timestamp INTEGER NOT NULL,
+                FOREIGN KEY(conversationId) REFERENCES ai_conversations(id) ON DELETE CASCADE
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_ai_chat_messages_conversationId ON ai_chat_messages(conversationId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_ai_chat_messages_conversationId_timestamp ON ai_chat_messages(conversationId, timestamp)")
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS ai_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                conversationId INTEGER,
+                feature TEXT NOT NULL,
+                modelId TEXT,
+                timeToFirstTokenMs INTEGER,
+                totalGenerationMs INTEGER NOT NULL,
+                inputCharCount INTEGER NOT NULL,
+                outputCharCount INTEGER NOT NULL,
+                isError INTEGER NOT NULL DEFAULT 0,
+                errorMessage TEXT,
+                createdAt INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_ai_metrics_conversationId ON ai_metrics(conversationId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_ai_metrics_feature ON ai_metrics(feature)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_ai_metrics_createdAt ON ai_metrics(createdAt)")
+    }
+}
+
+val ALL_MIGRATIONS = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)

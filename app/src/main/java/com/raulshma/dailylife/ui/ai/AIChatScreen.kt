@@ -1,20 +1,12 @@
 package com.raulshma.dailylife.ui.ai
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.ExperimentalAnimationApi
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -25,7 +17,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -37,7 +28,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
@@ -71,6 +65,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.raulshma.dailylife.data.ai.AIFeatureExecutor
+import com.raulshma.dailylife.data.ai.AIChatRepository
 import com.raulshma.dailylife.data.ai.LiteRTEngineService
 import com.raulshma.dailylife.domain.ChatMessage
 import com.raulshma.dailylife.domain.ChatRole
@@ -82,10 +77,7 @@ import com.raulshma.dailylife.ui.ai.components.AINoModelCard
 import com.raulshma.dailylife.ui.ai.components.AISuggestionChip
 import com.raulshma.dailylife.ui.ai.components.AIStatusChip
 import com.raulshma.dailylife.ui.ai.components.AITypingIndicator
-import com.raulshma.dailylife.ui.theme.DailyLifeDuration
-import com.raulshma.dailylife.ui.theme.DailyLifeEasing
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -97,27 +89,43 @@ import java.util.Locale
 fun AIChatScreen(
     aiExecutor: AIFeatureExecutor,
     engineService: LiteRTEngineService,
+    chatRepository: AIChatRepository,
+    conversationId: Long? = null,
     onBack: () -> Unit,
     onNavigateToModelManager: () -> Unit = {},
 ) {
+    val scope = rememberCoroutineScope()
     val messages = remember { mutableStateListOf<ChatMessage>() }
     var inputText by remember { mutableStateOf("") }
     var isGenerating by remember { mutableStateOf(false) }
     var streamingText by remember { mutableStateOf("") }
     var modelLoadInitiated by remember { mutableStateOf(false) }
+    var activeConversationId by remember { mutableStateOf(conversationId) }
+    var isLoaded by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val engineState by engineService.engineState.collectAsState()
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
 
-    // Track whether user is near bottom for auto-scroll
     var userAtBottom by remember { mutableStateOf(true) }
 
-    LaunchedEffect(Unit) {
-        modelLoadInitiated = true
-        aiExecutor.ensureModelForFeature(com.raulshma.dailylife.domain.AIFeature.CHAT)
+    LaunchedEffect(activeConversationId) {
+        if (!isLoaded) {
+            modelLoadInitiated = true
+            aiExecutor.ensureModelForFeature(com.raulshma.dailylife.domain.AIFeature.CHAT)
+        }
+        val convId = activeConversationId
+        if (convId != null) {
+            chatRepository.getMessages(convId).collect { loaded ->
+                if (loaded.size != messages.size || loaded.isNotEmpty() && messages.isEmpty()) {
+                    messages.clear()
+                    messages.addAll(loaded)
+                    isLoaded = true
+                }
+            }
+        }
+        isLoaded = true
     }
 
     LaunchedEffect(messages.size, streamingText) {
@@ -132,6 +140,37 @@ fun AIChatScreen(
         "Find my task entries",
         "Reflect on my mood",
     )
+
+    fun sendMessage(text: String) {
+        if (text.isBlank() || isGenerating) return
+        scope.launch {
+            var convId = activeConversationId
+            if (convId == null) {
+                convId = chatRepository.createConversation("", engineService.loadedModelId)
+                activeConversationId = convId
+            }
+            val userMsg = chatRepository.addUserMessage(convId, text)
+            messages.add(userMsg)
+            isGenerating = true
+            streamingText = ""
+            try {
+                aiExecutor.chatWithJournal(text, emptyList(), convId).collect { chunk ->
+                    streamingText = chunk
+                }
+                if (streamingText.isNotBlank()) {
+                    val assistantMsg = chatRepository.addAssistantMessage(convId, streamingText)
+                    messages.add(assistantMsg)
+                }
+            } catch (e: Exception) {
+                val errorContent = "Error: ${e.message}"
+                chatRepository.addAssistantMessage(convId, errorContent)
+                messages.add(ChatMessage(ChatRole.ASSISTANT, errorContent))
+            } finally {
+                streamingText = ""
+                isGenerating = false
+            }
+        }
+    }
 
     Scaffold(
         modifier = Modifier
@@ -164,6 +203,31 @@ fun AIChatScreen(
                         }
                     },
                     actions = {
+                        if (activeConversationId != null) {
+                            IconButton(onClick = {
+                                scope.launch { chatRepository.togglePin(activeConversationId!!) }
+                            }) {
+                                Icon(
+                                    Icons.Filled.PushPin,
+                                    contentDescription = "Pin",
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                            IconButton(onClick = {
+                                scope.launch {
+                                    chatRepository.deleteConversation(activeConversationId!!)
+                                    activeConversationId = null
+                                    messages.clear()
+                                    snackbarHostState.showSnackbar("Conversation deleted")
+                                }
+                            }) {
+                                Icon(
+                                    Icons.Filled.Delete,
+                                    contentDescription = "Delete",
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
                         AIStatusChip(
                             engineState = engineState,
                             modifier = Modifier.padding(end = 8.dp),
@@ -202,26 +266,7 @@ fun AIChatScreen(
                 if (messages.isEmpty() && streamingText.isEmpty()) {
                     EmptyChatState(
                         suggestedPrompts = suggestedPrompts,
-                        onPromptClick = { prompt ->
-                            messages.add(ChatMessage(ChatRole.USER, prompt))
-                            isGenerating = true
-                            streamingText = ""
-                            scope.launch {
-                                try {
-                                    aiExecutor.chatWithJournal(prompt, emptyList()).collect { chunk ->
-                                        streamingText = chunk
-                                    }
-                                    if (streamingText.isNotBlank()) {
-                                        messages.add(ChatMessage(ChatRole.ASSISTANT, streamingText))
-                                    }
-                                } catch (e: Exception) {
-                                    messages.add(ChatMessage(ChatRole.ASSISTANT, "Error: ${e.message}"))
-                                } finally {
-                                    streamingText = ""
-                                    isGenerating = false
-                                }
-                            }
-                        },
+                        onPromptClick = { prompt -> sendMessage(prompt) },
                     )
                 } else {
                     LazyColumn(
@@ -317,6 +362,10 @@ fun AIChatScreen(
                             engineService.cancelGeneration()
                             isGenerating = false
                             if (streamingText.isNotEmpty()) {
+                                val convId = activeConversationId ?: return@FilledTonalIconButton
+                                scope.launch {
+                                    chatRepository.addAssistantMessage(convId, streamingText)
+                                }
                                 messages.add(ChatMessage(ChatRole.ASSISTANT, streamingText))
                                 streamingText = ""
                             }
@@ -330,25 +379,8 @@ fun AIChatScreen(
                         onClick = {
                             val text = inputText.trim()
                             if (text.isEmpty()) return@FilledIconButton
-                            messages.add(ChatMessage(ChatRole.USER, text))
                             inputText = ""
-                            isGenerating = true
-                            streamingText = ""
-                            scope.launch {
-                                try {
-                                    aiExecutor.chatWithJournal(text, emptyList()).collect { chunk ->
-                                        streamingText = chunk
-                                    }
-                                    if (streamingText.isNotBlank()) {
-                                        messages.add(ChatMessage(ChatRole.ASSISTANT, streamingText))
-                                    }
-                                } catch (e: Exception) {
-                                    messages.add(ChatMessage(ChatRole.ASSISTANT, "Error: ${e.message}"))
-                                } finally {
-                                    streamingText = ""
-                                    isGenerating = false
-                                }
-                            }
+                            sendMessage(text)
                         },
                         enabled = engineState is EngineState.Ready && inputText.isNotBlank(),
                         modifier = Modifier.size(48.dp),

@@ -87,3 +87,28 @@ sealed class EngineState {
     data class Ready(val modelName: String) : EngineState()
     data class Error(val message: String) : EngineState()
 }
+
+data class AIConversation(
+    val id: Long,
+    val title: String,
+    val modelId: String? = null,
+    val createdAt: Long,
+    val updatedAt: Long,
+    val messageCount: Int,
+    val isPinned: Boolean,
+    val lastMessagePreview: String = "",
+)
+
+data class AIMetric(
+    val id: Long = 0,
+    val conversationId: Long? = null,
+    val feature: String,
+    val modelId: String? = null,
+    val timeToFirstTokenMs: Long? = null,
+    val totalGenerationMs: Long,
+    val inputCharCount: Int,
+    val outputCharCount: Int,
+    val isError: Boolean = false,
+    val errorMessage: String? = null,
+    val createdAt: Long,
+)

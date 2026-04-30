@@ -66,6 +66,7 @@ class DailyLifeViewModel @Inject constructor(
     val modelManager: ModelManager,
     val aiExecutor: AIFeatureExecutor,
     val engineService: LiteRTEngineService,
+    val aiChatRepository: com.raulshma.dailylife.data.ai.AIChatRepository,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
     companion object {

@@ -258,7 +258,9 @@ private sealed class Screen {
     data class FocusTimer(val itemId: Long) : Screen()
     data object Settings : Screen()
     data object ModelManager : Screen()
-    data object AIChat : Screen()
+    data object AIChatList : Screen()
+    data class AIChat(val conversationId: Long? = null) : Screen()
+    data object AIMetrics : Screen()
     data object AIReflections : Screen()
 }
 
@@ -448,13 +450,18 @@ fun DailyLifeApp(
     var completionHistoryItemId by rememberSaveable { mutableStateOf<Long?>(null) }
     var focusTimerItemId by rememberSaveable { mutableStateOf<Long?>(null) }
     var showAIModelManager by rememberSaveable { mutableStateOf(false) }
+    var showAIChatList by rememberSaveable { mutableStateOf(false) }
     var showAIChat by rememberSaveable { mutableStateOf(false) }
+    var activeChatConversationId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var showAIMetrics by rememberSaveable { mutableStateOf(false) }
     var showAIReflections by rememberSaveable { mutableStateOf(false) }
     var isAiSearchActive by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(isAiEnabled) {
         if (!isAiEnabled) {
+            showAIChatList = false
             showAIChat = false
+            showAIMetrics = false
             showAIReflections = false
             isAiSearchActive = false
         }
@@ -464,7 +471,9 @@ fun DailyLifeApp(
     var preloadedDetailItem by remember { mutableStateOf<LifeItem?>(null) }
 
     val screen = when {
-        isAiEnabled && showAIChat -> Screen.AIChat
+        isAiEnabled && showAIMetrics -> Screen.AIMetrics
+        isAiEnabled && showAIChat -> Screen.AIChat(activeChatConversationId)
+        isAiEnabled && showAIChatList -> Screen.AIChatList
         isAiEnabled && showAIReflections -> Screen.AIReflections
         isAiEnabled && showAIModelManager -> Screen.ModelManager
         focusTimerItemId != null -> Screen.FocusTimer(focusTimerItemId!!)
@@ -476,9 +485,15 @@ fun DailyLifeApp(
 
     var skipStaggerAnimation by remember { mutableStateOf(false) }
 
-    BackHandler(enabled = showAIChat || showAIReflections || showAIModelManager || focusTimerItemId != null || completionHistoryItemId != null || selectedItemId != null || showSettings) {
+    BackHandler(enabled = showAIChatList || showAIChat || showAIMetrics || showAIReflections || showAIModelManager || focusTimerItemId != null || completionHistoryItemId != null || selectedItemId != null || showSettings) {
         when {
-            showAIChat -> showAIChat = false
+            showAIChat -> {
+                showAIChat = false
+                activeChatConversationId = null
+                showAIChatList = true
+            }
+            showAIMetrics -> showAIMetrics = false
+            showAIChatList -> showAIChatList = false
             showAIReflections -> showAIReflections = false
             showAIModelManager -> showAIModelManager = false
             focusTimerItemId != null -> focusTimerItemId = null
@@ -733,7 +748,7 @@ fun DailyLifeApp(
                         },
                         onShowQuickAdd = { showQuickAdd = true },
                         onShowSettings = { showSettings = true },
-                        onShowAIChat = if (isAiEnabled) { { showAIChat = true } } else null,
+                        onShowAIChat = if (isAiEnabled) { { showAIChatList = true } } else null,
                         onShowAIReflections = if (isAiEnabled) { { showAIReflections = true } } else null,
                         isAiSearchActive = if (isAiEnabled) isAiSearchActive else false,
                         isAiGenerating = isAiGenerating,
@@ -873,12 +888,50 @@ fun DailyLifeApp(
                         )
                     }
 
+                    is Screen.AIChatList -> {
+                        com.raulshma.dailylife.ui.ai.AIConversationListScreen(
+                            chatRepository = viewModel.aiChatRepository,
+                            onBack = { showAIChatList = false },
+                            onOpenConversation = { conversationId ->
+                                showAIChatList = false
+                                activeChatConversationId = conversationId
+                                showAIChat = true
+                            },
+                            onNewChat = {
+                                showAIChatList = false
+                                activeChatConversationId = null
+                                showAIChat = true
+                            },
+                            onViewMetrics = {
+                                showAIChatList = false
+                                showAIMetrics = true
+                            },
+                        )
+                    }
+
                     is Screen.AIChat -> {
+                        val chatConversationId = (currentScreen as Screen.AIChat).conversationId
                         com.raulshma.dailylife.ui.ai.AIChatScreen(
                             aiExecutor = viewModel.aiExecutor,
                             engineService = viewModel.engineService,
-                            onBack = { showAIChat = false },
-                            onNavigateToModelManager = { showAIChat = false; showAIModelManager = true },
+                            chatRepository = viewModel.aiChatRepository,
+                            conversationId = chatConversationId,
+                            onBack = {
+                                showAIChat = false
+                                activeChatConversationId = null
+                                showAIChatList = true
+                            },
+                            onNavigateToModelManager = {
+                                showAIChat = false
+                                showAIModelManager = true
+                            },
+                        )
+                    }
+
+                    is Screen.AIMetrics -> {
+                        com.raulshma.dailylife.ui.ai.AIMetricsScreen(
+                            chatRepository = viewModel.aiChatRepository,
+                            onBack = { showAIMetrics = false },
                         )
                     }
 
