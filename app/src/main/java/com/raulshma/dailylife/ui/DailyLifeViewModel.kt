@@ -136,10 +136,14 @@ class DailyLifeViewModel @Inject constructor(
     private val _aiSearchFilters = MutableStateFlow("")
     val aiSearchFilters = _aiSearchFilters.asStateFlow()
 
+    private val _aiInferredType = MutableStateFlow<LifeItemType?>(null)
+    val aiInferredType = _aiInferredType.asStateFlow()
+
     private val _isAiGenerating = MutableStateFlow(false)
     val isAiGenerating = _isAiGenerating.asStateFlow()
 
     private var aiJob: Job? = null
+    private var aiTypeInferenceJob: Job? = null
 
     init {
         viewModelScope.launch { repository.rolloverMissedOccurrences() }
@@ -571,8 +575,23 @@ class DailyLifeViewModel @Inject constructor(
 
     fun cancelAiGeneration() {
         aiJob?.cancel()
+        aiTypeInferenceJob?.cancel()
         engineService.cancelGeneration()
         _isAiGenerating.value = false
+    }
+
+    fun inferTypeWithAI(title: String, body: String) {
+        aiTypeInferenceJob?.cancel()
+        _aiInferredType.value = null
+        aiTypeInferenceJob = viewModelScope.launch {
+            try {
+                aiExecutor.inferType(title, body).collect { _aiInferredType.value = it }
+            } catch (e: Exception) {
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    Log.w(TAG, "inferTypeWithAI failed", e)
+                }
+            }
+        }
     }
 
     val enrichmentProgress = enrichmentProcessor.progress
@@ -629,5 +648,6 @@ class DailyLifeViewModel @Inject constructor(
         _aiPhotoDescription.value = ""
         _aiAudioSummary.value = ""
         _aiSearchFilters.value = ""
+        _aiInferredType.value = null
     }
 }

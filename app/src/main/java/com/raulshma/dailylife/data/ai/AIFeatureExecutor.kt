@@ -3,6 +3,7 @@ package com.raulshma.dailylife.data.ai
 import com.raulshma.dailylife.domain.AIModel
 import com.raulshma.dailylife.domain.AIFeature
 import com.raulshma.dailylife.domain.LifeItem
+import com.raulshma.dailylife.domain.LifeItemType
 import com.raulshma.dailylife.domain.MoodResult
 import com.raulshma.dailylife.domain.WritingTone
 import com.raulshma.dailylife.domain.displayBody
@@ -231,5 +232,31 @@ Available tags: $tagsList
 User query: $query"""
         return engineService.generateText(prompt)
             .withMetrics(AIFeature.NL_SEARCH, prompt.length)
+    }
+
+    suspend fun inferType(title: String, body: String): Flow<LifeItemType?> {
+        val model = ensureModelForFeature(AIFeature.SMART_TITLE)
+            ?: return flowOf(null)
+        val prompt = """Classify this journal entry into exactly one of these types: Thought, Note, Task, Reminder, Photo, Video, Audio, Location, Pdf, Mixed.
+Rules:
+- Thought: personal reflection, fleeting idea, opinion
+- Note: informational content, meeting notes, reference material
+- Task: action items, to-do list, checklist
+- Reminder: time-sensitive or scheduled item
+- Photo: primarily about an image or photo
+- Video: primarily about a video
+- Audio: primarily about an audio recording
+- Location: primarily about a place or location
+- Pdf: primarily about a PDF document
+- Mixed: contains multiple media types
+
+Return ONLY the type name, nothing else.
+
+Title: ${title.take(200)}
+Content: ${body.take(500)}"""
+        return engineService.generateText(prompt).map { response ->
+            val cleaned = response.trim().uppercase()
+            LifeItemType.entries.firstOrNull { it.name == cleaned }
+        }.withMetrics(AIFeature.SMART_TITLE, prompt.length)
     }
 }

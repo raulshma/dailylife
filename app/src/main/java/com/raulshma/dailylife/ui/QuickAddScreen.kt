@@ -154,6 +154,15 @@ import java.time.LocalDate
 import java.time.LocalTime
 import kotlinx.coroutines.delay
 
+private enum class TypeDetectMode { OFF, LOGIC, AI }
+
+@Composable
+private fun typeDetectChipIcon(mode: TypeDetectMode): (@Composable () -> Unit)? = when (mode) {
+    TypeDetectMode.OFF -> null
+    TypeDetectMode.LOGIC -> {{ Icon(Icons.Filled.Lightbulb, contentDescription = null, modifier = Modifier.size(14.dp)) }}
+    TypeDetectMode.AI -> {{ Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary) }}
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun QuickAddScreen(
@@ -180,6 +189,8 @@ internal fun QuickAddScreen(
     onApplyAiTags: (List<String>) -> Unit = {},
     onApplyAiRewrite: (String) -> Unit = {},
     onClearAiState: () -> Unit = {},
+    aiInferredType: LifeItemType? = null,
+    onInferTypeWithAI: ((String, String) -> Unit)? = null,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         QuickAddContent(
@@ -206,6 +217,8 @@ internal fun QuickAddScreen(
             onApplyAiTags = onApplyAiTags,
             onApplyAiRewrite = onApplyAiRewrite,
             onClearAiState = onClearAiState,
+            aiInferredType = aiInferredType,
+            onInferTypeWithAI = onInferTypeWithAI,
         )
     }
 }
@@ -236,6 +249,8 @@ private fun QuickAddContent(
     onApplyAiTags: (List<String>) -> Unit = {},
     onApplyAiRewrite: (String) -> Unit = {},
     onClearAiState: () -> Unit = {},
+    aiInferredType: LifeItemType? = null,
+    onInferTypeWithAI: ((String, String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
@@ -274,12 +289,25 @@ private fun QuickAddContent(
     var titleBubbleDismissed by remember { mutableStateOf(false) }
     var rewriteBubbleDismissed by remember { mutableStateOf(false) }
     var showSavedIndicator by remember { mutableStateOf(false) }
+    var typeDetectMode by remember {
+        val saved = context.getSharedPreferences("dailylife_prefs", Context.MODE_PRIVATE)
+            .getString("type_detect_mode", null)
+        mutableStateOf(
+            try { TypeDetectMode.valueOf(saved ?: "LOGIC") }
+            catch (_: Exception) { TypeDetectMode.LOGIC }
+        )
+    }
     val audioRecorder = remember { AudioRecorder(context) }
     val speechTranscriber = remember { SpeechTranscriber(context) }
 
     val titleFocusRequester = remember { FocusRequester() }
     val bodyFocusRequester = remember { FocusRequester() }
     val inferredType = remember(body) { inferTypeFromBody(body) }
+    val effectiveInferredType = when (typeDetectMode) {
+        TypeDetectMode.OFF -> null
+        TypeDetectMode.LOGIC -> inferredType
+        TypeDetectMode.AI -> aiInferredType
+    }
 
     fun currentDraftSnapshot(): QuickAddDraft = QuickAddDraft(
         typeName = selectedType.name,
@@ -319,7 +347,7 @@ private fun QuickAddContent(
     }
 
     fun buildDraftPayload(): LifeItemDraft = LifeItemDraft(
-        type = inferredType ?: selectedType,
+        type = effectiveInferredType ?: selectedType,
         title = title,
         body = body,
         tags = parseTags(tags),
@@ -481,6 +509,20 @@ private fun QuickAddContent(
         if (aiRewrittenText.isNotBlank()) rewriteBubbleDismissed = false
     }
 
+    LaunchedEffect(typeDetectMode) {
+        context.getSharedPreferences("dailylife_prefs", Context.MODE_PRIVATE)
+            .edit().putString("type_detect_mode", typeDetectMode.name).apply()
+    }
+
+    LaunchedEffect(typeDetectMode, body) {
+        if (typeDetectMode == TypeDetectMode.AI && body.isNotBlank() && onInferTypeWithAI != null) {
+            delay(1500)
+            if (body.isNotBlank()) {
+                onInferTypeWithAI(title, body)
+            }
+        }
+    }
+
     LaunchedEffect(
         selectedType, title, body, tags, favorite, pinned,
         reminderDate, reminderTime, notificationsEnabled,
@@ -572,6 +614,44 @@ private fun QuickAddContent(
                 }
             }
 
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Filled.Lightbulb,
+                    contentDescription = null,
+                    tint = if (typeDetectMode != TypeDetectMode.OFF) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    "Detect type",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    TypeDetectMode.entries.forEach { mode ->
+                        val label = when (mode) {
+                            TypeDetectMode.OFF -> "Off"
+                            TypeDetectMode.LOGIC -> "Logic"
+                            TypeDetectMode.AI -> "AI"
+                        }
+                        FilterChip(
+                            selected = typeDetectMode == mode,
+                            onClick = { typeDetectMode = mode },
+                            label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                            leadingIcon = typeDetectChipIcon(mode),
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            ),
+                        )
+                    }
+                }
+            }
+
             // Type Selector (all badges, horizontally scrollable)
             val typeScrollState = rememberScrollState()
             val showTypeScrollCue = typeScrollState.maxValue > 0 && typeScrollState.value < typeScrollState.maxValue
@@ -632,7 +712,7 @@ private fun QuickAddContent(
 
             // Auto-detected type hint
             AnimatedVisibility(
-                visible = inferredType != null && inferredType != selectedType,
+                visible = typeDetectMode != TypeDetectMode.OFF && effectiveInferredType != null && effectiveInferredType != selectedType,
                 enter = fadeIn(tween(DailyLifeDuration.SHORT, easing = DailyLifeEasing.Enter))
                         + expandVertically(tween(DailyLifeDuration.MEDIUM, easing = DailyLifeEasing.Enter)),
                 exit = fadeOut(tween(DailyLifeDuration.SHORT, easing = DailyLifeEasing.Exit))
@@ -642,7 +722,7 @@ private fun QuickAddContent(
                     color = MaterialTheme.colorScheme.secondaryContainer,
                     shape = RoundedCornerShape(8.dp),
                     onClick = {
-                        inferredType?.let {
+                        effectiveInferredType?.let {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             selectedType = it
                         }
@@ -660,7 +740,7 @@ private fun QuickAddContent(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            "Detected ${inferredType?.label ?: ""}. Tap to switch.",
+                            "Detected ${effectiveInferredType?.label ?: ""}. Tap to switch.",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSecondaryContainer
                         )

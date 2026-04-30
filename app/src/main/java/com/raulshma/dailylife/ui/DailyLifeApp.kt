@@ -434,6 +434,7 @@ fun DailyLifeApp(
     val aiSmartTitle by viewModel.aiSmartTitle.collectAsStateWithLifecycle()
     val aiTagSuggestions by viewModel.aiTagSuggestions.collectAsStateWithLifecycle()
     val aiRewrittenText by viewModel.aiRewrittenText.collectAsStateWithLifecycle()
+    val aiInferredType by viewModel.aiInferredType.collectAsStateWithLifecycle()
     val isAiGenerating by viewModel.isAiGenerating.collectAsStateWithLifecycle()
     val aiSearchFilters by viewModel.aiSearchFilters.collectAsStateWithLifecycle()
     val isAiEnabled by viewModel.isAiEnabled.collectAsStateWithLifecycle(initialValue = true)
@@ -1049,6 +1050,8 @@ fun DailyLifeApp(
                 },
                 onApplyAiRewrite = { quickAddDraft = quickAddDraft.copy(body = it) },
                 onClearAiState = { viewModel.clearAiState() },
+                aiInferredType = aiInferredType,
+                onInferTypeWithAI = if (isAiEnabled) { t, b -> viewModel.inferTypeWithAI(t, b) } else null,
             )
         }
     }
@@ -1124,6 +1127,8 @@ fun DailyLifeApp(
                 },
                 onApplyAiRewrite = { editDraft = editDraft.copy(body = it) },
                 onClearAiState = { viewModel.clearAiState() },
+                aiInferredType = aiInferredType,
+                onInferTypeWithAI = if (isAiEnabled) { t, b -> viewModel.inferTypeWithAI(t, b) } else null,
             )
         }
     }
