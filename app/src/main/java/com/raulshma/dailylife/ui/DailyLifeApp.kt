@@ -444,6 +444,7 @@ fun DailyLifeApp(
     val aiSearchFilters by viewModel.aiSearchFilters.collectAsStateWithLifecycle()
     val isAiEnabled by viewModel.isAiEnabled.collectAsStateWithLifecycle(initialValue = true)
     val engineState by viewModel.engineState.collectAsStateWithLifecycle()
+    val recentEntries by viewModel.recentEntries.collectAsStateWithLifecycle(initialValue = emptyList())
     var quickAddDraft by rememberSaveable(stateSaver = QuickAddDraftSaver) {
         mutableStateOf(QuickAddDraft())
     }
@@ -974,7 +975,7 @@ fun DailyLifeApp(
                         com.raulshma.dailylife.ui.ai.AIReflectionsScreen(
                             aiExecutor = viewModel.aiExecutor,
                             engineService = viewModel.engineService,
-                            recentEntries = emptyList(),
+                            recentEntries = recentEntries,
                             onBack = { showAIReflections = false },
                             onNavigateToModelManager = { showAIReflections = false; showAIModelManager = true },
                         )

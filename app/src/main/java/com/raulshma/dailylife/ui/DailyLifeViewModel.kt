@@ -91,6 +91,9 @@ class DailyLifeViewModel @Inject constructor(
     val taggedItemsForGraph = repository.taggedItemsForGraph
     val allItemIds = repository.allItemIds
 
+    private val _recentEntries = MutableStateFlow<List<LifeItem>>(emptyList())
+    val recentEntries: StateFlow<List<LifeItem>> = _recentEntries.asStateFlow()
+
     private val _s3BackupSettings = MutableStateFlow(S3BackupSettings())
     val s3BackupSettings: StateFlow<S3BackupSettings> = _s3BackupSettings.asStateFlow()
 
@@ -107,6 +110,18 @@ class DailyLifeViewModel @Inject constructor(
 
     val isAiEnabled: StateFlow<Boolean> = modelManager.aiEnabled
     val engineState = engineService.engineState
+
+    init {
+        viewModelScope.launch {
+            _recentEntries.value = repository.getAllItems()
+        }
+    }
+
+    private fun refreshRecentEntries() {
+        viewModelScope.launch {
+            _recentEntries.value = repository.getAllItems()
+        }
+    }
 
     fun setAiEnabled(enabled: Boolean) {
         modelManager.setAiEnabled(enabled)
@@ -209,6 +224,7 @@ class DailyLifeViewModel @Inject constructor(
             val encryptedDraft = draft.copy(body = encryptedBody)
             val item = repository.addItem(encryptedDraft)
             syncReminderSchedule()
+            refreshRecentEntries()
             _encryptionProgress.value = null
             if (enrichmentProcessor.isAutoEnrichEnabled()) {
                 enrichmentProcessor.enrichSingleItem(item.id)
@@ -380,6 +396,7 @@ class DailyLifeViewModel @Inject constructor(
             repository.updateItem(encryptedDraft, itemId)
             refreshSelectedItem(itemId)
             syncReminderSchedule()
+            refreshRecentEntries()
             _encryptionProgress.value = null
         }
     }
@@ -388,6 +405,7 @@ class DailyLifeViewModel @Inject constructor(
         viewModelScope.launch {
             repository.deleteItem(itemId)
             syncReminderSchedule()
+            refreshRecentEntries()
         }
     }
 
@@ -417,6 +435,7 @@ class DailyLifeViewModel @Inject constructor(
                 )
                 repository.importSnapshot(snapshot)
                 syncReminderSchedule()
+                refreshRecentEntries()
             } else {
                 _lastBackupResult.value = BackupResult.Failure("No backup found or restore failed")
             }
@@ -429,6 +448,7 @@ class DailyLifeViewModel @Inject constructor(
                 val snapshot = com.raulshma.dailylife.data.backup.SnapshotDeserializer.deserialize(json)
                 repository.importSnapshot(snapshot)
                 syncReminderSchedule()
+                refreshRecentEntries()
                 _lastBackupResult.value = BackupResult.Success(
                     itemsBackedUp = snapshot.items.size,
                     mediaFilesBackedUp = 0,
@@ -440,7 +460,10 @@ class DailyLifeViewModel @Inject constructor(
     }
 
     fun toggleArchive(itemId: Long) {
-        viewModelScope.launch { repository.toggleArchive(itemId) }
+        viewModelScope.launch {
+            repository.toggleArchive(itemId)
+            refreshRecentEntries()
+        }
     }
 
     fun toggleShowArchived() {
