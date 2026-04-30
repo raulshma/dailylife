@@ -2067,6 +2067,8 @@ private fun DetailContentSection(
             }
         }
 
+        val attachmentFormat = remember(attachmentUrl) { extractAttachmentFormat(attachmentUrl) }
+
         val metadataItems = buildList {
             add("Favorite" to if (item.isFavorite) "Yes" else "No")
             add("Pinned" to if (item.isPinned) "Yes" else "No")
@@ -2081,6 +2083,7 @@ private fun DetailContentSection(
                 add("Current streak" to occurrenceStats.currentStreak.toString())
             }
             attachmentSize?.let { add("Size" to formatFileSize(it)) }
+            attachmentFormat?.let { add("Format" to it) }
         }
 
         AnimatedVisibility(
@@ -2722,28 +2725,6 @@ private fun DetailAtAGlanceCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                TypeBadge(type = item.type, boxSize = 42.dp)
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = item.type.label,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Text(
-                        text = item.createdAt.format(TimestampFormatter),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -3074,6 +3055,17 @@ private fun inferMimeType(uriString: String): String? {
     return android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(
         effective.substringAfterLast('.', "").lowercase()
     )
+}
+
+private fun extractAttachmentFormat(uriString: String?): String? {
+    if (uriString.isNullOrBlank()) return null
+    val effective = if (uriString.endsWith(".enc", ignoreCase = true)) {
+        uriString.removeSuffix(".enc")
+    } else {
+        uriString
+    }
+    val extension = effective.substringAfterLast('.', "").trim().lowercase()
+    return extension.takeIf { it.isNotBlank() }?.uppercase()
 }
 
 @Composable

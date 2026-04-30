@@ -366,7 +366,9 @@ fun AIReflectionsScreen(
                     }
                 } else {
                     Box(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
                         contentAlignment = Alignment.Center,
                     ) {
                         if (filteredEntries.isEmpty()) {
