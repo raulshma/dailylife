@@ -105,6 +105,7 @@ dependencies {
     implementation(libs.play.services.location)
     implementation(libs.moshi)
     implementation(libs.moshi.kotlin)
+    implementation(libs.androidx.palette.ktx)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)

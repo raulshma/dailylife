@@ -51,6 +51,7 @@ class MainActivity : AppCompatActivity() {
     private var isLocked by mutableStateOf(true)
     private var showOnboarding by mutableStateOf(false)
     private var stoppedAtMillis = 0L
+    private var paletteKey by mutableStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,7 +86,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            DailyLifeTheme {
+            DailyLifeTheme(paletteKey = paletteKey) {
                 Box(modifier = Modifier.fillMaxSize()) {
                     AnimatedContent(
                         modifier = Modifier.fillMaxSize(),
@@ -132,6 +133,7 @@ class MainActivity : AppCompatActivity() {
                                     viewModel = viewModel,
                                     shareDraft = shareDraft,
                                     onShareDraftConsumed = { shareDraft = null },
+                                    onPaletteChanged = { paletteKey++ },
                                 )
                             }
                         }

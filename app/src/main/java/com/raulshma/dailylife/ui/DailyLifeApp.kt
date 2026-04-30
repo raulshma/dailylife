@@ -406,6 +406,7 @@ fun DailyLifeApp(
     viewModel: DailyLifeViewModel,
     shareDraft: QuickAddDraft? = null,
     onShareDraftConsumed: () -> Unit = {},
+    onPaletteChanged: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -857,6 +858,7 @@ fun DailyLifeApp(
                             isAiEnabled = isAiEnabled,
                             onAiEnabledChanged = { viewModel.setAiEnabled(it) },
                             engineState = engineState,
+                            onPaletteChanged = onPaletteChanged,
                             onBack = { showSettings = false },
                         )
                     }

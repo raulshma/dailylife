@@ -66,6 +66,10 @@ import com.raulshma.dailylife.domain.EngineState
 import com.raulshma.dailylife.domain.NotificationSettings
 import com.raulshma.dailylife.domain.S3BackupSettings
 import com.raulshma.dailylife.ui.ai.components.AIStatusChip
+import com.raulshma.dailylife.ui.theme.MaterialYouColorPicker
+import com.raulshma.dailylife.ui.theme.PalettePreviewStrip
+import com.raulshma.dailylife.ui.theme.PaletteSuggestion
+import com.raulshma.dailylife.ui.theme.saveCustomPalette
 import java.time.LocalTime
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -84,6 +88,7 @@ fun SettingsScreen(
     isAiEnabled: Boolean = true,
     onAiEnabledChanged: (Boolean) -> Unit = {},
     engineState: EngineState = EngineState.Idle,
+    onPaletteChanged: () -> Unit = {},
     onBack: () -> Unit,
 ) {
     Scaffold(
@@ -142,7 +147,7 @@ fun SettingsScreen(
                 )
             }
             item {
-                AppSettingsSection()
+                AppSettingsSection(onPaletteChanged = onPaletteChanged)
             }
             item {
                 Spacer(modifier = Modifier.height(24.dp))
@@ -679,11 +684,12 @@ private fun formatStorageBytes(bytes: Long): String {
 }
 
 @Composable
-private fun AppSettingsSection() {
+private fun AppSettingsSection(onPaletteChanged: () -> Unit = {}) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("dailylife_prefs", android.content.Context.MODE_PRIVATE) }
     var lockEnabled by rememberSaveable { mutableStateOf(prefs.getBoolean("lock_enabled", false)) }
     var dynamicColor by rememberSaveable { mutableStateOf(prefs.getBoolean("dynamic_color", true)) }
+    var selectedPalette by remember { mutableStateOf<PaletteSuggestion?>(null) }
 
     val authenticators = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         BiometricManager.Authenticators.BIOMETRIC_STRONG or
@@ -784,7 +790,23 @@ private fun AppSettingsSection() {
                         onCheckedChange = { enabled ->
                             dynamicColor = enabled
                             prefs.edit().putBoolean("dynamic_color", enabled).apply()
+                            if (!enabled) {
+                                prefs.edit().saveCustomPalette(null).apply()
+                                onPaletteChanged()
+                            }
                         },
+                    )
+                }
+
+                if (dynamicColor) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    MaterialYouColorPicker(
+                        onPaletteSelected = { palette ->
+                            selectedPalette = palette
+                            prefs.edit().saveCustomPalette(palette).apply()
+                            onPaletteChanged()
+                        },
+                        selectedPalette = selectedPalette,
                     )
                 }
             }

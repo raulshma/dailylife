@@ -1,7 +1,10 @@
 package com.raulshma.dailylife.ui.theme
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -11,6 +14,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 
 private val LightColors = lightColorScheme(
@@ -55,23 +59,79 @@ private val DarkColors = darkColorScheme(
     onSurfaceVariant = Color(0xFFD2D3DB),
 )
 
-@Composable
-fun DailyLifeTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
-    content: @Composable () -> Unit,
-) {
-    val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("dailylife_prefs", android.content.Context.MODE_PRIVATE) }
-    val useDynamic = dynamicColor && prefs.getBoolean("dynamic_color", true)
-    val colorScheme = when {
+private const val PREFS_NAME = "dailylife_prefs"
+private const val KEY_DYNAMIC_COLOR = "dynamic_color"
+private const val KEY_CUSTOM_SEED_COLOR = "custom_seed_color"
+private const val KEY_CUSTOM_PALETTE_NAME = "custom_palette_name"
+
+fun SharedPreferences.getCustomPalette(isDark: Boolean = false): PaletteSuggestion? {
+    val seedColorInt = getInt(KEY_CUSTOM_SEED_COLOR, -1)
+    val paletteName = getString(KEY_CUSTOM_PALETTE_NAME, null)
+    if (seedColorInt == -1 || paletteName == null) return null
+
+    val seedColor = Color(seedColorInt)
+    val (light, dark) = DynamicColorGenerator.generateFromSeed(seedColor, isDark)
+    return PaletteSuggestion(
+        source = PaletteSource.Custom,
+        name = paletteName,
+        seedColor = seedColor,
+        lightScheme = light,
+        darkScheme = dark,
+    )
+}
+
+fun SharedPreferences.Editor.saveCustomPalette(palette: PaletteSuggestion?): SharedPreferences.Editor {
+    if (palette == null) {
+        remove(KEY_CUSTOM_SEED_COLOR)
+        remove(KEY_CUSTOM_PALETTE_NAME)
+    } else {
+        putInt(KEY_CUSTOM_SEED_COLOR, palette.seedColor.toArgb())
+        putString(KEY_CUSTOM_PALETTE_NAME, palette.name)
+    }
+    return this
+}
+
+fun Context.getThemeColorScheme(darkTheme: Boolean): ColorScheme {
+    val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    val useDynamic = prefs.getBoolean(KEY_DYNAMIC_COLOR, true)
+    val customPalette = prefs.getCustomPalette(darkTheme)
+
+    return when {
+        customPalette != null -> {
+            if (darkTheme) customPalette.darkScheme else customPalette.lightScheme
+        }
         useDynamic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            if (darkTheme) dynamicDarkColorScheme(context)
-            else dynamicLightColorScheme(context)
+            if (darkTheme) dynamicDarkColorScheme(this) else dynamicLightColorScheme(this)
         }
         darkTheme -> DarkColors
         else -> LightColors
     }
+}
+
+@Composable
+fun DailyLifeTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = true,
+    paletteKey: Int = 0,
+    content: @Composable () -> Unit,
+) {
+    val context = LocalContext.current
+    // paletteKey is read to force recomposition when palette preferences change
+    val prefs = remember(paletteKey) { context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE) }
+    val useDynamic = dynamicColor && prefs.getBoolean(KEY_DYNAMIC_COLOR, true)
+    val customPalette = remember(paletteKey, darkTheme) { prefs.getCustomPalette(darkTheme) }
+
+    val colorScheme = when {
+        customPalette != null -> {
+            if (darkTheme) customPalette.darkScheme else customPalette.lightScheme
+        }
+        useDynamic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        }
+        darkTheme -> DarkColors
+        else -> LightColors
+    }
+
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography(),

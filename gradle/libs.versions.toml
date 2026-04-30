@@ -26,6 +26,7 @@ playServicesLocation = "21.3.0"
 paging = "3.3.6"
 litertlm = "0.10.2"
 moshi = "1.15.2"
+palette = "1.0.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -68,6 +69,7 @@ androidx-paging-compose = { group = "androidx.paging", name = "paging-compose", 
 androidx-room-paging = { group = "androidx.room", name = "room-paging", version.ref = "room" }
 moshi = { group = "com.squareup.moshi", name = "moshi", version.ref = "moshi" }
 moshi-kotlin = { group = "com.squareup.moshi", name = "moshi-kotlin", version.ref = "moshi" }
+androidx-palette-ktx = { group = "androidx.palette", name = "palette-ktx", version.ref = "palette" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
