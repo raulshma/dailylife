@@ -10,6 +10,7 @@ import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import com.google.ai.edge.litertlm.LogSeverity
 import com.raulshma.dailylife.domain.AIModel
+import com.raulshma.dailylife.domain.AIModelCapability
 import com.raulshma.dailylife.domain.EngineState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -58,9 +59,13 @@ class LiteRTEngineService @Inject constructor(
                 Engine.setNativeMinLogSeverity(LogSeverity.ERROR)
                 val modelPath = modelManager.modelFile(model.id).absolutePath
                 val cacheDir = modelManager.modelCacheDir(model.id).absolutePath
+                val supportsVision = AIModelCapability.VISION in model.capabilities
+                val supportsAudio = AIModelCapability.AUDIO in model.capabilities
                 val config = EngineConfig(
                     modelPath = modelPath,
                     backend = Backend.CPU(),
+                    visionBackend = if (supportsVision) Backend.GPU() else null,
+                    audioBackend = if (supportsAudio) Backend.CPU() else null,
                     cacheDir = cacheDir,
                 )
                 _engineState.value = EngineState.Initializing(model.name)
@@ -86,12 +91,18 @@ class LiteRTEngineService @Inject constructor(
     }
 
     private fun unloadModelInternal() {
-        currentConversation?.close()
-        currentConversation = null
+        closeConversationInternal()
         engine?.close()
         engine = null
         currentModelId = null
         _engineState.value = EngineState.Idle
+    }
+
+    private fun closeConversationInternal() {
+        try {
+            currentConversation?.close()
+        } catch (_: Exception) {}
+        currentConversation = null
     }
 
     fun generateText(
@@ -105,7 +116,7 @@ class LiteRTEngineService @Inject constructor(
                     systemInstruction = systemInstruction?.let { Contents.of(it) }
                 )
             )
-            currentConversation?.close()
+            closeConversationInternal()
             currentConversation = conversation
             try {
                 val fullResponse = StringBuilder()
@@ -117,7 +128,7 @@ class LiteRTEngineService @Inject constructor(
                     }
                 }
             } finally {
-                conversation.close()
+                closeConversationInternal()
             }
         }
     }.flowOn(Dispatchers.IO)
@@ -134,13 +145,16 @@ class LiteRTEngineService @Inject constructor(
                     systemInstruction = systemInstruction?.let { Contents.of(it) }
                 )
             )
-            currentConversation?.close()
+            closeConversationInternal()
             currentConversation = conversation
             try {
+                if (imageBytes.isEmpty()) {
+                    throw IllegalArgumentException("Empty image bytes")
+                }
                 val fullResponse = StringBuilder()
                 val contents = Contents.of(
-                    Content.Text(prompt),
                     Content.ImageBytes(imageBytes),
+                    Content.Text(prompt),
                 )
                 conversation.sendMessageAsync(contents).collect { message ->
                     val text = message.toString()
@@ -150,7 +164,7 @@ class LiteRTEngineService @Inject constructor(
                     }
                 }
             } finally {
-                conversation.close()
+                closeConversationInternal()
             }
         }
     }.flowOn(Dispatchers.IO)
@@ -167,13 +181,13 @@ class LiteRTEngineService @Inject constructor(
                     systemInstruction = systemInstruction?.let { Contents.of(it) }
                 )
             )
-            currentConversation?.close()
+            closeConversationInternal()
             currentConversation = conversation
             try {
                 val fullResponse = StringBuilder()
                 val contents = Contents.of(
-                    Content.Text(prompt),
                     Content.AudioBytes(audioBytes),
+                    Content.Text(prompt),
                 )
                 conversation.sendMessageAsync(contents).collect { message ->
                     val text = message.toString()
@@ -183,7 +197,7 @@ class LiteRTEngineService @Inject constructor(
                     }
                 }
             } finally {
-                conversation.close()
+                closeConversationInternal()
             }
         }
     }.flowOn(Dispatchers.IO)
@@ -207,7 +221,7 @@ class LiteRTEngineService @Inject constructor(
                     initialMessages = initialMessages,
                 )
             )
-            currentConversation?.close()
+            closeConversationInternal()
             currentConversation = conversation
             try {
                 val lastMessage = messages.last().second
@@ -220,12 +234,14 @@ class LiteRTEngineService @Inject constructor(
                     }
                 }
             } finally {
-                conversation.close()
+                closeConversationInternal()
             }
         }
     }.flowOn(Dispatchers.IO)
 
     fun cancelGeneration() {
-        currentConversation?.cancelProcess()
+        try {
+            currentConversation?.cancelProcess()
+        } catch (_: Exception) {}
     }
 }

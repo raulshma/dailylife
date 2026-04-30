@@ -3,9 +3,12 @@ package com.raulshma.dailylife.ui
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.location.LocationManager
 import android.net.Uri
 import android.os.BatteryManager
+import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
@@ -58,6 +61,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 
 @HiltViewModel
 class DailyLifeViewModel @Inject constructor(
@@ -146,6 +150,30 @@ class DailyLifeViewModel @Inject constructor(
 
     private var aiJob: Job? = null
     private var aiTypeInferenceJob: Job? = null
+    private var aiGeneration = 0
+
+    private inline fun startAiJob(
+        crossinline block: suspend () -> Unit,
+    ) {
+        aiJob?.cancel()
+        aiGeneration++
+        val myGeneration = aiGeneration
+        _isAiGenerating.value = true
+        aiJob = viewModelScope.launch {
+            try {
+                block()
+            } catch (e: Exception) {
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    Log.w(TAG, "AI operation failed", e)
+                    _aiError.value = e.message
+                }
+            } finally {
+                if (aiGeneration == myGeneration) {
+                    _isAiGenerating.value = false
+                }
+            }
+        }
+    }
 
     init {
         viewModelScope.launch { repository.rolloverMissedOccurrences() }
@@ -453,184 +481,251 @@ class DailyLifeViewModel @Inject constructor(
     }
 
     fun generateSmartTitle(body: String) {
-        aiJob?.cancel()
         _aiSmartTitle.value = ""
         _aiError.value = null
-        _isAiGenerating.value = true
-        aiJob = viewModelScope.launch {
-            try {
-                aiExecutor.generateSmartTitle(body).collect { _aiSmartTitle.value = it }
-            } catch (e: Exception) {
-                if (e !is kotlinx.coroutines.CancellationException) {
-                    Log.w(TAG, "generateSmartTitle failed", e)
-                    _aiError.value = e.message
-                }
-            } finally {
-                _isAiGenerating.value = false
-            }
+        startAiJob {
+            aiExecutor.generateSmartTitle(body).collect { _aiSmartTitle.value = it }
         }
     }
 
     fun suggestTags(title: String, body: String) {
-        aiJob?.cancel()
         _aiTagSuggestions.value = emptyList()
         _aiError.value = null
-        _isAiGenerating.value = true
-        aiJob = viewModelScope.launch {
-            try {
-                aiExecutor.suggestTags(title, body).collect { _aiTagSuggestions.value = it }
-            } catch (e: Exception) {
-                if (e !is kotlinx.coroutines.CancellationException) {
-                    Log.w(TAG, "suggestTags failed", e)
-                    _aiError.value = e.message
-                }
-            } finally {
-                _isAiGenerating.value = false
-            }
+        startAiJob {
+            aiExecutor.suggestTags(title, body).collect { _aiTagSuggestions.value = it }
         }
     }
 
     fun summarizeEntry(title: String, body: String) {
-        aiJob?.cancel()
         _aiSummary.value = ""
         _aiError.value = null
-        _isAiGenerating.value = true
-        aiJob = viewModelScope.launch {
-            try {
-                aiExecutor.summarizeEntry(title, body).collect { _aiSummary.value = it }
-            } catch (e: Exception) {
-                if (e !is kotlinx.coroutines.CancellationException) {
-                    Log.w(TAG, "summarizeEntry failed", e)
-                    _aiError.value = e.message
-                }
-            } finally {
-                _isAiGenerating.value = false
-            }
+        startAiJob {
+            aiExecutor.summarizeEntry(title, body).collect { _aiSummary.value = it }
         }
     }
 
     fun analyzeMood(title: String, body: String) {
-        aiJob?.cancel()
         _aiMood.value = null
         _aiError.value = null
-        _isAiGenerating.value = true
-        aiJob = viewModelScope.launch {
-            try {
-                aiExecutor.analyzeMood(title, body).collect { _aiMood.value = it }
-            } catch (e: Exception) {
-                if (e !is kotlinx.coroutines.CancellationException) {
-                    Log.w(TAG, "analyzeMood failed", e)
-                    _aiError.value = e.message
-                }
-            } finally {
-                _isAiGenerating.value = false
-            }
+        startAiJob {
+            aiExecutor.analyzeMood(title, body).collect { _aiMood.value = it }
         }
     }
 
     fun rewriteText(text: String, tone: WritingTone) {
-        aiJob?.cancel()
         _aiRewrittenText.value = ""
         _aiError.value = null
-        _isAiGenerating.value = true
-        aiJob = viewModelScope.launch {
-            try {
-                aiExecutor.rewriteText(text, tone).collect { _aiRewrittenText.value = it }
-            } catch (e: Exception) {
-                if (e !is kotlinx.coroutines.CancellationException) {
-                    Log.w(TAG, "rewriteText failed", e)
-                    _aiError.value = e.message
-                }
-            } finally {
-                _isAiGenerating.value = false
-            }
+        startAiJob {
+            aiExecutor.rewriteText(text, tone).collect { _aiRewrittenText.value = it }
         }
     }
 
     fun describePhoto(imageBytes: ByteArray) {
-        aiJob?.cancel()
         _aiPhotoDescription.value = ""
         _aiError.value = null
-        _isAiGenerating.value = true
-        aiJob = viewModelScope.launch {
-            try {
-                aiExecutor.describePhoto(imageBytes).collect { _aiPhotoDescription.value = it }
-            } catch (e: Exception) {
-                if (e !is kotlinx.coroutines.CancellationException) {
-                    Log.w(TAG, "describePhoto failed", e)
-                    _aiError.value = e.message
-                }
-            } finally {
-                _isAiGenerating.value = false
-            }
+        startAiJob {
+            aiExecutor.describePhoto(imageBytes).collect { _aiPhotoDescription.value = it }
         }
     }
 
     fun summarizeAudio(audioBytes: ByteArray) {
-        aiJob?.cancel()
         _aiAudioSummary.value = ""
         _aiError.value = null
-        _isAiGenerating.value = true
-        aiJob = viewModelScope.launch {
-            try {
-                aiExecutor.summarizeAudio(audioBytes).collect { _aiAudioSummary.value = it }
-            } catch (e: Exception) {
-                if (e !is kotlinx.coroutines.CancellationException) {
-                    Log.w(TAG, "summarizeAudio failed", e)
-                    _aiError.value = e.message
-                }
-            } finally {
-                _isAiGenerating.value = false
-            }
+        startAiJob {
+            aiExecutor.summarizeAudio(audioBytes).collect { _aiAudioSummary.value = it }
         }
     }
 
     fun describePhotoFromUri(uriString: String) {
-        aiJob?.cancel()
         _aiPhotoDescription.value = ""
         _aiError.value = null
-        _isAiGenerating.value = true
-        aiJob = viewModelScope.launch {
-            try {
-                val bytes = readMediaBytes(uriString)
-                if (bytes != null) {
-                    aiExecutor.describePhoto(bytes).collect { _aiPhotoDescription.value = it }
-                } else {
-                    _aiError.value = "Failed to read image"
-                }
-            } catch (e: Exception) {
-                if (e !is kotlinx.coroutines.CancellationException) {
-                    Log.w(TAG, "describePhotoFromUri failed", e)
-                    _aiError.value = e.message
-                }
-            } finally {
-                _isAiGenerating.value = false
+        startAiJob {
+            val bytes = readImageBytesForAi(uriString)
+            if (bytes != null) {
+                aiExecutor.describePhoto(bytes).collect { _aiPhotoDescription.value = it }
+            } else {
+                _aiError.value = "Failed to read image"
             }
         }
     }
 
     fun summarizeAudioFromUri(uriString: String) {
-        aiJob?.cancel()
         _aiAudioSummary.value = ""
         _aiError.value = null
-        _isAiGenerating.value = true
-        aiJob = viewModelScope.launch {
-            try {
-                val bytes = readMediaBytes(uriString)
-                if (bytes != null) {
-                    aiExecutor.summarizeAudio(bytes).collect { _aiAudioSummary.value = it }
-                } else {
-                    _aiError.value = "Failed to read audio"
-                }
-            } catch (e: Exception) {
-                if (e !is kotlinx.coroutines.CancellationException) {
-                    Log.w(TAG, "summarizeAudioFromUri failed", e)
-                    _aiError.value = e.message
-                }
-            } finally {
-                _isAiGenerating.value = false
+        startAiJob {
+            val bytes = readMediaBytes(uriString)
+            if (bytes != null) {
+                aiExecutor.summarizeAudio(bytes).collect { _aiAudioSummary.value = it }
+            } else {
+                _aiError.value = "Failed to read audio"
             }
         }
+    }
+
+    private val maxAiImageDimension = 384
+    private val maxAiImageBytes = 600_000
+
+    private data class ImageBytes(
+        val bytes: ByteArray,
+        val width: Int,
+        val height: Int,
+    )
+
+    private suspend fun readImageBytesForAi(uriString: String): ByteArray? {
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val uri = Uri.parse(uriString)
+                val resolvedUri = mediaEncryptionManager.decryptToCache(uri, context) ?: uri
+                val rawBytes = context.contentResolver.openInputStream(resolvedUri)?.use { it.readBytes() }
+                    ?: return@withContext null
+                val isHeic = isHeicHeader(rawBytes)
+                val bitmap = decodeBitmapForAi(rawBytes, maxAiImageDimension, isHeic) ?: return@withContext null
+                val imageBytes = if (isHeic) {
+                    bitmap.toJpegByteArrayWithLimit(maxAiImageDimension, maxAiImageBytes)
+                } else {
+                    bitmap.toPngByteArrayWithLimit(maxAiImageDimension, maxAiImageBytes)
+                }
+                Log.i(
+                    TAG,
+                    "Image for AI: ${bitmap.width}x${bitmap.height} -> ${imageBytes.width}x${imageBytes.height}, ${imageBytes.bytes.size} bytes",
+                )
+                bitmap.recycle()
+                imageBytes.bytes
+            }.getOrNull()
+        }
+    }
+
+    private fun decodeBitmapForAi(rawBytes: ByteArray, maxDimension: Int, isHeic: Boolean): Bitmap? {
+        val bitmap = if (isHeic) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+                Log.w(TAG, "HEIC decode unsupported on API ${Build.VERSION.SDK_INT}")
+                return null
+            }
+            try {
+                val source = android.graphics.ImageDecoder.createSource(java.nio.ByteBuffer.wrap(rawBytes))
+                android.graphics.ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                    decoder.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE
+                    decoder.isMutableRequired = false
+                    decoder.setTargetColorSpace(android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.SRGB))
+                    decoder.setMemorySizePolicy(android.graphics.ImageDecoder.MEMORY_POLICY_LOW_RAM)
+                    val size = info.size
+                    val scale = maxDimension.toFloat() / maxOf(size.width, size.height)
+                    if (scale < 1f) {
+                        decoder.setTargetSize(
+                            (size.width * scale).toInt().coerceAtLeast(1),
+                            (size.height * scale).toInt().coerceAtLeast(1),
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "HEIC decode failed", e)
+                null
+            }
+        } else {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size, bounds)
+            val inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, maxDimension)
+            val options = BitmapFactory.Options().apply {
+                this.inSampleSize = inSampleSize
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size, options)
+        }
+        if (bitmap == null) return null
+        if (bitmap.config == Bitmap.Config.ARGB_8888) return bitmap
+        val normalized = bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        if (normalized != null) bitmap.recycle()
+        return normalized ?: bitmap
+    }
+
+    private fun isHeicHeader(rawBytes: ByteArray): Boolean {
+        return rawBytes.size >= 12 && (
+            rawBytes[4] == 'f'.code.toByte() && rawBytes[5] == 't'.code.toByte() &&
+                rawBytes[6] == 'y'.code.toByte() && rawBytes[7] == 'p'.code.toByte() ||
+            rawBytes[4] == 'h'.code.toByte() && rawBytes[5] == 'e'.code.toByte() &&
+                rawBytes[6] == 'i'.code.toByte() && rawBytes[7] == 'c'.code.toByte()
+        )
+    }
+
+    private fun Bitmap.toPngByteArrayWithLimit(maxDimension: Int, maxBytes: Int): ImageBytes {
+        val needsResize = width > maxDimension || height > maxDimension
+        var current = if (needsResize) {
+            val scale = maxDimension.toFloat() / maxOf(width, height)
+            val targetW = (width * scale).toInt().coerceAtLeast(1)
+            val targetH = (height * scale).toInt().coerceAtLeast(1)
+            Bitmap.createScaledBitmap(this, targetW, targetH, true)
+        } else {
+            this
+        }
+        var currentW = current.width
+        var currentH = current.height
+        while (true) {
+            val bytes = current.compressToPng()
+            if (bytes.size <= maxBytes || (currentW <= 128 && currentH <= 128)) {
+                if (current !== this) current.recycle()
+                return ImageBytes(bytes, currentW, currentH)
+            }
+            val nextW = (currentW * 0.75f).toInt().coerceAtLeast(1)
+            val nextH = (currentH * 0.75f).toInt().coerceAtLeast(1)
+            val next = Bitmap.createScaledBitmap(current, nextW, nextH, true)
+            if (current !== this) current.recycle()
+            current = next
+            currentW = nextW
+            currentH = nextH
+        }
+    }
+
+    private fun Bitmap.toJpegByteArrayWithLimit(maxDimension: Int, maxBytes: Int): ImageBytes {
+        val needsResize = width > maxDimension || height > maxDimension
+        var current = if (needsResize) {
+            val scale = maxDimension.toFloat() / maxOf(width, height)
+            val targetW = (width * scale).toInt().coerceAtLeast(1)
+            val targetH = (height * scale).toInt().coerceAtLeast(1)
+            Bitmap.createScaledBitmap(this, targetW, targetH, true)
+        } else {
+            this
+        }
+        var currentW = current.width
+        var currentH = current.height
+        while (true) {
+            var quality = 85
+            var bytes = current.compressToJpeg(quality)
+            while (bytes.size > maxBytes && quality >= 50) {
+                quality -= 10
+                bytes = current.compressToJpeg(quality)
+            }
+            if (bytes.size <= maxBytes || (currentW <= 128 && currentH <= 128)) {
+                if (current !== this) current.recycle()
+                return ImageBytes(bytes, currentW, currentH)
+            }
+            val nextW = (currentW * 0.75f).toInt().coerceAtLeast(1)
+            val nextH = (currentH * 0.75f).toInt().coerceAtLeast(1)
+            val next = Bitmap.createScaledBitmap(current, nextW, nextH, true)
+            if (current !== this) current.recycle()
+            current = next
+            currentW = nextW
+            currentH = nextH
+        }
+    }
+
+    private fun Bitmap.compressToPng(): ByteArray {
+        val stream = ByteArrayOutputStream()
+        compress(Bitmap.CompressFormat.PNG, 100, stream)
+        return stream.toByteArray()
+    }
+
+    private fun Bitmap.compressToJpeg(quality: Int): ByteArray {
+        val stream = ByteArrayOutputStream()
+        compress(Bitmap.CompressFormat.JPEG, quality, stream)
+        return stream.toByteArray()
+    }
+
+    private fun calculateInSampleSize(width: Int, height: Int, reqSize: Int): Int {
+        var inSampleSize = 1
+        while (width / inSampleSize > reqSize || height / inSampleSize > reqSize) {
+            inSampleSize *= 2
+        }
+        return inSampleSize
     }
 
     private suspend fun readMediaBytes(uriString: String): ByteArray? {
@@ -667,6 +762,7 @@ class DailyLifeViewModel @Inject constructor(
         aiJob?.cancel()
         aiTypeInferenceJob?.cancel()
         engineService.cancelGeneration()
+        aiGeneration++
         _isAiGenerating.value = false
     }
 
