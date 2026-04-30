@@ -20,6 +20,7 @@ data class AIModel(
 
 sealed class ModelDownloadState {
     data object NotDownloaded : ModelDownloadState()
+    data class Resuming(val progress: Float) : ModelDownloadState()
     data class Downloading(val progress: Float) : ModelDownloadState()
     data object Downloaded : ModelDownloadState()
     data class DownloadFailed(val error: String) : ModelDownloadState()

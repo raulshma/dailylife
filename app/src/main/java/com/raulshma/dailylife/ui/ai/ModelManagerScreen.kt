@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
@@ -32,6 +34,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.outlined.CheckCircleOutline
@@ -47,6 +50,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -68,6 +72,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.raulshma.dailylife.data.ai.LiteRTEngineService
 import com.raulshma.dailylife.data.ai.ModelManager
@@ -76,9 +81,9 @@ import com.raulshma.dailylife.domain.AIModelCapability
 import com.raulshma.dailylife.domain.EngineState
 import com.raulshma.dailylife.domain.ModelDownloadState
 import com.raulshma.dailylife.ui.ai.components.AIGradientAccent
+import com.raulshma.dailylife.ui.ai.components.AIMetadataBadge
 import com.raulshma.dailylife.ui.ai.components.AIStatusChip
 import com.raulshma.dailylife.ui.theme.DailyLifeDuration
-import com.raulshma.dailylife.ui.theme.DailyLifeEasing
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -94,6 +99,15 @@ fun ModelManagerScreen(
     val scope = rememberCoroutineScope()
     val engineState by (engineService?.engineState?.collectAsState() ?: remember { mutableStateOf<EngineState>(EngineState.Idle) })
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    var searchQuery by remember { mutableStateOf("") }
+
+    val filteredCatalog = remember(catalog, searchQuery) {
+        if (searchQuery.isBlank()) catalog
+        else catalog.filter {
+            it.name.contains(searchQuery, ignoreCase = true) ||
+                it.description.contains(searchQuery, ignoreCase = true)
+        }
+    }
 
     LaunchedEffect(Unit) {
         if (catalog.isEmpty()) {
@@ -203,6 +217,27 @@ fun ModelManagerScreen(
 
             Spacer(Modifier.height(12.dp))
 
+            if (catalog.size > 3) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Search models...") },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Filled.Search,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { /* no-op */ }),
+                )
+                Spacer(Modifier.height(8.dp))
+            }
+
             if (storageBytes > 0) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -269,7 +304,7 @@ fun ModelManagerScreen(
                 contentPadding = PaddingValues(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                items(catalog, key = { it.id }) { model ->
+                items(filteredCatalog, key = { it.id }) { model ->
                     ModelCard(
                         model = model,
                         modelManager = modelManager,
@@ -292,8 +327,10 @@ private fun ModelCard(
     onDelete: () -> Unit,
 ) {
     val downloadState by modelManager.getDownloadState(model.id).collectAsState(ModelDownloadState.NotDownloaded)
+    val downloadSpeed by modelManager.getDownloadSpeed(model.id).collectAsState("")
     val isDownloaded = downloadState is ModelDownloadState.Downloaded
-    val isDownloading = downloadState is ModelDownloadState.Downloading
+    val isDownloading = downloadState is ModelDownloadState.Downloading || downloadState is ModelDownloadState.Resuming
+    val isResuming = downloadState is ModelDownloadState.Resuming
 
     val borderColor = if (isDefault && isDownloaded) {
         MaterialTheme.colorScheme.primary
@@ -369,37 +406,21 @@ private fun ModelCard(
                 CapabilityChip("Tools", AIModelCapability.TOOL_CALLING in model.capabilities)
             }
 
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(8.dp))
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text(
-                    text = formatBytes(model.fileSizeBytes),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = "\u00B7",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Icon(
-                        Icons.Filled.Memory,
-                        contentDescription = null,
-                        modifier = Modifier.size(10.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = "~${model.ramRequiredMb}MB RAM",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                val params = extractParameters(model.name)
+                if (params != null) {
+                    AIMetadataBadge(label = "Params", value = params, highlighted = true)
                 }
+                val quant = extractQuantization(model.name)
+                if (quant != null) {
+                    AIMetadataBadge(label = "Quant", value = quant)
+                }
+                AIMetadataBadge(label = "RAM", value = "~${model.ramRequiredMb}MB")
+                AIMetadataBadge(label = "Size", value = formatBytes(model.fileSizeBytes))
             }
 
             Spacer(Modifier.height(12.dp))
@@ -414,6 +435,41 @@ private fun ModelCard(
                         Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
                         Text("Download ${formatBytes(model.fileSizeBytes)}")
+                    }
+                }
+                is ModelDownloadState.Resuming -> {
+                    val progress = (downloadState as ModelDownloadState.Resuming).progress
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(4.dp)),
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "${(progress * 100).toInt()}% — Interrupted",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        TextButton(onClick = { modelManager.clearDownload(model.id) }) {
+                            Text("Clear")
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = { modelManager.resumeModel(model) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Resume Download")
                     }
                 }
                 is ModelDownloadState.Downloading -> {
@@ -431,7 +487,7 @@ private fun ModelCard(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            "${(progress * 100).toInt()}%",
+                            "${(progress * 100).toInt()}%${if (downloadSpeed.isNotBlank()) " · $downloadSpeed" else ""}",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
                         )
@@ -532,4 +588,14 @@ private fun formatBytes(bytes: Long): String {
     if (mb < 1024) return "${"%.0f".format(mb)} MB"
     val gb = mb / 1024.0
     return "${"%.1f".format(gb)} GB"
+}
+
+private fun extractParameters(name: String): String? {
+    val regex = "(\\d+(?:\\.\\d+)?)B".toRegex(RegexOption.IGNORE_CASE)
+    return regex.find(name)?.groupValues?.get(1)?.let { "${it}B" }
+}
+
+private fun extractQuantization(name: String): String? {
+    val regex = "(Q\\d+(?:[_-][A-Z]+)?)".toRegex(RegexOption.IGNORE_CASE)
+    return regex.find(name)?.groupValues?.get(1)?.uppercase()
 }

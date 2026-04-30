@@ -1,11 +1,11 @@
 package com.raulshma.dailylife.ui.ai
 
+import android.content.Intent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,8 +30,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -39,8 +41,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -50,6 +53,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +61,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
@@ -64,18 +71,31 @@ import com.raulshma.dailylife.data.ai.AIFeatureExecutor
 import com.raulshma.dailylife.data.ai.LiteRTEngineService
 import com.raulshma.dailylife.domain.EngineState
 import com.raulshma.dailylife.domain.LifeItem
+import com.raulshma.dailylife.domain.LifeItemType
+import com.raulshma.dailylife.ui.ai.components.AIEmptyState
+import com.raulshma.dailylife.ui.ai.components.AIEntryPreviewChip
 import com.raulshma.dailylife.ui.ai.components.AIGradientAccent
 import com.raulshma.dailylife.ui.ai.components.AIGradientBorderCard
 import com.raulshma.dailylife.ui.ai.components.AIModelLoadingOverlay
 import com.raulshma.dailylife.ui.ai.components.AINoModelCard
-import com.raulshma.dailylife.ui.ai.components.AISparkleIcon
+import com.raulshma.dailylife.ui.ai.components.AIShimmerLoader
 import com.raulshma.dailylife.ui.ai.components.AIStatusChip
-import com.raulshma.dailylife.ui.ai.components.PulsingDot
 import com.raulshma.dailylife.ui.theme.DailyLifeDuration
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+
+private fun LifeItemType.emoji(): String = when (this) {
+    LifeItemType.Thought -> "\uD83D\uDCAD"
+    LifeItemType.Note -> "\uD83D\uDCDD"
+    LifeItemType.Task -> "\u2705"
+    LifeItemType.Reminder -> "\u23F0"
+    LifeItemType.Photo -> "\uD83D\uDCF7"
+    LifeItemType.Video -> "\uD83C\uDFA5"
+    LifeItemType.Audio -> "\uD83C\uDF99\uFE0F"
+    LifeItemType.Location -> "\uD83D\uDCCD"
+    LifeItemType.Pdf -> "\uD83D\uDCC4"
+    LifeItemType.Mixed -> "\uD83D\uDDC2\uFE0F"
+}
 
 data class ReflectionDateRange(
     val label: String,
@@ -107,10 +127,21 @@ fun AIReflectionsScreen(
     var modelLoadInitiated by remember { mutableStateOf(false) }
     val engineState by engineService.engineState.collectAsState()
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         modelLoadInitiated = true
         aiExecutor.ensureModelForFeature(com.raulshma.dailylife.domain.AIFeature.REFLECTION)
+    }
+
+    val filteredEntries = remember(selectedRange, recentEntries) {
+        recentEntries.filter { entry ->
+            val date = entry.createdAt.toLocalDate()
+            !date.isBefore(selectedRange.start) && !date.isAfter(selectedRange.end)
+        }
     }
 
     Scaffold(
@@ -168,6 +199,7 @@ fun AIReflectionsScreen(
                 AIGradientAccent()
             }
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         contentWindowInsets = WindowInsets.safeDrawing,
     ) { innerPadding ->
         Column(
@@ -212,13 +244,6 @@ fun AIReflectionsScreen(
 
                 Spacer(Modifier.height(12.dp))
 
-                val filteredEntries = remember(selectedRange, recentEntries) {
-                    recentEntries.filter { entry ->
-                        val date = entry.createdAt.toLocalDate()
-                        !date.isBefore(selectedRange.start) && !date.isAfter(selectedRange.end)
-                    }
-                }
-
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -236,6 +261,38 @@ fun AIReflectionsScreen(
                     )
                 }
 
+                if (filteredEntries.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp),
+                    ) {
+                        items(filteredEntries.take(12)) { entry ->
+                            AIEntryPreviewChip(
+                                title = entry.title.ifBlank { entry.type.label },
+                                typeEmoji = entry.type.emoji(),
+                            )
+                        }
+                        if (filteredEntries.size > 12) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = "+${filteredEntries.size - 12} more",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Spacer(Modifier.height(12.dp))
 
                 if (isGenerating || reflectionText.isNotEmpty()) {
@@ -248,29 +305,62 @@ fun AIReflectionsScreen(
                         AIGradientBorderCard {
                             Column(
                                 modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
                                 if (isGenerating && reflectionText.isEmpty()) {
+                                    AIShimmerLoader(lineCount = 4)
+                                } else {
+                                    Text(
+                                        text = reflectionText,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontStyle = FontStyle.Italic,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                }
+
+                                if (!isGenerating && reflectionText.isNotEmpty()) {
                                     Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End,
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     ) {
-                                        PulsingDot(color = MaterialTheme.colorScheme.primary)
-                                        Text(
-                                            "Generating reflection...",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
+                                        IconButton(
+                                            onClick = {
+                                                clipboardManager.setText(AnnotatedString(reflectionText))
+                                                scope.launch {
+                                                    snackbarHostState.showSnackbar("Copied to clipboard")
+                                                }
+                                            },
+                                            modifier = Modifier.size(32.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.ContentCopy,
+                                                contentDescription = "Copy",
+                                                modifier = Modifier.size(18.dp),
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                val sendIntent = Intent().apply {
+                                                    action = Intent.ACTION_SEND
+                                                    type = "text/plain"
+                                                    putExtra(Intent.EXTRA_TEXT, reflectionText)
+                                                }
+                                                val shareIntent = Intent.createChooser(sendIntent, "Share reflection")
+                                                context.startActivity(shareIntent)
+                                            },
+                                            modifier = Modifier.size(32.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.Share,
+                                                contentDescription = "Share",
+                                                modifier = Modifier.size(18.dp),
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
                                     }
                                 }
-                                Text(
-                                    text = reflectionText.ifEmpty {
-                                        if (isGenerating) " " else ""
-                                    },
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontStyle = FontStyle.Italic,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
                             }
                         }
                     }
@@ -279,31 +369,24 @@ fun AIReflectionsScreen(
                         modifier = Modifier.weight(1f),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            AISparkleIcon(
-                                size = 56.dp,
-                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                        if (filteredEntries.isEmpty()) {
+                            AIEmptyState(
+                                title = "No entries to reflect on",
+                                subtitle = "Add some journal entries for this time range first",
+                                icon = {
+                                    Icon(
+                                        Icons.Filled.DateRange,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(56.dp),
+                                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                                    )
+                                },
                             )
-                            Text(
-                                "Reflect on your entries",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
+                        } else {
+                            AIEmptyState(
+                                title = "Reflect on your entries",
+                                subtitle = "Select a time range and generate an AI reflection",
                             )
-                            Text(
-                                "Select a time range and generate an AI reflection",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            if (filteredEntries.isEmpty()) {
-                                Text(
-                                    "No entries in this date range.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.error,
-                                )
-                            }
                         }
                     }
                 }
@@ -314,7 +397,7 @@ fun AIReflectionsScreen(
                     onClick = {
                         reflectionText = ""
                         isGenerating = true
-                        CoroutineScope(Dispatchers.Main).launch {
+                        scope.launch {
                             try {
                                 aiExecutor.generateReflection(
                                     entries = filteredEntries,

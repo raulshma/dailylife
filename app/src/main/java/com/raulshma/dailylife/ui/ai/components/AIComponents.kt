@@ -16,9 +16,11 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,6 +32,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
@@ -37,6 +40,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -56,6 +60,8 @@ import androidx.compose.ui.unit.sp
 import com.raulshma.dailylife.domain.EngineState
 import com.raulshma.dailylife.ui.theme.DailyLifeDuration
 import com.raulshma.dailylife.ui.theme.DailyLifeEasing
+import com.raulshma.dailylife.ui.theme.DailyLifeRepeat
+import com.raulshma.dailylife.ui.theme.DailyLifeSpring
 
 @Composable
 fun AIStatusChip(
@@ -220,11 +226,9 @@ fun AINoModelCard(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Icon(
-                Icons.Filled.SmartToy,
-                contentDescription = null,
-                modifier = Modifier.size(36.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            AISparkleIcon(
+                size = 48.dp,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
             )
             Text(
                 text = "No AI model installed",
@@ -252,18 +256,33 @@ fun AIGradientAccent(
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val tertiary = MaterialTheme.colorScheme.tertiary
+    val secondary = MaterialTheme.colorScheme.secondary
+    val infiniteTransition = rememberInfiniteTransition(label = "accentFlow")
+    val offset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1000f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(DailyLifeDuration.LONG * 6, easing = DailyLifeEasing.Ambient),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "accentOffset",
+    )
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(2.dp)
+            .height(3.dp)
             .background(
                 Brush.horizontalGradient(
                     colors = listOf(
                         Color.Transparent,
-                        primary.copy(alpha = 0.3f),
-                        tertiary.copy(alpha = 0.2f),
+                        primary.copy(alpha = 0.5f),
+                        secondary.copy(alpha = 0.3f),
+                        tertiary.copy(alpha = 0.5f),
+                        primary.copy(alpha = 0.5f),
                         Color.Transparent,
                     ),
+                    startX = offset - 600f,
+                    endX = offset + 400f,
                 ),
             ),
     )
@@ -390,5 +409,286 @@ fun AIStreamingText(
             Spacer(Modifier.height(4.dp))
             AITypingIndicator()
         }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// New Material Design 3 Expressive Components
+// ═══════════════════════════════════════════════════════════════
+
+@Composable
+fun AISuggestionChip(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: @Composable (() -> Unit)? = null,
+) {
+    val primary = MaterialTheme.colorScheme.primary
+    val surface = MaterialTheme.colorScheme.surfaceContainerHighest
+    Surface(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = surface,
+        tonalElevation = 1.dp,
+        shadowElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            icon?.invoke()
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                color = primary,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+    }
+}
+
+@Composable
+fun AIEntryPreviewChip(
+    title: String,
+    modifier: Modifier = Modifier,
+    typeEmoji: String? = null,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+        tonalElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            if (typeEmoji != null) {
+                Text(
+                    text = typeEmoji,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+fun AIMetadataBadge(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    highlighted: Boolean = false,
+) {
+    val bgColor = if (highlighted) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHigh
+    }
+    val textColor = if (highlighted) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(8.dp),
+        color = bgColor,
+        tonalElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = textColor.copy(alpha = 0.7f),
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.labelSmall,
+                color = textColor,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
+}
+
+@Composable
+fun AIShimmerLoader(
+    modifier: Modifier = Modifier,
+    lineCount: Int = 4,
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "shimmer")
+    val shimmerTranslate by infiniteTransition.animateFloat(
+        initialValue = -1f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = DailyLifeEasing.Enter),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "shimmerTranslate",
+    )
+    val shimmerColors = listOf(
+        MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.3f),
+        MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f),
+        MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.3f),
+    )
+    val brush = Brush.horizontalGradient(
+        colors = shimmerColors,
+        startX = shimmerTranslate * 300f,
+        endX = shimmerTranslate * 300f + 200f,
+    )
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        repeat(lineCount) { index ->
+            val widthFraction = when (index) {
+                lineCount - 1 -> 0.6f
+                else -> 1f
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(widthFraction)
+                    .height(12.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(brush),
+            )
+        }
+    }
+}
+
+@Composable
+fun AIEmptyState(
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    icon: @Composable () -> Unit = {
+        AISparkleIcon(
+            size = 64.dp,
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+        )
+    },
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "float")
+    val floatY by infiniteTransition.animateFloat(
+        initialValue = -4f,
+        targetValue = 4f,
+        animationSpec = DailyLifeRepeat.float(),
+        label = "floatY",
+    )
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier.graphicsLayer {
+                translationY = floatY
+            },
+        ) {
+            icon()
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = subtitle,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+fun AIErrorState(
+    message: String,
+    onRetry: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    ElevatedCard(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                Icons.Filled.SmartToy,
+                contentDescription = null,
+                modifier = Modifier.size(40.dp),
+                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+            )
+            Text(
+                text = "Something went wrong",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f),
+            )
+            if (onRetry != null) {
+                OutlinedButton(onClick = onRetry) {
+                    Text("Retry")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AIAvatar(
+    isUser: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val bgColor = if (isUser) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.tertiaryContainer
+    }
+    val iconColor = if (isUser) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onTertiaryContainer
+    }
+    Box(
+        modifier = modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .background(bgColor),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = if (isUser) Icons.Filled.Person else Icons.Filled.SmartToy,
+            contentDescription = if (isUser) "You" else "AI",
+            modifier = Modifier.size(18.dp),
+            tint = iconColor,
+        )
     }
 }
