@@ -21,6 +21,7 @@ import com.raulshma.dailylife.data.ai.AIEnrichmentProcessor
 import com.raulshma.dailylife.data.ai.LiteRTEngineService
 import com.raulshma.dailylife.data.ai.ModelManager
 import com.raulshma.dailylife.data.backup.S3BackupRepository
+import com.raulshma.dailylife.data.media.UriFileResolver
 import com.raulshma.dailylife.data.RoomDailyLifeStore
 import com.raulshma.dailylife.data.security.EncryptionProgress
 import com.raulshma.dailylife.data.security.MediaDecryptCoordinator
@@ -553,11 +554,16 @@ class DailyLifeViewModel @Inject constructor(
         _aiAudioSummary.value = ""
         _aiError.value = null
         startAiJob {
-            val bytes = readMediaBytes(uriString)
-            if (bytes != null) {
-                aiExecutor.summarizeAudio(bytes).collect { _aiAudioSummary.value = it }
+            val audioFilePath = resolveMediaFilePath(uriString)
+            if (audioFilePath != null) {
+                aiExecutor.summarizeAudioFile(audioFilePath).collect { _aiAudioSummary.value = it }
             } else {
-                _aiError.value = "Failed to read audio"
+                val bytes = readMediaBytes(uriString)
+                if (bytes != null) {
+                    aiExecutor.summarizeAudio(bytes).collect { _aiAudioSummary.value = it }
+                } else {
+                    _aiError.value = "Failed to read audio"
+                }
             }
         }
     }
@@ -690,6 +696,18 @@ class DailyLifeViewModel @Inject constructor(
                 val uri = Uri.parse(uriString)
                 val resolvedUri = mediaEncryptionManager.decryptToCache(uri, context) ?: uri
                 context.contentResolver.openInputStream(resolvedUri)?.use { it.readBytes() }
+            }.getOrNull()
+        }
+    }
+
+    private suspend fun resolveMediaFilePath(uriString: String): String? {
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val uri = Uri.parse(uriString)
+                val resolvedUri = mediaEncryptionManager.decryptToCache(uri, context) ?: uri
+                UriFileResolver.resolveToFile(resolvedUri, context)
+                    ?.takeIf { it.exists() && it.length() > 44 }
+                    ?.absolutePath
             }.getOrNull()
         }
     }

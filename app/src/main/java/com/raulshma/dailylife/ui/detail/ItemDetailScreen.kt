@@ -1,6 +1,8 @@
 package com.raulshma.dailylife.ui.detail
 
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -66,6 +68,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
@@ -78,6 +81,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -1948,11 +1952,42 @@ private fun DetailContentSection(
     onClearAiError: () -> Unit = {},
     onCancelAi: () -> Unit = {},
 ) {
+    val context = LocalContext.current
+    val displayBody = remember(item.id, item.title, item.body) { item.displayBody() }
+
     Column(
         modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        if (item.displayBody().isNotBlank()) {
+        AnimatedVisibility(
+            visible = contentVisible,
+            enter = fadeIn(DailyLifeTween.fade()) + slideInVertically(
+                DailyLifeTween.content(),
+                initialOffsetY = { it / 3 }
+            ),
+        ) {
+            DetailOverviewCards(
+                item = item,
+                occurrenceStats = occurrenceStats,
+                globalSettings = globalSettings,
+            )
+        }
+
+        AnimatedVisibility(
+            visible = contentVisible,
+            enter = fadeIn(DailyLifeTween.fade()) + slideInVertically(
+                DailyLifeTween.content(),
+                initialOffsetY = { it / 3 }
+            ),
+        ) {
+            DetailQuickActions(
+                canCopy = displayBody.isNotBlank() || item.aiSummary?.isNotBlank() == true,
+                onCopy = { copyItemToClipboard(context, item) },
+                onShare = { shareItem(context, item) },
+            )
+        }
+
+        if (displayBody.isNotBlank()) {
             AnimatedVisibility(
                 visible = contentVisible,
                 enter = fadeIn(DailyLifeTween.fade()) + slideInVertically(
@@ -1967,7 +2002,7 @@ private fun DetailContentSection(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
-                        text = item.displayBody(),
+                        text = displayBody,
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.padding(16.dp),
                     )
@@ -2737,6 +2772,137 @@ private fun DetailBottomAction(
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DetailOverviewCards(
+    item: LifeItem,
+    occurrenceStats: OccurrenceStats,
+    globalSettings: NotificationSettings,
+) {
+    val effectiveTime = item.notificationSettings.timeOverride
+        ?: globalSettings.preferredTime
+    val status = item.taskStatus?.label
+        ?: if (item.reminderAt != null) "Reminder" else item.type.label
+    val cadence = when {
+        item.isRecurring -> item.recurrenceRule.frequency.label
+        item.reminderAt != null -> item.reminderAt.format(TimestampFormatter)
+        item.notificationSettings.enabled -> "Notify ${effectiveTime.format(com.raulshma.dailylife.ui.TimeFormatter)}"
+        else -> "No schedule"
+    }
+
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        DetailOverviewCard(label = "Created", value = item.createdAt.format(TimestampFormatter))
+        DetailOverviewCard(label = "Status", value = status)
+        DetailOverviewCard(label = "Cadence", value = cadence)
+        DetailOverviewCard(label = "Done", value = occurrenceStats.completedCount.toString())
+    }
+}
+
+@Composable
+private fun DetailOverviewCard(
+    label: String,
+    value: String,
+) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
+        modifier = Modifier.widthIn(min = 142.dp, max = 220.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DetailQuickActions(
+    canCopy: Boolean,
+    onCopy: () -> Unit,
+    onShare: () -> Unit,
+) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        FilledTonalButton(
+            onClick = onCopy,
+            enabled = canCopy,
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+        ) {
+            Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(17.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Copy text")
+        }
+        FilledTonalButton(
+            onClick = onShare,
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+        ) {
+            Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(17.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Share")
+        }
+    }
+}
+
+private fun copyItemToClipboard(context: Context, item: LifeItem) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText(item.title, buildShareText(item)))
+}
+
+private fun shareItem(context: Context, item: LifeItem) {
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, item.title)
+        putExtra(Intent.EXTRA_TEXT, buildShareText(item))
+    }
+    runCatching {
+        context.startActivity(Intent.createChooser(intent, "Share item"))
+    }
+}
+
+private fun buildShareText(item: LifeItem): String {
+    return buildString {
+        appendLine(item.title)
+        appendLine(item.createdAt.format(TimestampFormatter))
+        val body = item.displayBody()
+        if (body.isNotBlank()) {
+            appendLine()
+            appendLine(body)
+        }
+        item.aiSummary?.trim()?.takeIf { it.isNotBlank() }?.let { summary ->
+            appendLine()
+            appendLine("AI description")
+            appendLine(summary)
+        }
+        if (item.tags.isNotEmpty()) {
+            appendLine()
+            appendLine(item.tags.joinToString(" ") { "#$it" })
+        }
+    }.trim()
 }
 
 @Composable

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
 import com.raulshma.dailylife.data.DailyLifeRepository
+import com.raulshma.dailylife.data.media.UriFileResolver
 import com.raulshma.dailylife.data.security.MediaEncryptionManager
 import com.raulshma.dailylife.domain.AIModel
 import com.raulshma.dailylife.domain.EnrichmentFeature
@@ -342,13 +343,30 @@ class AIEnrichmentProcessor @Inject constructor(
 
     private suspend fun enrichAudio(item: LifeItem): Boolean {
         val uriString = item.inferAudioUrl() ?: return false
-        val audioBytes = readMediaBytes(uriString) ?: return false
         val fullSummary = StringBuilder()
-        featureExecutor.summarizeAudio(audioBytes).collect { fullSummary.append(it) }
+        val audioFilePath = resolveMediaFilePath(uriString)
+        if (audioFilePath != null) {
+            featureExecutor.summarizeAudioFile(audioFilePath).collect { fullSummary.append(it) }
+        } else {
+            val audioBytes = readMediaBytes(uriString) ?: return false
+            featureExecutor.summarizeAudio(audioBytes).collect { fullSummary.append(it) }
+        }
         val summary = fullSummary.toString().trim()
         if (summary.isBlank()) return false
         repository.updateItemAiSummary(item.id, summary)
         return true
+    }
+
+    private suspend fun resolveMediaFilePath(uriString: String): String? {
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val decryptedUri = encryptionManager.decryptToCache(Uri.parse(uriString), appContext)
+                    ?: Uri.parse(uriString)
+                UriFileResolver.resolveToFile(decryptedUri, appContext)
+                    ?.takeIf { it.exists() && it.length() > 44 }
+                    ?.absolutePath
+            }.getOrNull()
+        }
     }
 
     private suspend fun readMediaBytes(uriString: String): ByteArray? {

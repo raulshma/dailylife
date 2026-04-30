@@ -186,8 +186,44 @@ class LiteRTEngineService @Inject constructor(
             try {
                 val fullResponse = StringBuilder()
                 val contents = Contents.of(
-                    Content.AudioBytes(audioBytes),
                     Content.Text(prompt),
+                    Content.AudioBytes(audioBytes),
+                )
+                conversation.sendMessageAsync(contents).collect { message ->
+                    val text = message.toString()
+                    if (text.isNotEmpty()) {
+                        fullResponse.append(text)
+                        emit(fullResponse.toString())
+                    }
+                }
+            } finally {
+                closeConversationInternal()
+            }
+        }
+    }.flowOn(Dispatchers.IO)
+
+    fun generateWithAudioFile(
+        prompt: String,
+        audioFilePath: String,
+        systemInstruction: String? = null,
+    ): Flow<String> = flow {
+        mutex.withLock {
+            val eng = engine ?: throw IllegalStateException("No model loaded")
+            val conversation = eng.createConversation(
+                ConversationConfig(
+                    systemInstruction = systemInstruction?.let { Contents.of(it) }
+                )
+            )
+            closeConversationInternal()
+            currentConversation = conversation
+            try {
+                if (audioFilePath.isBlank()) {
+                    throw IllegalArgumentException("Missing audio file")
+                }
+                val fullResponse = StringBuilder()
+                val contents = Contents.of(
+                    Content.Text(prompt),
+                    Content.AudioFile(audioFilePath),
                 )
                 conversation.sendMessageAsync(contents).collect { message ->
                     val text = message.toString()

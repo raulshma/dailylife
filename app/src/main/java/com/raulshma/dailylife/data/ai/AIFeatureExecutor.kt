@@ -172,8 +172,16 @@ $entriesSummary"""
     suspend fun summarizeAudio(audioBytes: ByteArray): Flow<String> {
         val model = ensureModelForFeature(AIFeature.AUDIO_SUMMARY)
             ?: return flowOf("")
-        val prompt = "Listen to this audio recording and provide a brief summary of its content in 2-3 sentences."
+        val prompt = "The attached item is an audio recording. Listen to the attached audio and summarize the spoken content in 2-3 concise sentences. If there is no clear speech, describe the audible content instead."
         return engineService.generateWithAudio(prompt, audioBytes)
+            .withMetrics(AIFeature.AUDIO_SUMMARY, prompt.length)
+    }
+
+    suspend fun summarizeAudioFile(audioFilePath: String): Flow<String> {
+        val model = ensureModelForFeature(AIFeature.AUDIO_SUMMARY)
+            ?: return flowOf("")
+        val prompt = "The attached file is an audio recording. Listen to the attached audio file and summarize the spoken content in 2-3 concise sentences. If there is no clear speech, describe the audible content instead."
+        return engineService.generateWithAudioFile(prompt, audioFilePath)
             .withMetrics(AIFeature.AUDIO_SUMMARY, prompt.length)
     }
 
