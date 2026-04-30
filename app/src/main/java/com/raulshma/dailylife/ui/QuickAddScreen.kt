@@ -57,10 +57,12 @@ import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.EventRepeat
 import androidx.compose.material.icons.filled.Lightbulb
@@ -177,6 +179,7 @@ internal fun QuickAddScreen(
     onApplyAiTitle: (String) -> Unit = {},
     onApplyAiTags: (List<String>) -> Unit = {},
     onApplyAiRewrite: (String) -> Unit = {},
+    onClearAiState: () -> Unit = {},
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         QuickAddContent(
@@ -202,6 +205,7 @@ internal fun QuickAddScreen(
             onApplyAiTitle = onApplyAiTitle,
             onApplyAiTags = onApplyAiTags,
             onApplyAiRewrite = onApplyAiRewrite,
+            onClearAiState = onClearAiState,
         )
     }
 }
@@ -231,6 +235,7 @@ private fun QuickAddContent(
     onApplyAiTitle: (String) -> Unit = {},
     onApplyAiTags: (List<String>) -> Unit = {},
     onApplyAiRewrite: (String) -> Unit = {},
+    onClearAiState: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
@@ -266,6 +271,9 @@ private fun QuickAddContent(
     var activeRecordingUri by remember { mutableStateOf<Uri?>(null) }
     var pendingAudioUri by remember { mutableStateOf<Uri?>(null) }
     var liveTranscription by rememberSaveable { mutableStateOf("") }
+    var titleBubbleDismissed by remember { mutableStateOf(false) }
+    var rewriteBubbleDismissed by remember { mutableStateOf(false) }
+    var showSavedIndicator by remember { mutableStateOf(false) }
     val audioRecorder = remember { AudioRecorder(context) }
     val speechTranscriber = remember { SpeechTranscriber(context) }
 
@@ -446,7 +454,32 @@ private fun QuickAddContent(
         }
     }
 
+    LaunchedEffect(initialDraft.title) {
+        if (title != initialDraft.title) {
+            title = initialDraft.title
+        }
+    }
 
+    LaunchedEffect(initialDraft.tags) {
+        if (tags != initialDraft.tags) {
+            tags = initialDraft.tags
+        }
+    }
+
+    LaunchedEffect(showSavedIndicator) {
+        if (showSavedIndicator) {
+            delay(1800)
+            showSavedIndicator = false
+        }
+    }
+
+    LaunchedEffect(aiSmartTitle) {
+        if (aiSmartTitle.isNotBlank()) titleBubbleDismissed = false
+    }
+
+    LaunchedEffect(aiRewrittenText) {
+        if (aiRewrittenText.isNotBlank()) rewriteBubbleDismissed = false
+    }
 
     LaunchedEffect(
         selectedType, title, body, tags, favorite, pinned,
@@ -699,22 +732,23 @@ private fun QuickAddContent(
                         }
                     }
                 }
-                if (aiSmartTitle.isNotBlank() && title.isBlank()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            aiSmartTitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.weight(1f),
-                        )
-                        TextButton(onClick = { onApplyAiTitle(aiSmartTitle) }) {
-                            Text("Apply", style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
+                AnimatedVisibility(
+                    visible = aiSmartTitle.isNotBlank() && !titleBubbleDismissed,
+                    enter = fadeIn(tween(DailyLifeDuration.SHORT, easing = DailyLifeEasing.Enter))
+                            + expandVertically(tween(DailyLifeDuration.MEDIUM, easing = DailyLifeEasing.Enter)),
+                    exit = fadeOut(tween(DailyLifeDuration.SHORT, easing = DailyLifeEasing.Exit))
+                            + shrinkVertically(tween(DailyLifeDuration.MEDIUM, easing = DailyLifeEasing.Exit)),
+                ) {
+                    AIGenerationBubble(
+                        text = aiSmartTitle,
+                        label = "AI Title",
+                        isGenerating = false,
+                        onApply = {
+                            onApplyAiTitle(aiSmartTitle)
+                            titleBubbleDismissed = true
+                        },
+                        onDismiss = { titleBubbleDismissed = true },
+                    )
                 }
 
                 // Body
@@ -763,6 +797,94 @@ private fun QuickAddContent(
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (body.length >= 2000) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        }
+                    }
+                }
+            }
+
+            if (onRewriteText != null && selectedType != LifeItemType.Task) {
+                AnimatedVisibility(
+                    visible = aiRewrittenText.isNotBlank() && !rewriteBubbleDismissed,
+                    enter = fadeIn(tween(DailyLifeDuration.SHORT, easing = DailyLifeEasing.Enter))
+                            + expandVertically(tween(DailyLifeDuration.MEDIUM, easing = DailyLifeEasing.Enter)),
+                    exit = fadeOut(tween(DailyLifeDuration.SHORT, easing = DailyLifeEasing.Exit))
+                            + shrinkVertically(tween(DailyLifeDuration.MEDIUM, easing = DailyLifeEasing.Exit)),
+                ) {
+                    AIGenerationBubble(
+                        text = aiRewrittenText,
+                        label = "AI Rewrite",
+                        isGenerating = false,
+                        onApply = {
+                            onApplyAiRewrite(aiRewrittenText)
+                            rewriteBubbleDismissed = true
+                        },
+                        onDismiss = { rewriteBubbleDismissed = true },
+                    )
+                }
+
+                if (body.isNotBlank() && (aiRewrittenText.isBlank() || rewriteBubbleDismissed)) {
+                    var showTonePicker by remember { mutableStateOf(false) }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        Box {
+                            TextButton(
+                                onClick = { showTonePicker = true },
+                                enabled = !isAiGenerating,
+                            ) {
+                                when {
+                                    engineState is EngineState.LoadingModel || engineState is EngineState.Initializing -> {
+                                        LinearProgressIndicator(
+                                            modifier = Modifier.width(48.dp).height(2.dp),
+                                        )
+                                    }
+                                    isAiGenerating -> {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(14.dp),
+                                            strokeWidth = 1.5.dp,
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            "Rewriting...",
+                                            style = MaterialTheme.typography.labelMedium,
+                                        )
+                                    }
+                                    else -> {
+                                        Icon(
+                                            Icons.Filled.AutoFixHigh,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            "AI Rewrite",
+                                            style = MaterialTheme.typography.labelMedium,
+                                        )
+                                    }
+                                }
+                            }
+                            DropdownMenu(
+                                expanded = showTonePicker,
+                                onDismissRequest = { showTonePicker = false },
+                            ) {
+                                WritingTone.entries.forEach { tone ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                tone.name.replace("_", " ")
+                                                    .lowercase()
+                                                    .replaceFirstChar { it.titlecase() }
+                                            )
+                                        },
+                                        onClick = {
+                                            onRewriteText(body, tone)
+                                            showTonePicker = false
+                                        },
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -1107,6 +1229,41 @@ private fun QuickAddContent(
             Spacer(modifier = Modifier.height(32.dp)) // padding for bottom bar
         }
 
+        AnimatedVisibility(
+            visible = showSavedIndicator,
+            enter = fadeIn(tween(DailyLifeDuration.SHORT, easing = DailyLifeEasing.Enter))
+                    + expandVertically(tween(DailyLifeDuration.MEDIUM, easing = DailyLifeEasing.Enter)),
+            exit = fadeOut(tween(DailyLifeDuration.SHORT, easing = DailyLifeEasing.Exit))
+                    + shrinkVertically(tween(DailyLifeDuration.MEDIUM, easing = DailyLifeEasing.Exit)),
+            modifier = Modifier.padding(horizontal = 24.dp),
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.primaryContainer,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        Icons.Filled.Done,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        "Item saved!",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
+
         // Smart Toolbar and Action Bar
         Surface(
             color = MaterialTheme.colorScheme.surface,
@@ -1186,6 +1343,10 @@ private fun QuickAddContent(
                             OutlinedButton(
                                 onClick = {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    showSavedIndicator = true
+                                    onClearAiState()
+                                    titleBubbleDismissed = false
+                                    rewriteBubbleDismissed = false
                                     onAddAndContinue(buildDraftPayload())
                                     resetLocalDraft()
                                     titleFocusRequester.requestFocus()
@@ -1200,6 +1361,8 @@ private fun QuickAddContent(
                         Button(
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                showSavedIndicator = true
+                                onClearAiState()
                                 onAdd(buildDraftPayload())
                             },
                             enabled = canSave,
@@ -1916,6 +2079,71 @@ private fun ChecklistEditor(
 
 private data class ChecklistItem(val text: String, val isChecked: Boolean) {
     fun toMarkdown() = if (isChecked) "- [x] $text" else "- [ ] $text"
+}
+
+@Composable
+private fun AIGenerationBubble(
+    text: String,
+    label: String,
+    isGenerating: Boolean,
+    onApply: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    ElevatedCard(
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+        ),
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    Icons.Filled.AutoAwesome,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            if (isGenerating) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                }
+            } else {
+                Text(
+                    text,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Dismiss", style = MaterialTheme.typography.labelSmall)
+                    }
+                    TextButton(onClick = onApply) {
+                        Text("Apply", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

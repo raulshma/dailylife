@@ -987,11 +987,13 @@ fun DailyLifeApp(
             showQuickAdd = false
             quickAddDraft = QuickAddDraft()
             clearDraftFromPrefs(context)
+            viewModel.clearAiState()
         }
         if (encryptionProgress == null && pendingEditSave) {
             pendingEditSave = false
             showEditSheet = false
             editItemId = null
+            viewModel.clearAiState()
         }
     }
 
@@ -1011,6 +1013,7 @@ fun DailyLifeApp(
                 },
                 onAddAndContinue = { draft ->
                     viewModel.addItem(draft)
+                    viewModel.clearAiState()
                     quickAddDraft = QuickAddDraft()
                     clearDraftFromPrefs(context)
                 },
@@ -1021,6 +1024,7 @@ fun DailyLifeApp(
                     showQuickAdd = false
                     quickAddDraft = QuickAddDraft()
                     clearDraftFromPrefs(context)
+                    viewModel.clearAiState()
                 },
                 mediaLauncher = mediaLauncher,
                 onShowLocationPicker = { onLocationSelected ->
@@ -1044,6 +1048,7 @@ fun DailyLifeApp(
                     quickAddDraft = quickAddDraft.copy(tags = newTags)
                 },
                 onApplyAiRewrite = { quickAddDraft = quickAddDraft.copy(body = it) },
+                onClearAiState = { viewModel.clearAiState() },
             )
         }
     }
@@ -1093,6 +1098,7 @@ fun DailyLifeApp(
                 onDiscardDraft = {
                     showEditSheet = false
                     editItemId = null
+                    viewModel.clearAiState()
                 },
                 mediaLauncher = editMediaLauncher,
                 onShowLocationPicker = { onLocationSelected ->
@@ -1117,6 +1123,7 @@ fun DailyLifeApp(
                     editDraft = editDraft.copy(tags = newTags)
                 },
                 onApplyAiRewrite = { editDraft = editDraft.copy(body = it) },
+                onClearAiState = { viewModel.clearAiState() },
             )
         }
     }
