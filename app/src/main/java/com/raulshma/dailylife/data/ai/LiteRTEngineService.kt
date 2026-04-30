@@ -8,7 +8,9 @@ import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.LogSeverity
 import com.raulshma.dailylife.domain.AIModel
+import com.raulshma.dailylife.domain.EngineState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,19 +31,28 @@ class LiteRTEngineService @Inject constructor(
     private val mutex = Mutex()
     private var currentConversation: Conversation? = null
 
-    private val _isEngineReady = MutableStateFlow(false)
-    val isEngineReady = _isEngineReady.asStateFlow()
+    private val _engineState = MutableStateFlow<EngineState>(EngineState.Idle)
+    val engineState = _engineState.asStateFlow()
+
+    val isEngineReady: Boolean
+        get() = _engineState.value is EngineState.Ready
 
     val loadedModelId: String?
         get() = currentModelId
 
+    val loadedModelName: String?
+        get() = (_engineState.value as? EngineState.Ready)?.modelName
+
     suspend fun loadModel(model: AIModel): Result<Unit> = mutex.withLock {
         withContext(Dispatchers.IO) {
             if (currentModelId == model.id && engine != null) {
+                _engineState.value = EngineState.Ready(model.name)
                 return@withContext Result.success(Unit)
             }
             unloadModelInternal()
             try {
+                _engineState.value = EngineState.LoadingModel(model.name)
+                delay(150)
                 Engine.setNativeMinLogSeverity(LogSeverity.ERROR)
                 val modelPath = modelManager.modelFile(model.id).absolutePath
                 val cacheDir = modelManager.modelCacheDir(model.id).absolutePath
@@ -49,16 +60,18 @@ class LiteRTEngineService @Inject constructor(
                     modelPath = modelPath,
                     cacheDir = cacheDir,
                 )
+                _engineState.value = EngineState.Initializing(model.name)
+                delay(100)
                 val eng = Engine(config)
                 eng.initialize()
                 engine = eng
                 currentModelId = model.id
-                _isEngineReady.value = true
+                _engineState.value = EngineState.Ready(model.name)
                 Log.i(TAG, "Model loaded: ${model.name}")
                 Result.success(Unit)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load model: ${model.id}", e)
-                _isEngineReady.value = false
+                _engineState.value = EngineState.Error(e.message ?: "Unknown error")
                 Result.failure(e)
             }
         }
@@ -76,7 +89,7 @@ class LiteRTEngineService @Inject constructor(
         engine?.close()
         engine = null
         currentModelId = null
-        _isEngineReady.value = false
+        _engineState.value = EngineState.Idle
     }
 
     suspend fun generateText(

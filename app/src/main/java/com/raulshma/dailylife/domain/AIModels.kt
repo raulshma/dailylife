@@ -78,3 +78,11 @@ fun AIFeature.requiredCapabilities(): Set<AIModelCapability> = when (this) {
 fun AIModel.supports(feature: AIFeature): Boolean {
     return feature.requiredCapabilities().all { it in capabilities }
 }
+
+sealed class EngineState {
+    data object Idle : EngineState()
+    data class LoadingModel(val modelName: String) : EngineState()
+    data class Initializing(val modelName: String) : EngineState()
+    data class Ready(val modelName: String) : EngineState()
+    data class Error(val message: String) : EngineState()
+}

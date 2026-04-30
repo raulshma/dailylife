@@ -169,9 +169,9 @@ internal fun QuickAddScreen(
     aiTagSuggestions: List<String> = emptyList(),
     aiRewrittenText: String = "",
     isAiGenerating: Boolean = false,
-    onGenerateSmartTitle: (String) -> Unit = {},
-    onSuggestTags: (String, String) -> Unit = { _, _ -> },
-    onRewriteText: (String, WritingTone) -> Unit = { _, _ -> },
+    onGenerateSmartTitle: ((String) -> Unit)? = null,
+    onSuggestTags: ((String, String) -> Unit)? = null,
+    onRewriteText: ((String, WritingTone) -> Unit)? = null,
     onApplyAiTitle: (String) -> Unit = {},
     onApplyAiTags: (List<String>) -> Unit = {},
     onApplyAiRewrite: (String) -> Unit = {},
@@ -221,9 +221,9 @@ private fun QuickAddContent(
     aiTagSuggestions: List<String> = emptyList(),
     aiRewrittenText: String = "",
     isAiGenerating: Boolean = false,
-    onGenerateSmartTitle: (String) -> Unit = {},
-    onSuggestTags: (String, String) -> Unit = { _, _ -> },
-    onRewriteText: (String, WritingTone) -> Unit = { _, _ -> },
+    onGenerateSmartTitle: ((String) -> Unit)? = null,
+    onSuggestTags: ((String, String) -> Unit)? = null,
+    onRewriteText: ((String, WritingTone) -> Unit)? = null,
     onApplyAiTitle: (String) -> Unit = {},
     onApplyAiTags: (List<String>) -> Unit = {},
     onApplyAiRewrite: (String) -> Unit = {},
@@ -668,7 +668,7 @@ private fun QuickAddContent(
                             innerTextField()
                         }
                     )
-                    if (body.isNotBlank() && title.isBlank()) {
+                    if (body.isNotBlank() && title.isBlank() && onGenerateSmartTitle != null) {
                         IconButton(
                             onClick = { onGenerateSmartTitle(body) },
                             enabled = !isAiGenerating,
@@ -863,7 +863,7 @@ private fun QuickAddContent(
                             )
                         }
 
-                        if (aiTagSuggestions.isNotEmpty()) {
+                        if (onSuggestTags != null && aiTagSuggestions.isNotEmpty()) {
                             aiTagSuggestions.forEach { tag ->
                                 if (tag !in currentTagSet) {
                                     AssistChip(
@@ -880,7 +880,7 @@ private fun QuickAddContent(
                                     )
                                 }
                             }
-                        } else if ((title.isNotBlank() || body.isNotBlank()) && currentTagSet.size < 5) {
+                        } else if (onSuggestTags != null && (title.isNotBlank() || body.isNotBlank()) && currentTagSet.size < 5) {
                             AssistChip(
                                 onClick = { onSuggestTags(title, body) },
                                 label = {

@@ -33,6 +33,7 @@ private const val TAG = "ModelManager"
 private const val PREFS_NAME = "ai_models_prefs"
 private const val KEY_DEFAULT_MODEL = "default_model_id"
 private const val KEY_CATALOG_CACHE = "catalog_cache_json"
+private const val KEY_AI_ENABLED = "ai_enabled"
 private const val CATALOG_URL = "https://gist.githubusercontent.com/raulshma/658a6e1d3e313b82a1996bba25c74acd/raw/models"
 private const val MODELS_DIR = "ai_models"
 
@@ -282,6 +283,16 @@ class ModelManager @Inject constructor(
 
     fun clearDefaultModel() {
         prefs.edit().remove(KEY_DEFAULT_MODEL).apply()
+    }
+
+    private val _aiEnabled = MutableStateFlow(prefs.getBoolean(KEY_AI_ENABLED, true))
+    val aiEnabled = _aiEnabled.asStateFlow()
+
+    fun isAiEnabled(): Boolean = _aiEnabled.value
+
+    fun setAiEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_AI_ENABLED, enabled).apply()
+        _aiEnabled.value = enabled
     }
 
     fun getDefaultModel(): AIModel? {

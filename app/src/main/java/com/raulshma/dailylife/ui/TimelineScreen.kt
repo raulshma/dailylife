@@ -71,7 +71,7 @@ fun TimelineScreen(
     onStorageErrorDismissed: () -> Unit,
     isAiSearchActive: Boolean = false,
     isAiGenerating: Boolean = false,
-    onToggleAiSearch: () -> Unit = {},
+    onToggleAiSearch: (() -> Unit)? = null,
     onAiSearchQuery: (String) -> Unit = {},
 ) {
     val entries = remember(pagingItems.itemSnapshotList) {
@@ -279,7 +279,7 @@ private fun SearchBarRow(
     onSearchChanged: (String) -> Unit,
     onOpenFilters: () -> Unit,
     isAiSearchActive: Boolean = false,
-    onToggleAiSearch: () -> Unit = {},
+    onToggleAiSearch: (() -> Unit)? = null,
     isAiGenerating: Boolean = false,
 ) {
     var isFocused by remember { mutableStateOf(false) }
@@ -331,13 +331,15 @@ private fun SearchBarRow(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                     }
-                    IconButton(onClick = onToggleAiSearch) {
-                        Icon(
-                            Icons.Filled.AutoAwesome,
-                            contentDescription = "AI Search",
-                            tint = if (isAiSearchActive) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                    if (onToggleAiSearch != null) {
+                        IconButton(onClick = onToggleAiSearch) {
+                            Icon(
+                                Icons.Filled.AutoAwesome,
+                                contentDescription = "AI Search",
+                                tint = if (isAiSearchActive) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                     if (query.isNotBlank()) {
                         IconButton(onClick = { onSearchChanged("") }) {

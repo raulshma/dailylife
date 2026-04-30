@@ -32,6 +32,7 @@ import com.raulshma.dailylife.domain.S3BackupSettings
 import com.raulshma.dailylife.data.CollectionCounts
 import com.raulshma.dailylife.domain.SnapshotStats
 import com.raulshma.dailylife.domain.TaskStatus
+import com.raulshma.dailylife.domain.EngineState
 import com.raulshma.dailylife.domain.WritingTone
 import com.raulshma.dailylife.domain.inferImagePreviewUrl
 import com.raulshma.dailylife.domain.inferVideoPlaybackUrl
@@ -87,6 +88,13 @@ class DailyLifeViewModel @Inject constructor(
     val selectedItem: StateFlow<LifeItem?> = _selectedItem.asStateFlow()
 
     private var saveJob: Job? = null
+
+    val isAiEnabled: StateFlow<Boolean> = modelManager.aiEnabled
+    val engineState = engineService.engineState
+
+    fun setAiEnabled(enabled: Boolean) {
+        modelManager.setAiEnabled(enabled)
+    }
 
     private val _aiSmartTitle = MutableStateFlow("")
     val aiSmartTitle = _aiSmartTitle.asStateFlow()

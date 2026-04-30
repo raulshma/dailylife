@@ -429,6 +429,8 @@ fun DailyLifeApp(
     val aiRewrittenText by viewModel.aiRewrittenText.collectAsStateWithLifecycle()
     val isAiGenerating by viewModel.isAiGenerating.collectAsStateWithLifecycle()
     val aiSearchFilters by viewModel.aiSearchFilters.collectAsStateWithLifecycle()
+    val isAiEnabled by viewModel.isAiEnabled.collectAsStateWithLifecycle(initialValue = true)
+    val engineState by viewModel.engineState.collectAsStateWithLifecycle()
     var quickAddDraft by rememberSaveable(stateSaver = QuickAddDraftSaver) {
         mutableStateOf(QuickAddDraft())
     }
@@ -447,14 +449,22 @@ fun DailyLifeApp(
     var showAIChat by rememberSaveable { mutableStateOf(false) }
     var showAIReflections by rememberSaveable { mutableStateOf(false) }
     var isAiSearchActive by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(isAiEnabled) {
+        if (!isAiEnabled) {
+            showAIChat = false
+            showAIReflections = false
+            isAiSearchActive = false
+        }
+    }
     var pendingQuickAddSave by remember { mutableStateOf(false) }
     var pendingEditSave by remember { mutableStateOf(false) }
     var preloadedDetailItem by remember { mutableStateOf<LifeItem?>(null) }
 
     val screen = when {
-        showAIChat -> Screen.AIChat
-        showAIReflections -> Screen.AIReflections
-        showAIModelManager -> Screen.ModelManager
+        isAiEnabled && showAIChat -> Screen.AIChat
+        isAiEnabled && showAIReflections -> Screen.AIReflections
+        isAiEnabled && showAIModelManager -> Screen.ModelManager
         focusTimerItemId != null -> Screen.FocusTimer(focusTimerItemId!!)
         completionHistoryItemId != null -> Screen.CompletionHistory(completionHistoryItemId!!)
         selectedItemId != null -> Screen.Detail(selectedItemId!!)
@@ -721,11 +731,11 @@ fun DailyLifeApp(
                         },
                         onShowQuickAdd = { showQuickAdd = true },
                         onShowSettings = { showSettings = true },
-                        onShowAIChat = { showAIChat = true },
-                        onShowAIReflections = { showAIReflections = true },
-                        isAiSearchActive = isAiSearchActive,
+                        onShowAIChat = if (isAiEnabled) { { showAIChat = true } } else null,
+                        onShowAIReflections = if (isAiEnabled) { { showAIReflections = true } } else null,
+                        isAiSearchActive = if (isAiEnabled) isAiSearchActive else false,
                         isAiGenerating = isAiGenerating,
-                        onToggleAiSearch = { isAiSearchActive = !isAiSearchActive },
+                        onToggleAiSearch = if (isAiEnabled) { { isAiSearchActive = !isAiSearchActive } } else null,
                         onAiSearchQuery = { viewModel.naturalLanguageSearch(it) },
                         contentPadding = PaddingValues(),
                     )
@@ -844,6 +854,9 @@ fun DailyLifeApp(
                             onNavigateToModelManager = { showAIModelManager = true },
                             aiStorageUsed = viewModel.modelManager.getStorageUsage(),
                             defaultModelName = viewModel.modelManager.getDefaultModel()?.name,
+                            isAiEnabled = isAiEnabled,
+                            onAiEnabledChanged = { viewModel.setAiEnabled(it) },
+                            engineState = engineState,
                             onBack = { showSettings = false },
                         )
                     }
@@ -851,6 +864,7 @@ fun DailyLifeApp(
                     is Screen.ModelManager -> {
                         com.raulshma.dailylife.ui.ai.ModelManagerScreen(
                             modelManager = viewModel.modelManager,
+                            engineService = viewModel.engineService,
                             onBack = { showAIModelManager = false },
                         )
                     }
@@ -860,6 +874,7 @@ fun DailyLifeApp(
                             aiExecutor = viewModel.aiExecutor,
                             engineService = viewModel.engineService,
                             onBack = { showAIChat = false },
+                            onNavigateToModelManager = { showAIChat = false; showAIModelManager = true },
                         )
                     }
 
@@ -869,6 +884,7 @@ fun DailyLifeApp(
                             engineService = viewModel.engineService,
                             recentEntries = emptyList(),
                             onBack = { showAIReflections = false },
+                            onNavigateToModelManager = { showAIReflections = false; showAIModelManager = true },
                         )
                     }
                 }
@@ -926,13 +942,13 @@ fun DailyLifeApp(
                 },
                 allTags = allTags,
                 encryptionProgress = encryptionProgress,
-                aiSmartTitle = aiSmartTitle,
-                aiTagSuggestions = aiTagSuggestions,
-                aiRewrittenText = aiRewrittenText,
-                isAiGenerating = isAiGenerating,
-                onGenerateSmartTitle = { viewModel.generateSmartTitle(it) },
-                onSuggestTags = { t, b -> viewModel.suggestTags(t, b) },
-                onRewriteText = { text, tone -> viewModel.rewriteText(text, tone) },
+                aiSmartTitle = if (isAiEnabled) aiSmartTitle else "",
+                aiTagSuggestions = if (isAiEnabled) aiTagSuggestions else emptyList(),
+                aiRewrittenText = if (isAiEnabled) aiRewrittenText else "",
+                isAiGenerating = if (isAiEnabled) isAiGenerating else false,
+                onGenerateSmartTitle = if (isAiEnabled) { { viewModel.generateSmartTitle(it) } } else null,
+                onSuggestTags = if (isAiEnabled) { t, b -> viewModel.suggestTags(t, b) } else null,
+                onRewriteText = if (isAiEnabled) { text, tone -> viewModel.rewriteText(text, tone) } else null,
                 onApplyAiTitle = { quickAddDraft = quickAddDraft.copy(title = it) },
                 onApplyAiTags = { tags ->
                     val currentSet = quickAddDraft.tags.split(",").map { it.trim() }.filter { it.isNotBlank() }.toSet()
@@ -998,13 +1014,13 @@ fun DailyLifeApp(
                 allTags = allTags,
                 isEditMode = true,
                 encryptionProgress = encryptionProgress,
-                aiSmartTitle = aiSmartTitle,
-                aiTagSuggestions = aiTagSuggestions,
-                aiRewrittenText = aiRewrittenText,
-                isAiGenerating = isAiGenerating,
-                onGenerateSmartTitle = { viewModel.generateSmartTitle(it) },
-                onSuggestTags = { t, b -> viewModel.suggestTags(t, b) },
-                onRewriteText = { text, tone -> viewModel.rewriteText(text, tone) },
+                aiSmartTitle = if (isAiEnabled) aiSmartTitle else "",
+                aiTagSuggestions = if (isAiEnabled) aiTagSuggestions else emptyList(),
+                aiRewrittenText = if (isAiEnabled) aiRewrittenText else "",
+                isAiGenerating = if (isAiEnabled) isAiGenerating else false,
+                onGenerateSmartTitle = if (isAiEnabled) { { viewModel.generateSmartTitle(it) } } else null,
+                onSuggestTags = if (isAiEnabled) { t, b -> viewModel.suggestTags(t, b) } else null,
+                onRewriteText = if (isAiEnabled) { text, tone -> viewModel.rewriteText(text, tone) } else null,
                 onApplyAiTitle = { editDraft = editDraft.copy(title = it) },
                 onApplyAiTags = { tags ->
                     val currentSet = editDraft.tags.split(",").map { it.trim() }.filter { it.isNotBlank() }.toSet()
@@ -1083,11 +1099,11 @@ private fun MainScaffold(
     onCollectionSelected: (String) -> Unit,
     onShowQuickAdd: () -> Unit,
     onShowSettings: () -> Unit,
-    onShowAIChat: () -> Unit = {},
-    onShowAIReflections: () -> Unit = {},
+    onShowAIChat: (() -> Unit)? = null,
+    onShowAIReflections: (() -> Unit)? = null,
     isAiSearchActive: Boolean = false,
     isAiGenerating: Boolean = false,
-    onToggleAiSearch: () -> Unit = {},
+    onToggleAiSearch: (() -> Unit)? = null,
     onAiSearchQuery: (String) -> Unit = {},
     contentPadding: PaddingValues,
 ) {
@@ -1144,26 +1160,30 @@ private fun MainScaffold(
                             expanded = showDropdown.value,
                             onDismissRequest = { showDropdown.value = false },
                         ) {
-                            DropdownMenuItem(
-                                text = { Text("AI Chat") },
-                                onClick = {
-                                    showDropdown.value = false
-                                    onShowAIChat()
-                                },
-                                leadingIcon = {
-                                    Icon(Icons.Filled.SmartToy, contentDescription = null)
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("AI Reflection") },
-                                onClick = {
-                                    showDropdown.value = false
-                                    onShowAIReflections()
-                                },
-                                leadingIcon = {
-                                    Icon(Icons.Filled.AutoAwesome, contentDescription = null)
-                                },
-                            )
+                            if (onShowAIChat != null) {
+                                DropdownMenuItem(
+                                    text = { Text("AI Chat") },
+                                    onClick = {
+                                        showDropdown.value = false
+                                        onShowAIChat()
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Filled.SmartToy, contentDescription = null)
+                                    },
+                                )
+                            }
+                            if (onShowAIReflections != null) {
+                                DropdownMenuItem(
+                                    text = { Text("AI Reflection") },
+                                    onClick = {
+                                        showDropdown.value = false
+                                        onShowAIReflections()
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Filled.AutoAwesome, contentDescription = null)
+                                    },
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text("Settings") },
                                 onClick = {

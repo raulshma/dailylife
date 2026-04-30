@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccessTime
@@ -61,8 +62,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.raulshma.dailylife.domain.BackupResult
+import com.raulshma.dailylife.domain.EngineState
 import com.raulshma.dailylife.domain.NotificationSettings
 import com.raulshma.dailylife.domain.S3BackupSettings
+import com.raulshma.dailylife.ui.ai.components.AIStatusChip
 import java.time.LocalTime
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -78,6 +81,9 @@ fun SettingsScreen(
     onNavigateToModelManager: () -> Unit = {},
     aiStorageUsed: Long = 0L,
     defaultModelName: String? = null,
+    isAiEnabled: Boolean = true,
+    onAiEnabledChanged: (Boolean) -> Unit = {},
+    engineState: EngineState = EngineState.Idle,
     onBack: () -> Unit,
 ) {
     Scaffold(
@@ -130,6 +136,9 @@ fun SettingsScreen(
                     onNavigateToModelManager = onNavigateToModelManager,
                     storageUsed = aiStorageUsed,
                     defaultModelName = defaultModelName,
+                    isAiEnabled = isAiEnabled,
+                    onAiEnabledChanged = onAiEnabledChanged,
+                    engineState = engineState,
                 )
             }
             item {
@@ -563,60 +572,99 @@ private fun AIAssistantSection(
     onNavigateToModelManager: () -> Unit,
     storageUsed: Long,
     defaultModelName: String?,
+    isAiEnabled: Boolean,
+    onAiEnabledChanged: (Boolean) -> Unit,
+    engineState: EngineState,
 ) {
-    Column(
+    ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Icon(
-                Icons.Filled.SmartToy,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-                tint = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = "AI Assistant",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(
+                    Icons.Filled.SmartToy,
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = "AI Assistant",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+
+            HorizontalDivider()
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Enable AI features", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Smart titles, tags, reflections, and more",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = isAiEnabled,
+                    onCheckedChange = onAiEnabledChanged,
+                )
+            }
+
+            if (isAiEnabled) {
+                HorizontalDivider()
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    AIStatusChip(engineState = engineState)
+                    if (defaultModelName != null) {
+                        Text(
+                            text = "\u00B7 $defaultModelName",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                if (storageUsed > 0) {
+                    Text(
+                        text = "Storage: ${formatStorageBytes(storageUsed)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = onNavigateToModelManager,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Icon(Icons.Filled.SmartToy, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Manage AI Models")
+                }
+            }
         }
-
-        Text(
-            text = "Download on-device AI models for smart titles, tag suggestions, summaries, mood analysis, photo descriptions, and more. All processing happens locally on your device.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        if (defaultModelName != null) {
-            Text(
-                text = "Default model: $defaultModelName",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
-
-        if (storageUsed > 0) {
-            Text(
-                text = "AI storage: ${formatStorageBytes(storageUsed)}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-
-        OutlinedButton(
-            onClick = onNavigateToModelManager,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Icon(Icons.Filled.SmartToy, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Manage AI Models")
-        }
-
-        HorizontalDivider()
     }
 }
 
