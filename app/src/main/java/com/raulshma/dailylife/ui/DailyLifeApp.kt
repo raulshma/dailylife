@@ -101,6 +101,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Tune
@@ -262,6 +263,7 @@ private sealed class Screen {
     data class AIChat(val conversationId: Long? = null) : Screen()
     data object AIMetrics : Screen()
     data object AIReflections : Screen()
+    data object AIEnrichment : Screen()
 }
 
 internal val LocalSharedTransitionScope = staticCompositionLocalOf<SharedTransitionScope?> { null }
@@ -455,6 +457,7 @@ fun DailyLifeApp(
     var activeChatConversationId by rememberSaveable { mutableStateOf<Long?>(null) }
     var showAIMetrics by rememberSaveable { mutableStateOf(false) }
     var showAIReflections by rememberSaveable { mutableStateOf(false) }
+    var showAIEnrichment by rememberSaveable { mutableStateOf(false) }
     var isAiSearchActive by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(isAiEnabled) {
@@ -475,6 +478,7 @@ fun DailyLifeApp(
         isAiEnabled && showAIChat -> Screen.AIChat(activeChatConversationId)
         isAiEnabled && showAIChatList -> Screen.AIChatList
         isAiEnabled && showAIReflections -> Screen.AIReflections
+        isAiEnabled && showAIEnrichment -> Screen.AIEnrichment
         isAiEnabled && showAIModelManager -> Screen.ModelManager
         focusTimerItemId != null -> Screen.FocusTimer(focusTimerItemId!!)
         completionHistoryItemId != null -> Screen.CompletionHistory(completionHistoryItemId!!)
@@ -485,7 +489,7 @@ fun DailyLifeApp(
 
     var skipStaggerAnimation by remember { mutableStateOf(false) }
 
-    BackHandler(enabled = showAIChatList || showAIChat || showAIMetrics || showAIReflections || showAIModelManager || focusTimerItemId != null || completionHistoryItemId != null || selectedItemId != null || showSettings) {
+    BackHandler(enabled = showAIChatList || showAIChat || showAIMetrics || showAIReflections || showAIEnrichment || showAIModelManager || focusTimerItemId != null || completionHistoryItemId != null || selectedItemId != null || showSettings) {
         when {
             showAIChat -> {
                 showAIChat = false
@@ -495,6 +499,7 @@ fun DailyLifeApp(
             showAIMetrics -> showAIMetrics = false
             showAIChatList -> showAIChatList = false
             showAIReflections -> showAIReflections = false
+            showAIEnrichment -> showAIEnrichment = false
             showAIModelManager -> showAIModelManager = false
             focusTimerItemId != null -> focusTimerItemId = null
             completionHistoryItemId != null -> completionHistoryItemId = null
@@ -750,6 +755,7 @@ fun DailyLifeApp(
                         onShowSettings = { showSettings = true },
                         onShowAIChat = if (isAiEnabled) { { showAIChatList = true } } else null,
                         onShowAIReflections = if (isAiEnabled) { { showAIReflections = true } } else null,
+                        onShowAIEnrichment = if (isAiEnabled) { { showAIEnrichment = true } } else null,
                         isAiSearchActive = if (isAiEnabled) isAiSearchActive else false,
                         isAiGenerating = isAiGenerating,
                         engineState = engineState,
@@ -875,6 +881,8 @@ fun DailyLifeApp(
                             isAiEnabled = isAiEnabled,
                             onAiEnabledChanged = { viewModel.setAiEnabled(it) },
                             engineState = engineState,
+                            isEnrichmentEnabled = viewModel.enrichmentSettings.collectAsStateWithLifecycle().value.enabled,
+                            onNavigateToEnrichment = { showSettings = false; showAIEnrichment = true },
                             onPaletteChanged = onPaletteChanged,
                             onBack = { showSettings = false },
                         )
@@ -942,6 +950,24 @@ fun DailyLifeApp(
                             recentEntries = emptyList(),
                             onBack = { showAIReflections = false },
                             onNavigateToModelManager = { showAIReflections = false; showAIModelManager = true },
+                        )
+                    }
+                    is Screen.AIEnrichment -> {
+                        com.raulshma.dailylife.ui.ai.AIEnrichmentScreen(
+                            progress = viewModel.enrichmentProgress.collectAsStateWithLifecycle().value,
+                            settings = viewModel.enrichmentSettings.collectAsStateWithLifecycle().value,
+                            history = viewModel.enrichmentHistory.collectAsStateWithLifecycle().value,
+                            onSettingsChanged = viewModel::updateEnrichmentSettings,
+                            onStartBatch = viewModel::startEnrichmentBatch,
+                            onPause = viewModel::pauseEnrichment,
+                            onResume = viewModel::resumeEnrichment,
+                            onCancel = {
+                                viewModel.cancelEnrichment()
+                                viewModel.resetEnrichmentProgress()
+                            },
+                            onClearHistory = viewModel::clearEnrichmentHistory,
+                            onNavigateBack = { showAIEnrichment = false },
+                            onLoadHistory = viewModel::loadEnrichmentHistory,
                         )
                     }
                 }
@@ -1160,6 +1186,7 @@ private fun MainScaffold(
     onShowSettings: () -> Unit,
     onShowAIChat: (() -> Unit)? = null,
     onShowAIReflections: (() -> Unit)? = null,
+    onShowAIEnrichment: (() -> Unit)? = null,
     isAiSearchActive: Boolean = false,
     isAiGenerating: Boolean = false,
     engineState: EngineState = EngineState.Idle,
@@ -1241,6 +1268,18 @@ private fun MainScaffold(
                                     },
                                     leadingIcon = {
                                         Icon(Icons.Filled.AutoAwesome, contentDescription = null)
+                                    },
+                                )
+                            }
+                            if (onShowAIEnrichment != null) {
+                                DropdownMenuItem(
+                                    text = { Text("AI Enrichment") },
+                                    onClick = {
+                                        showDropdown.value = false
+                                        onShowAIEnrichment()
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Filled.AutoFixHigh, contentDescription = null)
                                     },
                                 )
                             }

@@ -6,6 +6,37 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 @Entity(
+    tableName = "ai_enrichment_tasks",
+    foreignKeys = [
+        ForeignKey(
+            entity = LifeItemEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["itemId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [
+        Index("itemId"),
+        Index("feature"),
+        Index(value = ["itemId", "feature"], unique = true),
+        Index("status"),
+        Index("createdAt"),
+    ],
+)
+data class AIEnrichmentTaskEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val itemId: Long,
+    val feature: String,
+    val status: String,
+    val modelId: String? = null,
+    val processingTimeMs: Long? = null,
+    val errorMessage: String? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    val completedAt: Long? = null,
+)
+
+@Entity(
     tableName = "ai_conversations",
     indices = [
         Index("updatedAt"),

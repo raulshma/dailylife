@@ -7,12 +7,15 @@ import androidx.paging.map
 import com.raulshma.dailylife.data.db.DailyLifeDao
 import com.raulshma.dailylife.data.db.LifeItemWithCompletions
 import com.raulshma.dailylife.data.db.toEntity
+import com.raulshma.dailylife.data.db.toEnrichmentTask
 import com.raulshma.dailylife.data.db.toLifeItem
 import com.raulshma.dailylife.data.db.toNotificationSettings
 import com.raulshma.dailylife.domain.BackupSnapshot
 import com.raulshma.dailylife.domain.CompletionRecord
 import com.raulshma.dailylife.domain.DailyLifeFilters
 import com.raulshma.dailylife.domain.DailyLifeState
+import com.raulshma.dailylife.domain.EnrichmentFeature
+import com.raulshma.dailylife.domain.EnrichmentTask
 import com.raulshma.dailylife.domain.ItemNotificationSettings
 import com.raulshma.dailylife.domain.LifeItem
 import com.raulshma.dailylife.domain.LifeItemDraft
@@ -38,6 +41,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -408,6 +412,61 @@ class RoomPaginatedDailyLifeRepository(
 
     override suspend fun getAllItems(): List<LifeItem> = withContext(Dispatchers.IO) {
         dao.getAllItemsWithCompletions().map { it.toLifeItem() }
+    }
+
+    override suspend fun getUnenrichedItemIds(
+        features: Set<EnrichmentFeature>,
+        types: Set<LifeItemType>,
+        includeArchived: Boolean,
+    ): List<Long> = withContext(Dispatchers.IO) {
+        val featuresCsv = features.map { it.name }
+        val typesCsv = types.joinToString(",") { it.name }.ifBlank { null }
+        dao.getUnenrichedItemIds(featuresCsv, typesCsv, includeArchived)
+    }
+
+    override suspend fun updateItemTitle(itemId: Long, title: String) = withContext(Dispatchers.IO) {
+        val existing = dao.getItemById(itemId) ?: return@withContext
+        val updated = existing.item.copy(title = title)
+        dao.insertItem(updated)
+    }
+
+    override suspend fun updateItemTags(itemId: Long, tags: Set<String>) = withContext(Dispatchers.IO) {
+        val existing = dao.getItemById(itemId) ?: return@withContext
+        val updated = existing.item.copy(tags = normalizeTags(tags).sorted().joinToString(","))
+        dao.insertItem(updated)
+    }
+
+    override suspend fun updateItemAiSummary(itemId: Long, summary: String) = withContext(Dispatchers.IO) {
+        val existing = dao.getItemById(itemId) ?: return@withContext
+        val updated = existing.item.copy(aiSummary = summary)
+        dao.insertItem(updated)
+    }
+
+    override suspend fun recordEnrichmentTask(task: EnrichmentTask) = withContext(Dispatchers.IO) {
+        dao.insertEnrichmentTask(task.toEntity())
+    }
+
+    override suspend fun getRecentEnrichmentHistory(limit: Int): List<EnrichmentTask> =
+        withContext(Dispatchers.IO) {
+            dao.getRecentEnrichmentHistory(limit).map { it.toEnrichmentTask() }
+        }
+
+    override suspend fun clearEnrichmentHistory() = withContext(Dispatchers.IO) {
+        dao.clearAllEnrichmentTasks()
+    }
+
+    override suspend fun getEnrichedCount(): Int = withContext(Dispatchers.IO) {
+        dao.enrichedCount().firstOrNull() ?: 0
+    }
+
+    override suspend fun getUnenrichedCount(
+        features: Set<EnrichmentFeature>,
+        types: Set<LifeItemType>,
+        includeArchived: Boolean,
+    ): Int = withContext(Dispatchers.IO) {
+        val featuresCsv = features.map { it.name }
+        val typesCsv = types.joinToString(",") { it.name }.ifBlank { null }
+        dao.getUnenrichedCount(featuresCsv, typesCsv, includeArchived)
     }
 
     private fun updateFilters(block: (DailyLifeFilters) -> DailyLifeFilters) {

@@ -41,4 +41,5 @@ data class LifeItemEntity(
     val geofenceRadiusMeters: Float = 200f,
     val geofenceTrigger: String = "Arrival",
     val isArchived: Boolean = false,
+    val aiSummary: String? = null,
 )

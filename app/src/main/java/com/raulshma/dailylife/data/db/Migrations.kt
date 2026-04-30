@@ -147,4 +147,36 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
     }
 }
 
-val ALL_MIGRATIONS = listOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE life_items ADD COLUMN aiSummary TEXT DEFAULT NULL")
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS ai_enrichment_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                itemId INTEGER NOT NULL,
+                feature TEXT NOT NULL,
+                status TEXT NOT NULL,
+                modelId TEXT,
+                processingTimeMs INTEGER,
+                errorMessage TEXT,
+                createdAt INTEGER NOT NULL,
+                completedAt INTEGER,
+                FOREIGN KEY(itemId) REFERENCES life_items(id) ON DELETE CASCADE
+            )
+            """.trimIndent(),
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_ai_enrichment_tasks_itemId ON ai_enrichment_tasks(itemId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_ai_enrichment_tasks_feature ON ai_enrichment_tasks(feature)")
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS index_ai_enrichment_tasks_itemId_feature ON ai_enrichment_tasks(itemId, feature)",
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_ai_enrichment_tasks_status ON ai_enrichment_tasks(status)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_ai_enrichment_tasks_createdAt ON ai_enrichment_tasks(createdAt)")
+    }
+}
+
+val ALL_MIGRATIONS = listOf(
+    MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
+    MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
+)

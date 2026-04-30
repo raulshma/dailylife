@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
@@ -88,6 +89,8 @@ fun SettingsScreen(
     isAiEnabled: Boolean = true,
     onAiEnabledChanged: (Boolean) -> Unit = {},
     engineState: EngineState = EngineState.Idle,
+    isEnrichmentEnabled: Boolean = false,
+    onNavigateToEnrichment: () -> Unit = {},
     onPaletteChanged: () -> Unit = {},
     onBack: () -> Unit,
 ) {
@@ -144,6 +147,8 @@ fun SettingsScreen(
                     isAiEnabled = isAiEnabled,
                     onAiEnabledChanged = onAiEnabledChanged,
                     engineState = engineState,
+                    isEnrichmentEnabled = isEnrichmentEnabled,
+                    onNavigateToEnrichment = onNavigateToEnrichment,
                 )
             }
             item {
@@ -580,6 +585,8 @@ private fun AIAssistantSection(
     isAiEnabled: Boolean,
     onAiEnabledChanged: (Boolean) -> Unit,
     engineState: EngineState,
+    isEnrichmentEnabled: Boolean,
+    onNavigateToEnrichment: () -> Unit,
 ) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
@@ -667,6 +674,25 @@ private fun AIAssistantSection(
                     Icon(Icons.Filled.SmartToy, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("Manage AI Models")
+                }
+
+                OutlinedButton(
+                    onClick = onNavigateToEnrichment,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Icon(Icons.Filled.AutoFixHigh, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("AI Enrichment")
+                    if (isEnrichmentEnabled) {
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "ON",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
                 }
             }
         }

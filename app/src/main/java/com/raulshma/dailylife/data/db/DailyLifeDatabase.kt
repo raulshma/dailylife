@@ -13,8 +13,9 @@ import androidx.room.TypeConverters
         AIConversationEntity::class,
         AIChatMessageEntity::class,
         AIMetricsEntity::class,
+        AIEnrichmentTaskEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)

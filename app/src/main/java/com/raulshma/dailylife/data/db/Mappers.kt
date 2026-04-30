@@ -1,6 +1,9 @@
 package com.raulshma.dailylife.data.db
 
 import com.raulshma.dailylife.domain.CompletionRecord
+import com.raulshma.dailylife.domain.EnrichmentFeature
+import com.raulshma.dailylife.domain.EnrichmentTask
+import com.raulshma.dailylife.domain.EnrichmentTaskStatus
 import com.raulshma.dailylife.domain.ItemNotificationSettings
 import com.raulshma.dailylife.domain.LifeItem
 import com.raulshma.dailylife.domain.LifeItemType
@@ -58,6 +61,7 @@ internal fun LifeItemEntity.toLifeItem(
     ),
     completionHistory = completionEntities.map { it.toCompletionRecord() },
     isArchived = isArchived,
+    aiSummary = aiSummary,
 )
 
 internal fun CompletionRecordEntity.toCompletionRecord(): CompletionRecord = CompletionRecord(
@@ -99,6 +103,7 @@ internal fun LifeItem.toEntity(): LifeItemEntity = LifeItemEntity(
     geofenceRadiusMeters = notificationSettings.geofenceRadiusMeters,
     geofenceTrigger = notificationSettings.geofenceTrigger.name,
     isArchived = isArchived,
+    aiSummary = aiSummary,
 )
 
 internal fun CompletionRecord.toEntity(): CompletionRecordEntity = CompletionRecordEntity(
@@ -163,3 +168,27 @@ internal fun S3BackupSettingsEntity.toS3BackupSettings(): S3BackupSettings = S3B
 )
 
 internal fun LifeItemWithCompletions.toLifeItem(): LifeItem = item.toLifeItem(completions)
+
+internal fun AIEnrichmentTaskEntity.toEnrichmentTask(): EnrichmentTask = EnrichmentTask(
+    id = id,
+    itemId = itemId,
+    feature = runCatching { EnrichmentFeature.valueOf(feature) }.getOrDefault(EnrichmentFeature.SMART_TITLE),
+    status = runCatching { EnrichmentTaskStatus.valueOf(status) }.getOrDefault(EnrichmentTaskStatus.FAILED),
+    modelId = modelId,
+    processingTimeMs = processingTimeMs,
+    errorMessage = errorMessage,
+    createdAt = createdAt,
+    completedAt = completedAt,
+)
+
+internal fun EnrichmentTask.toEntity(): AIEnrichmentTaskEntity = AIEnrichmentTaskEntity(
+    id = id,
+    itemId = itemId,
+    feature = feature.name,
+    status = status.name,
+    modelId = modelId,
+    processingTimeMs = processingTimeMs,
+    errorMessage = errorMessage,
+    createdAt = createdAt,
+    completedAt = completedAt,
+)

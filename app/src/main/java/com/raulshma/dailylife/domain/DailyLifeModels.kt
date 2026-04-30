@@ -129,6 +129,7 @@ data class LifeItem(
     val reminderAt: LocalDateTime? = null,
     val recurrenceRule: RecurrenceRule = RecurrenceRule(),
     val notificationSettings: ItemNotificationSettings = ItemNotificationSettings(),
+    val aiSummary: String? = null,
     val completionHistory: List<CompletionRecord> = emptyList(),
     val isArchived: Boolean = false,
 ) {

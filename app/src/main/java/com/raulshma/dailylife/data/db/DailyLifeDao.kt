@@ -164,4 +164,64 @@ interface DailyLifeDao {
         deleteCompletionRecordsByItemId(itemId)
         deleteItemById(itemId)
     }
+
+    @Query("""
+        SELECT DISTINCT li.id FROM life_items li
+        WHERE li.id NOT IN (
+            SELECT itemId FROM ai_enrichment_tasks
+            WHERE feature IN (:features) AND status = 'COMPLETED'
+        )
+        AND (:includeArchived = 1 OR li.isArchived = 0)
+        AND (:typesCsv IS NULL OR ',' || :typesCsv || ',' LIKE '%,' || li.type || ',%')
+        ORDER BY li.createdAt DESC
+    """)
+    suspend fun getUnenrichedItemIds(
+        features: List<String>,
+        typesCsv: String?,
+        includeArchived: Boolean,
+    ): List<Long>
+
+    @Query("""
+        SELECT DISTINCT li.id FROM life_items li
+        WHERE li.id NOT IN (
+            SELECT itemId FROM ai_enrichment_tasks
+            WHERE feature IN (:features) AND status = 'COMPLETED'
+        )
+        AND li.id IN (:itemIds)
+        ORDER BY li.createdAt DESC
+    """)
+    suspend fun getUnenrichedItemIdsFromList(
+        features: List<String>,
+        itemIds: List<Long>,
+    ): List<Long>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertEnrichmentTask(task: AIEnrichmentTaskEntity)
+
+    @Query("SELECT COUNT(*) FROM ai_enrichment_tasks WHERE status = 'COMPLETED'")
+    fun enrichedCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM ai_enrichment_tasks")
+    fun totalEnrichmentTasksCount(): Flow<Int>
+
+    @Query("""
+        SELECT COUNT(*) FROM life_items li
+        WHERE li.id NOT IN (
+            SELECT itemId FROM ai_enrichment_tasks
+            WHERE feature IN (:features) AND status = 'COMPLETED'
+        )
+        AND (:includeArchived = 1 OR li.isArchived = 0)
+        AND (:typesCsv IS NULL OR ',' || :typesCsv || ',' LIKE '%,' || li.type || ',%')
+    """)
+    suspend fun getUnenrichedCount(
+        features: List<String>,
+        typesCsv: String?,
+        includeArchived: Boolean,
+    ): Int
+
+    @Query("SELECT * FROM ai_enrichment_tasks ORDER BY completedAt DESC LIMIT :limit")
+    suspend fun getRecentEnrichmentHistory(limit: Int): List<AIEnrichmentTaskEntity>
+
+    @Query("DELETE FROM ai_enrichment_tasks")
+    suspend fun clearAllEnrichmentTasks()
 }

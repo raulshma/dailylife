@@ -5,6 +5,8 @@ import com.raulshma.dailylife.domain.BackupSnapshot
 import com.raulshma.dailylife.domain.CompletionRecord
 import com.raulshma.dailylife.domain.DailyLifeFilters
 import com.raulshma.dailylife.domain.DailyLifeState
+import com.raulshma.dailylife.domain.EnrichmentFeature
+import com.raulshma.dailylife.domain.EnrichmentTask
 import com.raulshma.dailylife.domain.ItemNotificationSettings
 import com.raulshma.dailylife.domain.LifeItem
 import com.raulshma.dailylife.domain.LifeItemDraft
@@ -61,6 +63,23 @@ interface DailyLifeRepository {
     fun toggleShowArchived()
     suspend fun getItem(id: Long): LifeItem?
     suspend fun getAllItems(): List<LifeItem>
+    suspend fun getUnenrichedItemIds(
+        features: Set<EnrichmentFeature>,
+        types: Set<LifeItemType>,
+        includeArchived: Boolean,
+    ): List<Long>
+    suspend fun updateItemTitle(itemId: Long, title: String)
+    suspend fun updateItemTags(itemId: Long, tags: Set<String>)
+    suspend fun updateItemAiSummary(itemId: Long, summary: String)
+    suspend fun recordEnrichmentTask(task: EnrichmentTask)
+    suspend fun getRecentEnrichmentHistory(limit: Int = 50): List<EnrichmentTask>
+    suspend fun clearEnrichmentHistory()
+    suspend fun getEnrichedCount(): Int
+    suspend fun getUnenrichedCount(
+        features: Set<EnrichmentFeature>,
+        types: Set<LifeItemType>,
+        includeArchived: Boolean,
+    ): Int
 }
 
 data class CollectionCounts(

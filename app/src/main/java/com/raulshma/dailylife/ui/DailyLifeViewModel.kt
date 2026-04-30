@@ -13,6 +13,7 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import com.raulshma.dailylife.data.DailyLifeRepository
 import com.raulshma.dailylife.data.ai.AIFeatureExecutor
+import com.raulshma.dailylife.data.ai.AIEnrichmentProcessor
 import com.raulshma.dailylife.data.ai.LiteRTEngineService
 import com.raulshma.dailylife.data.ai.ModelManager
 import com.raulshma.dailylife.data.backup.S3BackupRepository
@@ -23,6 +24,8 @@ import com.raulshma.dailylife.data.security.MediaEncryptionManager
 import com.raulshma.dailylife.domain.CompletionRecord
 import com.raulshma.dailylife.domain.BackupResult
 import com.raulshma.dailylife.domain.BackupSnapshot
+import com.raulshma.dailylife.domain.EnrichmentSettings
+import com.raulshma.dailylife.domain.EnrichmentTask
 import com.raulshma.dailylife.domain.ItemNotificationSettings
 import com.raulshma.dailylife.domain.LifeItem
 import com.raulshma.dailylife.domain.LifeItemDraft
@@ -67,6 +70,7 @@ class DailyLifeViewModel @Inject constructor(
     val aiExecutor: AIFeatureExecutor,
     val engineService: LiteRTEngineService,
     val aiChatRepository: com.raulshma.dailylife.data.ai.AIChatRepository,
+    val enrichmentProcessor: AIEnrichmentProcessor,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
     companion object {
@@ -164,9 +168,12 @@ class DailyLifeViewModel @Inject constructor(
                 )
             }
             val encryptedDraft = draft.copy(body = encryptedBody)
-            repository.addItem(encryptedDraft)
+            val item = repository.addItem(encryptedDraft)
             syncReminderSchedule()
             _encryptionProgress.value = null
+            if (enrichmentProcessor.isAutoEnrichEnabled()) {
+                enrichmentProcessor.enrichSingleItem(item.id)
+            }
         }
     }
 
@@ -566,6 +573,51 @@ class DailyLifeViewModel @Inject constructor(
         aiJob?.cancel()
         engineService.cancelGeneration()
         _isAiGenerating.value = false
+    }
+
+    val enrichmentProgress = enrichmentProcessor.progress
+    val enrichmentSettings = enrichmentProcessor.settings
+
+    fun updateEnrichmentSettings(settings: EnrichmentSettings) {
+        enrichmentProcessor.updateSettings(settings)
+    }
+
+    fun startEnrichmentBatch() {
+        enrichmentProcessor.startBatch()
+    }
+
+    fun pauseEnrichment() {
+        enrichmentProcessor.pause()
+    }
+
+    fun resumeEnrichment() {
+        enrichmentProcessor.resume()
+    }
+
+    fun cancelEnrichment() {
+        enrichmentProcessor.cancel()
+    }
+
+    fun resetEnrichmentProgress() {
+        enrichmentProcessor.resetProgress()
+    }
+
+    private var enrichmentHistoryJob: Job? = null
+    private val _enrichmentHistory = MutableStateFlow<List<EnrichmentTask>>(emptyList())
+    val enrichmentHistory: StateFlow<List<EnrichmentTask>> = _enrichmentHistory.asStateFlow()
+
+    fun loadEnrichmentHistory() {
+        enrichmentHistoryJob?.cancel()
+        enrichmentHistoryJob = viewModelScope.launch {
+            _enrichmentHistory.value = repository.getRecentEnrichmentHistory()
+        }
+    }
+
+    fun clearEnrichmentHistory() {
+        viewModelScope.launch {
+            repository.clearEnrichmentHistory()
+            _enrichmentHistory.value = emptyList()
+        }
     }
 
     fun clearAiState() {
