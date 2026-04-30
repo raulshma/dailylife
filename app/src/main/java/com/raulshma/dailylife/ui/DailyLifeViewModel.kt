@@ -795,6 +795,7 @@ class DailyLifeViewModel @Inject constructor(
 
     fun inferTypeWithAI(title: String, body: String) {
         aiTypeInferenceJob?.cancel()
+        engineService.cancelGeneration()
         _aiInferredType.value = null
         aiTypeInferenceJob = viewModelScope.launch {
             try {

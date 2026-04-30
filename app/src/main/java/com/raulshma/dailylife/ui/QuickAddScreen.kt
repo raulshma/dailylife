@@ -19,6 +19,7 @@ import com.raulshma.dailylife.ui.theme.DailyLifeDuration
 import com.raulshma.dailylife.ui.theme.DailyLifeEasing
 import com.raulshma.dailylife.ui.theme.DailyLifeSpring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -517,8 +518,10 @@ private fun QuickAddContent(
     LaunchedEffect(typeDetectMode, body) {
         if (typeDetectMode == TypeDetectMode.AI && body.isNotBlank() && onInferTypeWithAI != null) {
             delay(1500)
-            if (body.isNotBlank()) {
-                onInferTypeWithAI(title, body)
+            val snapshotTitle = title
+            val snapshotBody = body
+            if (snapshotBody.isNotBlank()) {
+                onInferTypeWithAI(snapshotTitle, snapshotBody)
             }
         }
     }
@@ -2078,13 +2081,16 @@ private fun ChecklistEditor(
     modifier: Modifier = Modifier
 ) {
     val items = remember(body) {
-        if (body.isBlank()) listOf(ChecklistItem("", false))
+        if (body.isBlank()) listOf(ChecklistItem("", ChecklistState.NotStarted))
         else body.split("\n").map { line ->
-            when {
-                line.startsWith("- [x] ", ignoreCase = true) -> ChecklistItem(line.substring(6), true)
-                line.startsWith("- [ ] ") -> ChecklistItem(line.substring(6), false)
-                else -> ChecklistItem(line, false) // Not prefixed, treat as an unchecked item
+            val state = ChecklistState.fromPrefix(line)
+            val text = when {
+                line.startsWith("- [x] ", ignoreCase = true) -> line.substring(6)
+                line.startsWith("- [-] ", ignoreCase = true) -> line.substring(6)
+                line.startsWith("- [ ] ") -> line.substring(6)
+                else -> line
             }
+            ChecklistItem(text, state)
         }
     }
 
@@ -2094,15 +2100,65 @@ private fun ChecklistEditor(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                androidx.compose.material3.Checkbox(
-                    checked = item.isChecked,
-                    onCheckedChange = { checked ->
-                        val newItems = items.toMutableList()
-                        newItems[index] = item.copy(isChecked = checked)
-                        onBodyChange(newItems.joinToString("\n") { it.toMarkdown() })
-                    },
-                    modifier = Modifier.size(36.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clickable {
+                            val newItems = items.toMutableList()
+                            newItems[index] = item.copy(state = item.state.next())
+                            onBodyChange(newItems.joinToString("\n") { it.toMarkdown() })
+                        }
+                        .padding(6.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    when (item.state) {
+                        ChecklistState.NotStarted ->
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                                    .border(
+                                        2.dp,
+                                        MaterialTheme.colorScheme.onSurfaceVariant,
+                                        androidx.compose.foundation.shape.RoundedCornerShape(3.dp),
+                                    ),
+                            )
+                        ChecklistState.InProgress ->
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                                    .border(
+                                        2.dp,
+                                        MaterialTheme.colorScheme.primary,
+                                        androidx.compose.foundation.shape.RoundedCornerShape(3.dp),
+                                    ),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(1.5.dp))
+                                        .background(MaterialTheme.colorScheme.primary),
+                                )
+                            }
+                        ChecklistState.Done ->
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
+                                    .background(MaterialTheme.colorScheme.primary),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    Icons.Filled.Done,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                            }
+                    }
+                }
                 BasicTextField(
                     value = item.text,
                     onValueChange = { newText ->
@@ -2110,7 +2166,7 @@ private fun ChecklistEditor(
                         if (newText.contains("\n")) {
                             val parts = newText.split("\n")
                             newItems[index] = item.copy(text = parts[0])
-                            newItems.addAll(index + 1, parts.drop(1).map { ChecklistItem(it, false) })
+                            newItems.addAll(index + 1, parts.drop(1).map { ChecklistItem(it) })
                         } else {
                             newItems[index] = item.copy(text = newText)
                         }
@@ -2118,8 +2174,8 @@ private fun ChecklistEditor(
                     },
                     modifier = Modifier.weight(1f).padding(start = 4.dp),
                     textStyle = MaterialTheme.typography.bodyLarge.copy(
-                        color = if (item.isChecked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                        textDecoration = if (item.isChecked) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
+                        color = if (item.state == ChecklistState.Done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                        textDecoration = if (item.state == ChecklistState.Done) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
                     ),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     keyboardOptions = KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences),
@@ -2151,7 +2207,7 @@ private fun ChecklistEditor(
         TextButton(
             onClick = {
                 val newItems = items.toMutableList()
-                newItems.add(ChecklistItem("", false))
+                newItems.add(ChecklistItem(""))
                 onBodyChange(newItems.joinToString("\n") { it.toMarkdown() })
             },
             modifier = Modifier.padding(start = 36.dp)
@@ -2163,8 +2219,29 @@ private fun ChecklistEditor(
     }
 }
 
-private data class ChecklistItem(val text: String, val isChecked: Boolean) {
-    fun toMarkdown() = if (isChecked) "- [x] $text" else "- [ ] $text"
+private enum class ChecklistState(val prefix: String) {
+    NotStarted("- [ ] "),
+    InProgress("- [-] "),
+    Done("- [x] ");
+
+    fun next(): ChecklistState = when (this) {
+        NotStarted -> InProgress
+        InProgress -> Done
+        Done -> NotStarted
+    }
+
+    companion object {
+        fun fromPrefix(line: String): ChecklistState = when {
+            line.startsWith(Done.prefix, ignoreCase = true) -> Done
+            line.startsWith(InProgress.prefix, ignoreCase = true) -> InProgress
+            line.startsWith(NotStarted.prefix) -> NotStarted
+            else -> NotStarted
+        }
+    }
+}
+
+private data class ChecklistItem(val text: String, val state: ChecklistState = ChecklistState.NotStarted) {
+    fun toMarkdown() = "${state.prefix}$text"
 }
 
 @Composable

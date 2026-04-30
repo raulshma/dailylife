@@ -793,6 +793,21 @@ fun DailyLifeApp(
                             onFavoriteToggled = { viewModel.toggleFavorite(item.id) },
                             onPinnedToggled = { viewModel.togglePinned(item.id) },
                             onCompleted = { viewModel.markOccurrenceCompleted(item.id) },
+                            onBodyChanged = { newBody ->
+                                val draft = com.raulshma.dailylife.domain.LifeItemDraft(
+                                    type = item.type,
+                                    title = item.title,
+                                    body = newBody,
+                                    tags = item.tags,
+                                    isFavorite = item.isFavorite,
+                                    isPinned = item.isPinned,
+                                    taskStatus = item.taskStatus,
+                                    reminderAt = item.reminderAt,
+                                    recurrenceRule = item.recurrenceRule,
+                                    notificationSettings = item.notificationSettings,
+                                )
+                                viewModel.updateItem(item.id, draft)
+                            },
                             onNotificationsChanged = { viewModel.updateItemNotifications(item.id, it) },
                             onEdit = {
                                 editItemId = item.id

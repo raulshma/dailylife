@@ -28,6 +28,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -67,6 +68,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Fullscreen
@@ -187,6 +189,7 @@ fun ItemDetailScreen(
     onFavoriteToggled: () -> Unit,
     onPinnedToggled: () -> Unit,
     onCompleted: () -> Unit,
+    onBodyChanged: ((String) -> Unit)? = null,
     onNotificationsChanged: (ItemNotificationSettings) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
@@ -872,6 +875,7 @@ fun ItemDetailScreen(
                                 contentVisible = contentVisible,
                                 onNotificationsChanged = onNotificationsChanged,
                                 onViewHistory = onViewHistory,
+                                onBodyChanged = onBodyChanged,
                                 isAiEnabled = isAiEnabled,
                                 isFeatureAvailable = isFeatureAvailable,
                                 aiGeneratedTitle = aiGeneratedTitle,
@@ -1934,6 +1938,7 @@ private fun DetailContentSection(
     contentVisible: Boolean,
     onNotificationsChanged: (ItemNotificationSettings) -> Unit,
     onViewHistory: () -> Unit = {},
+    onBodyChanged: ((String) -> Unit)? = null,
     isAiEnabled: Boolean = false,
     isFeatureAvailable: (com.raulshma.dailylife.domain.AIFeature) -> Boolean = { false },
     aiGeneratedTitle: String = "",
@@ -1992,18 +1997,34 @@ private fun DetailContentSection(
         }
 
         if (displayBody.isNotBlank()) {
-            AnimatedVisibility(
-                visible = contentVisible,
-                enter = fadeIn(DailyLifeTween.fade()) + slideInVertically(
-                    DailyLifeTween.content(),
-                    initialOffsetY = { it / 3 }
-                ),
-            ) {
-                DetailTextCard(
-                    title = "Content",
-                    icon = Icons.Filled.Info,
-                    text = displayBody,
-                )
+            val isChecklist = displayBody.lines().any { it.startsWith("- [") }
+            if (item.type == com.raulshma.dailylife.domain.LifeItemType.Task && isChecklist && onBodyChanged != null) {
+                AnimatedVisibility(
+                    visible = contentVisible,
+                    enter = fadeIn(DailyLifeTween.fade()) + slideInVertically(
+                        DailyLifeTween.content(),
+                        initialOffsetY = { it / 3 }
+                    ),
+                ) {
+                    DetailChecklistCard(
+                        body = displayBody,
+                        onChecklistChanged = onBodyChanged,
+                    )
+                }
+            } else {
+                AnimatedVisibility(
+                    visible = contentVisible,
+                    enter = fadeIn(DailyLifeTween.fade()) + slideInVertically(
+                        DailyLifeTween.content(),
+                        initialOffsetY = { it / 3 }
+                    ),
+                ) {
+                    DetailTextCard(
+                        title = "Content",
+                        icon = Icons.Filled.Info,
+                        text = displayBody,
+                    )
+                }
             }
         }
 
@@ -2799,6 +2820,194 @@ private fun DetailPill(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+    }
+}
+
+private enum class ChecklistItemState(val prefix: String) {
+    NotStarted("- [ ] "),
+    InProgress("- [-] "),
+    Done("- [x] ");
+
+    fun next(): ChecklistItemState = when (this) {
+        NotStarted -> InProgress
+        InProgress -> Done
+        Done -> NotStarted
+    }
+
+    companion object {
+        fun fromLine(line: String): ChecklistItemState = when {
+            line.startsWith(Done.prefix, ignoreCase = true) -> Done
+            line.startsWith(InProgress.prefix, ignoreCase = true) -> InProgress
+            line.startsWith(NotStarted.prefix) -> NotStarted
+            else -> NotStarted
+        }
+
+        fun stripPrefix(line: String): String {
+            for (state in entries) {
+                if (line.startsWith(state.prefix, ignoreCase = true)) return line.substring(state.prefix.length)
+            }
+            return line
+        }
+    }
+}
+
+@Composable
+private fun DetailChecklistCard(
+    body: String,
+    onChecklistChanged: (String) -> Unit,
+) {
+    val items = remember(body) {
+        body.split("\n").mapNotNull { line ->
+            if (line.startsWith("- [")) {
+                val state = ChecklistItemState.fromLine(line)
+                val text = ChecklistItemState.stripPrefix(line)
+                Triple(text, state, line)
+            } else null
+        }
+    }
+    val completedCount = items.count { it.second == ChecklistItemState.Done }
+    val totalCount = items.size
+
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Checklist,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text(
+                        text = "Checklist",
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                }
+                Text(
+                    text = "$completedCount/$totalCount",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (completedCount == totalCount) Color(0xFF4CAF50)
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            if (totalCount > 0) {
+                val progress = completedCount.toFloat() / totalCount
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                    color = if (completedCount == totalCount) Color(0xFF4CAF50)
+                    else MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                )
+            }
+
+            items.forEachIndexed { index, (text, state, _) ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable {
+                            val newState = state.next()
+                            val newItems = body.split("\n").toMutableList()
+                            val checklistIndex = newItems.indexOfFirst { it.startsWith("- [") }
+                            var found = 0
+                            for (i in checklistIndex until newItems.size) {
+                                if (newItems[i].startsWith("- [")) {
+                                    if (found == index) {
+                                        val stripped = ChecklistItemState.stripPrefix(newItems[i])
+                                        newItems[i] = newState.prefix + stripped
+                                        break
+                                    }
+                                    found++
+                                }
+                            }
+                            onChecklistChanged(newItems.joinToString("\n"))
+                        }
+                        .padding(vertical = 4.dp, horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    TripleStateCheckbox(state = state)
+                    Text(
+                        text = text,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = when (state) {
+                            ChecklistItemState.Done -> MaterialTheme.colorScheme.onSurfaceVariant
+                            ChecklistItemState.InProgress -> MaterialTheme.colorScheme.onSurface
+                            ChecklistItemState.NotStarted -> MaterialTheme.colorScheme.onSurface
+                        },
+                        textDecoration = if (state == ChecklistItemState.Done)
+                            androidx.compose.ui.text.style.TextDecoration.LineThrough
+                        else null,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TripleStateCheckbox(state: ChecklistItemState) {
+    val borderWidth = 2.dp
+    val size = 22.dp
+    when (state) {
+        ChecklistItemState.NotStarted ->
+            Box(
+                modifier = Modifier
+                    .size(size)
+                    .clip(RoundedCornerShape(4.dp))
+                    .border(borderWidth, MaterialTheme.colorScheme.onSurfaceVariant, RoundedCornerShape(4.dp)),
+            )
+        ChecklistItemState.InProgress ->
+            Box(
+                modifier = Modifier
+                    .size(size)
+                    .clip(RoundedCornerShape(4.dp))
+                    .border(borderWidth, MaterialTheme.colorScheme.primary, RoundedCornerShape(4.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(MaterialTheme.colorScheme.primary),
+                )
+            }
+        ChecklistItemState.Done ->
+            Box(
+                modifier = Modifier
+                    .size(size)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(MaterialTheme.colorScheme.primary),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Done,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
     }
 }
 
