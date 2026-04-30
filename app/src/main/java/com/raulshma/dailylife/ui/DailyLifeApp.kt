@@ -31,6 +31,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -116,6 +117,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.material3.Slider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -155,6 +157,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.mapSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -778,6 +781,7 @@ fun DailyLifeApp(
                         engineState = engineState,
                         onToggleAiSearch = if (isAiEnabled) { { isAiSearchActive = !isAiSearchActive } } else null,
                         onAiSearchQuery = { viewModel.naturalLanguageSearch(it) },
+                        onUnloadModel = if (isAiEnabled) { { viewModel.unloadModel() } } else null,
                         contentPadding = PaddingValues(),
                     )
 
@@ -1274,9 +1278,11 @@ private fun MainScaffold(
     engineState: EngineState = EngineState.Idle,
     onToggleAiSearch: (() -> Unit)? = null,
     onAiSearchQuery: (String) -> Unit = {},
+    onUnloadModel: (() -> Unit)? = null,
     contentPadding: PaddingValues,
 ) {
     val density = androidx.compose.ui.platform.LocalDensity.current
+    val snackbarHostState = androidx.compose.material3.SnackbarHostState()
     val statusBarHeight = WindowInsets.safeDrawing.getTop(density)
     val topBarHeightPx = with(density) { 64.dp.roundToPx() }
     val totalTopPx = topBarHeightPx + statusBarHeight
@@ -1304,6 +1310,9 @@ private fun MainScaffold(
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets.safeDrawing,
+        snackbarHost = {
+            androidx.compose.material3.SnackbarHost(hostState = snackbarHostState)
+        },
         topBar = {
             TopAppBar(
                 title = {
@@ -1315,7 +1324,11 @@ private fun MainScaffold(
                         )
                         if (isAiEnabled) {
                             Spacer(modifier = Modifier.width(8.dp))
-                            AiStatusDot(engineState = engineState)
+                            AiStatusDot(
+                                engineState = engineState,
+                                onUnloadModel = onUnloadModel,
+                                snackbarHostState = snackbarHostState,
+                            )
                         }
                     }
                 },
@@ -1496,11 +1509,15 @@ private fun MainScaffold(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AiStatusDot(
     engineState: EngineState,
     modifier: Modifier = Modifier,
+    onUnloadModel: (() -> Unit)? = null,
+    snackbarHostState: androidx.compose.material3.SnackbarHostState? = null,
 ) {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val targetColor = when (engineState) {
         EngineState.Idle -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
         is EngineState.LoadingModel -> Color(0xFFFFD166)
@@ -1509,9 +1526,30 @@ private fun AiStatusDot(
         is EngineState.Error -> MaterialTheme.colorScheme.error
     }
     val dotColor by animateColorAsState(targetValue = targetColor, label = "aiStatusDotColor")
+    val canUnload = engineState is EngineState.Ready && onUnloadModel != null
 
     Box(
-        modifier = modifier.size(12.dp),
+        modifier = modifier
+            .size(12.dp)
+            .then(
+                if (canUnload) {
+                    Modifier.combinedClickable(
+                        onClick = {},
+                        onLongClick = {
+                            val modelName = (engineState as EngineState.Ready).modelName
+                            onUnloadModel.invoke()
+                            scope.launch {
+                                snackbarHostState?.showSnackbar(
+                                    message = "$modelName unloaded from memory",
+                                    duration = androidx.compose.material3.SnackbarDuration.Short,
+                                )
+                            }
+                        },
+                    )
+                } else {
+                    Modifier
+                },
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Box(

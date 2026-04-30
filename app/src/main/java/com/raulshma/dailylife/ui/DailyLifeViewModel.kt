@@ -128,6 +128,12 @@ class DailyLifeViewModel @Inject constructor(
         modelManager.setAiEnabled(enabled)
     }
 
+    fun unloadModel() {
+        viewModelScope.launch {
+            engineService.unloadModel()
+        }
+    }
+
     private val _aiSmartTitle = MutableStateFlow("")
     val aiSmartTitle = _aiSmartTitle.asStateFlow()
 
