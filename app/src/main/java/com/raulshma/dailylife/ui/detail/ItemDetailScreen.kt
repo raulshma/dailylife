@@ -157,6 +157,7 @@ import com.raulshma.dailylife.ui.TypeBadge
 import com.raulshma.dailylife.ui.components.SharedElementKeys
 import com.raulshma.dailylife.ui.components.CompletionRipple
 import com.raulshma.dailylife.ui.components.ShimmerBox
+import com.raulshma.dailylife.ui.inferLocationMapTile
 import com.raulshma.dailylife.ui.inferLocationPreview
 import com.raulshma.dailylife.ui.rememberDecryptedMediaUri
 import com.raulshma.dailylife.data.media.AudioWaveformGenerator
@@ -915,6 +916,7 @@ private fun AttachmentHeroSection(
     val audioUrl = item.inferAudioUrl()
     val pdfUrl = item.inferPdfUrl()
     val location = item.inferLocationPreview()
+    val mapTile = item.inferLocationMapTile()
 
     val decryptedImage = rememberDecryptedMediaUri(imageUrl)
     val decryptedVideo = rememberDecryptedMediaUri(videoUrl)
@@ -1042,6 +1044,7 @@ private fun AttachmentHeroSection(
                             com.raulshma.dailylife.ui.OpenStreetMapPreview(
                                 latitude = location.first,
                                 longitude = location.second,
+                                mapTile = mapTile,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }

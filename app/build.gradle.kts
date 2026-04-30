@@ -107,6 +107,8 @@ dependencies {
     implementation(libs.moshi.kotlin)
     implementation(libs.androidx.palette.ktx)
     implementation(libs.litertlm.android)
+    implementation(libs.multiplatform.markdown.renderer.android)
+    implementation(libs.multiplatform.markdown.renderer.m3)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)

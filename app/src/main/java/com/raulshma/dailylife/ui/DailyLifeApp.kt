@@ -232,6 +232,10 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import androidx.compose.foundation.isSystemInDarkTheme
+import com.raulshma.dailylife.ui.capture.CartoDark
+import com.raulshma.dailylife.ui.capture.CartoLight
+import com.raulshma.dailylife.ui.capture.EsriSatellite
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
@@ -531,8 +535,11 @@ fun DailyLifeApp(
         }
     }
 
-    var quickAddLocationCallback by remember { mutableStateOf<((Double, Double) -> Unit)?>(null) }
-    var editLocationCallback by remember { mutableStateOf<((Double, Double) -> Unit)?>(null) }
+    var quickAddLocationCallback by remember { mutableStateOf<((Double, Double, String) -> Unit)?>(null) }
+    var editLocationCallback by remember { mutableStateOf<((Double, Double, String) -> Unit)?>(null) }
+    var locationPickerInitialLat by rememberSaveable { mutableStateOf<Double?>(null) }
+    var locationPickerInitialLon by rememberSaveable { mutableStateOf<Double?>(null) }
+    var locationPickerInitialTile by rememberSaveable { mutableStateOf<String?>(null) }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -1054,8 +1061,11 @@ fun DailyLifeApp(
                     viewModel.clearAiState()
                 },
                 mediaLauncher = mediaLauncher,
-                onShowLocationPicker = { onLocationSelected ->
+                onShowLocationPicker = { lat, lon, tile, onLocationSelected ->
                     quickAddLocationCallback = onLocationSelected
+                    locationPickerInitialLat = lat
+                    locationPickerInitialLon = lon
+                    locationPickerInitialTile = tile
                     showLocationPicker = true
                 },
                 allTags = allTags,
@@ -1084,16 +1094,25 @@ fun DailyLifeApp(
 
     if (showLocationPicker) {
         LocationPickerSheet(
-            onLocationSelected = { lat, lon ->
-                quickAddLocationCallback?.invoke(lat, lon)
-                editLocationCallback?.invoke(lat, lon)
+            initialLatitude = locationPickerInitialLat,
+            initialLongitude = locationPickerInitialLon,
+            initialTile = locationPickerInitialTile,
+            onLocationSelected = { lat, lon, tile ->
+                quickAddLocationCallback?.invoke(lat, lon, tile)
+                editLocationCallback?.invoke(lat, lon, tile)
                 quickAddLocationCallback = null
                 editLocationCallback = null
+                locationPickerInitialLat = null
+                locationPickerInitialLon = null
+                locationPickerInitialTile = null
                 showLocationPicker = false
             },
             onDismiss = {
                 quickAddLocationCallback = null
                 editLocationCallback = null
+                locationPickerInitialLat = null
+                locationPickerInitialLon = null
+                locationPickerInitialTile = null
                 showLocationPicker = false
             },
         )
@@ -1130,8 +1149,11 @@ fun DailyLifeApp(
                     viewModel.clearAiState()
                 },
                 mediaLauncher = editMediaLauncher,
-                onShowLocationPicker = { onLocationSelected ->
+                onShowLocationPicker = { lat, lon, tile, onLocationSelected ->
                     editLocationCallback = onLocationSelected
+                    locationPickerInitialLat = lat
+                    locationPickerInitialLon = lon
+                    locationPickerInitialTile = tile
                     showLocationPicker = true
                 },
                 allTags = allTags,
@@ -2286,11 +2308,13 @@ internal fun AudioPreview(item: LifeItem) {
 @Composable
 internal fun LocationPreview(item: LifeItem) {
     val location = remember(item.id, item.title, item.body) { item.inferLocationPreview() }
+    val mapTile = remember(item.id, item.title, item.body) { item.inferLocationMapTile() }
     if (location != null) {
         Box(modifier = Modifier.fillMaxSize()) {
             OpenStreetMapPreview(
                 latitude = location.first,
                 longitude = location.second,
+                mapTile = mapTile,
                 modifier = Modifier.fillMaxSize(),
             )
             Box(
@@ -2417,13 +2441,21 @@ internal fun rememberPdfThumbnail(item: LifeItem): String? {
 internal fun OpenStreetMapPreview(
     latitude: Double,
     longitude: Double,
+    mapTile: String? = null,
     modifier: Modifier = Modifier,
 ) {
+    val isDarkTheme = isSystemInDarkTheme()
     AndroidView(
         modifier = modifier,
         factory = { context ->
             MapView(context).apply {
-                setTileSource(TileSourceFactory.MAPNIK)
+                val tileSource = when (mapTile) {
+                    "Satellite" -> EsriSatellite
+                    "OSM" -> TileSourceFactory.MAPNIK
+                    "Auto" -> if (isDarkTheme) CartoDark else CartoLight
+                    else -> TileSourceFactory.MAPNIK
+                }
+                setTileSource(tileSource)
                 setMultiTouchControls(false)
                 isTilesScaledToDpi = true
                 minZoomLevel = 2.0
@@ -2443,6 +2475,15 @@ internal fun OpenStreetMapPreview(
                     title = "Saved location"
                 },
             )
+            val newSource = when (mapTile) {
+                "Satellite" -> EsriSatellite
+                "OSM" -> TileSourceFactory.MAPNIK
+                "Auto" -> if (isDarkTheme) CartoDark else CartoLight
+                else -> TileSourceFactory.MAPNIK
+            }
+            if (mapView.tileProvider.tileSource != newSource) {
+                mapView.setTileSource(newSource)
+            }
             mapView.invalidate()
         },
     )
@@ -2815,11 +2856,13 @@ internal fun LifeItemType.isMediaLike(): Boolean =
         this == LifeItemType.Mixed
 
 private val GeoPattern =
-    Regex("""geo:\s*([-+]?\d{1,2}(?:\.\d+)?),\s*([-+]?\d{1,3}(?:\.\d+)?)""", RegexOption.IGNORE_CASE)
+    Regex("""geo:\s*([-+]?\d{1,2}(?:\.\d+)?),\s*([-+]?\d{1,3}(?:\.\d+)?)(?:\?[^\s]*)?""", RegexOption.IGNORE_CASE)
 private val LatLonPattern =
     Regex("""([-+]?\d{1,2}(?:\.\d+)?)\s*[, ]\s*([-+]?\d{1,3}(?:\.\d+)?)""")
 private val OsmMlatPattern =
     Regex("""[?&]mlat=([-+]?\d{1,2}(?:\.\d+)?).*?[?&]mlon=([-+]?\d{1,3}(?:\.\d+)?)""", RegexOption.IGNORE_CASE)
+private val MapTilePattern =
+    Regex("""[?&]mapTile=([^&\s]+)""", RegexOption.IGNORE_CASE)
 
 @Composable
 internal fun rememberDecryptedMediaUri(uriString: String?): String? {
@@ -2919,6 +2962,11 @@ internal fun LifeItem.inferLocationPreview(): Pair<Double, Double>? {
             lat to lon
         }
         ?.takeIf { (lat, lon) -> lat in -90.0..90.0 && lon in -180.0..180.0 }
+}
+
+internal fun LifeItem.inferLocationMapTile(): String? {
+    val source = listOf(title, body).joinToString(" ")
+    return MapTilePattern.find(source)?.groupValues?.get(1)
 }
 
 internal fun parseTags(input: String): Set<String> =

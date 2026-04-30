@@ -65,7 +65,6 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import com.raulshma.dailylife.data.ai.AIFeatureExecutor
 import com.raulshma.dailylife.data.ai.LiteRTEngineService
@@ -81,6 +80,9 @@ import com.raulshma.dailylife.ui.ai.components.AINoModelCard
 import com.raulshma.dailylife.ui.ai.components.AIShimmerLoader
 import com.raulshma.dailylife.ui.ai.components.AIStatusChip
 import com.raulshma.dailylife.ui.theme.DailyLifeDuration
+import com.mikepenz.markdown.m3.Markdown
+import com.mikepenz.markdown.model.rememberMarkdownState
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -295,11 +297,19 @@ fun AIReflectionsScreen(
 
                 Spacer(Modifier.height(12.dp))
 
+                val reflectionScrollState = rememberScrollState()
+                LaunchedEffect(reflectionText) {
+                    if (isGenerating) {
+                        delay(50)
+                        reflectionScrollState.animateScrollTo(reflectionScrollState.maxValue)
+                    }
+                }
+
                 if (isGenerating || reflectionText.isNotEmpty()) {
                     Column(
                         modifier = Modifier
                             .weight(1f)
-                            .verticalScroll(rememberScrollState())
+                            .verticalScroll(reflectionScrollState)
                             .padding(vertical = 4.dp),
                     ) {
                         AIGradientBorderCard {
@@ -310,11 +320,13 @@ fun AIReflectionsScreen(
                                 if (isGenerating && reflectionText.isEmpty()) {
                                     AIShimmerLoader(lineCount = 4)
                                 } else {
-                                    Text(
-                                        text = reflectionText,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontStyle = FontStyle.Italic,
-                                        color = MaterialTheme.colorScheme.onSurface,
+                                    val markdownState = rememberMarkdownState(
+                                        reflectionText,
+                                        retainState = true,
+                                    )
+                                    Markdown(
+                                        markdownState = markdownState,
+                                        modifier = Modifier.fillMaxWidth(),
                                     )
                                 }
 

@@ -25,6 +25,7 @@ biometric = "1.2.0-alpha05"
 playServicesLocation = "21.3.0"
 paging = "3.3.6"
 litertlm = "0.10.2"
+markdownRenderer = "0.40.2"
 moshi = "1.15.2"
 palette = "1.0.0"
 
@@ -71,6 +72,8 @@ moshi = { group = "com.squareup.moshi", name = "moshi", version.ref = "moshi" }
 moshi-kotlin = { group = "com.squareup.moshi", name = "moshi-kotlin", version.ref = "moshi" }
 androidx-palette-ktx = { group = "androidx.palette", name = "palette-ktx", version.ref = "palette" }
 litertlm-android = { group = "com.google.ai.edge.litertlm", name = "litertlm-android", version.ref = "litertlm" }
+multiplatform-markdown-renderer-android = { group = "com.mikepenz", name = "multiplatform-markdown-renderer-android", version.ref = "markdownRenderer" }
+multiplatform-markdown-renderer-m3 = { group = "com.mikepenz", name = "multiplatform-markdown-renderer-m3", version.ref = "markdownRenderer" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

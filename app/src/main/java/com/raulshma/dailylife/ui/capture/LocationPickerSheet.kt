@@ -21,6 +21,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,10 +44,12 @@ import com.raulshma.dailylife.ui.components.ShimmerBox
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import android.content.Context
 import android.Manifest
 import android.content.pm.PackageManager
 import android.location.LocationManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.osmdroid.events.MapEventsReceiver
@@ -64,7 +67,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.isSystemInDarkTheme
 
-private val CartoLight = object : OnlineTileSourceBase(
+internal val CartoLight = object : OnlineTileSourceBase(
     "CartoDB Positron", 1, 20, 256, ".png",
     arrayOf("https://a.basemaps.cartocdn.com/light_all/"), "© OpenStreetMap contributors, © CARTO"
 ) {
@@ -73,7 +76,7 @@ private val CartoLight = object : OnlineTileSourceBase(
     }
 }
 
-private val CartoDark = object : OnlineTileSourceBase(
+internal val CartoDark = object : OnlineTileSourceBase(
     "CartoDB Dark Matter", 1, 20, 256, ".png",
     arrayOf("https://a.basemaps.cartocdn.com/dark_all/"), "© OpenStreetMap contributors, © CARTO"
 ) {
@@ -82,7 +85,7 @@ private val CartoDark = object : OnlineTileSourceBase(
     }
 }
 
-private val EsriSatellite = object : OnlineTileSourceBase(
+internal val EsriSatellite = object : OnlineTileSourceBase(
     "Esri World Imagery", 1, 19, 256, "",
     arrayOf("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/"), "Tiles © Esri"
 ) {
@@ -96,10 +99,12 @@ private val EsriSatellite = object : OnlineTileSourceBase(
 fun LocationPickerSheet(
     initialLatitude: Double? = null,
     initialLongitude: Double? = null,
-    onLocationSelected: (Double, Double) -> Unit,
+    initialTile: String? = null,
+    onLocationSelected: (Double, Double, String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
+    val prefs = context.getSharedPreferences("dailylife_prefs", Context.MODE_PRIVATE)
     var selectedPoint by remember {
         mutableStateOf(
             initialLatitude?.let { lat ->
@@ -111,7 +116,11 @@ fun LocationPickerSheet(
     val coroutineScope = rememberCoroutineScope()
     var searchQuery by remember { mutableStateOf("") }
     var isSearching by remember { mutableStateOf(false) }
-    var selectedTile by remember { mutableStateOf("Auto") }
+    var selectedTile by remember {
+        mutableStateOf(
+            initialTile ?: prefs.getString("last_map_tile", null) ?: "Auto"
+        )
+    }
     val isDarkTheme = isSystemInDarkTheme()
     var myLocationOverlay by remember { mutableStateOf<MyLocationNewOverlay?>(null) }
 
@@ -181,6 +190,18 @@ fun LocationPickerSheet(
     ) { permissions ->
         if (permissions.values.any { it }) {
             jumpToCurrentLocation()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(300)
+        if (initialLatitude == null || initialLongitude == null) {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                jumpToCurrentLocation()
+            } else {
+                locationPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            }
         }
     }
 
@@ -376,7 +397,8 @@ fun LocationPickerSheet(
                 }
                 Button(
                     onClick = {
-                        onLocationSelected(selectedPoint.latitude, selectedPoint.longitude)
+                        onLocationSelected(selectedPoint.latitude, selectedPoint.longitude, selectedTile)
+                        prefs.edit().putString("last_map_tile", selectedTile).apply()
                         onDismiss()
                     },
                 ) {

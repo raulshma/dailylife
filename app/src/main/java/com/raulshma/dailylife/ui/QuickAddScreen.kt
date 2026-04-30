@@ -173,7 +173,7 @@ internal fun QuickAddScreen(
     onDismiss: () -> Unit,
     onDiscardDraft: () -> Unit,
     mediaLauncher: com.raulshma.dailylife.ui.capture.MediaCaptureLauncher,
-    onShowLocationPicker: ((Double, Double) -> Unit) -> Unit,
+    onShowLocationPicker: (Double?, Double?, String?, (Double, Double, String) -> Unit) -> Unit,
     allTags: List<String> = emptyList(),
     isEditMode: Boolean = false,
     encryptionProgress: EncryptionProgress? = null,
@@ -233,7 +233,7 @@ private fun QuickAddContent(
     onAddAndContinue: (LifeItemDraft) -> Unit,
     onDiscardDraft: () -> Unit,
     mediaLauncher: com.raulshma.dailylife.ui.capture.MediaCaptureLauncher,
-    onShowLocationPicker: ((Double, Double) -> Unit) -> Unit,
+    onShowLocationPicker: (Double?, Double?, String?, (Double, Double, String) -> Unit) -> Unit,
     allTags: List<String> = emptyList(),
     isEditMode: Boolean = false,
     encryptionProgress: EncryptionProgress? = null,
@@ -1397,8 +1397,14 @@ private fun QuickAddContent(
                             Icon(Icons.Filled.EditNote, contentDescription = "File")
                         }
                         IconButton(onClick = {
-                            onShowLocationPicker { lat, lon ->
-                                body = if (body.isBlank()) "geo:$lat,$lon" else "$body\ngeo:$lat,$lon"
+                            val geoRegex = Regex("""geo:\s*[-+]?\d{1,2}(?:\.\d+)?,\s*[-+]?\d{1,3}(?:\.\d+)?(?:\?[^\s]*)?""", RegexOption.IGNORE_CASE)
+                            val existingGeo = geoRegex.find(body)?.value
+                            val existingLat = existingGeo?.let { Regex("""geo:\s*([-+]?\d{1,2}(?:\.\d+)?)""", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1)?.toDoubleOrNull() }
+                            val existingLon = existingGeo?.let { Regex("""geo:\s*[-+]?\d{1,2}(?:\.\d+)?,\s*([-+]?\d{1,3}(?:\.\d+)?)""", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1)?.toDoubleOrNull() }
+                            val existingTile = existingGeo?.let { Regex("""[?&]mapTile=([^&\s]+)""", RegexOption.IGNORE_CASE).find(it)?.groupValues?.get(1) }
+                            onShowLocationPicker(existingLat, existingLon, existingTile) { lat, lon, tile ->
+                                val cleanedBody = body.replace(geoRegex, "").trim()
+                                body = if (cleanedBody.isBlank()) "geo:$lat,$lon?mapTile=$tile" else "$cleanedBody\ngeo:$lat,$lon?mapTile=$tile"
                             }
                         }) {
                             Icon(Icons.Filled.LocationOn, contentDescription = "Location")
