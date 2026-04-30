@@ -137,6 +137,8 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.InputChip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -1127,32 +1129,52 @@ private fun MainScaffold(
                     )
                 },
                 actions = {
-                    IconButton(
-                        onClick = onShowAIReflections,
-                        modifier = Modifier.padding(end = 4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.AutoAwesome,
-                            contentDescription = "AI Reflections",
-                        )
-                    }
-                    IconButton(
-                        onClick = onShowAIChat,
-                        modifier = Modifier.padding(end = 4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.SmartToy,
-                            contentDescription = "AI Chat",
-                        )
-                    }
-                    IconButton(
-                        onClick = onShowSettings,
-                        modifier = Modifier.padding(end = 8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Settings,
-                            contentDescription = "Settings",
-                        )
+                    val showDropdown = rememberSaveable { mutableStateOf(false) }
+                    Box {
+                        IconButton(
+                            onClick = { showDropdown.value = true },
+                            modifier = Modifier.padding(end = 8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Settings,
+                                contentDescription = "Settings",
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showDropdown.value,
+                            onDismissRequest = { showDropdown.value = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("AI Chat") },
+                                onClick = {
+                                    showDropdown.value = false
+                                    onShowAIChat()
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.SmartToy, contentDescription = null)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("AI Reflection") },
+                                onClick = {
+                                    showDropdown.value = false
+                                    onShowAIReflections()
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.AutoAwesome, contentDescription = null)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Settings") },
+                                onClick = {
+                                    showDropdown.value = false
+                                    onShowSettings()
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.Settings, contentDescription = null)
+                                },
+                            )
+                        }
                     }
                 },
                 modifier = Modifier.graphicsLayer {

@@ -64,8 +64,15 @@ fun AIChatScreen(
     var inputText by remember { mutableStateOf("") }
     var isGenerating by remember { mutableStateOf(false) }
     var streamingText by remember { mutableStateOf("") }
+    var isLoadingModel by remember { mutableStateOf(true) }
     val listState = rememberLazyListState()
     val isEngineReady by engineService.isEngineReady.collectAsState()
+
+    LaunchedEffect(Unit) {
+        isLoadingModel = true
+        aiExecutor.ensureModelForFeature(com.raulshma.dailylife.domain.AIFeature.CHAT)
+        isLoadingModel = false
+    }
 
     LaunchedEffect(messages.size, streamingText) {
         if (messages.isNotEmpty() || streamingText.isNotEmpty()) {
@@ -94,7 +101,20 @@ fun AIChatScreen(
                 .padding(innerPadding)
                 .imePadding(),
         ) {
-            if (!isEngineReady) {
+            if (isLoadingModel) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Loading AI model...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else if (!isEngineReady) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()

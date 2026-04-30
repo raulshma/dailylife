@@ -29,6 +29,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -73,7 +74,14 @@ fun AIReflectionsScreen(
     var selectedRange by remember { mutableStateOf(dateRanges[1]) }
     var reflectionText by remember { mutableStateOf("") }
     var isGenerating by remember { mutableStateOf(false) }
+    var isLoadingModel by remember { mutableStateOf(true) }
     val isEngineReady by engineService.isEngineReady.collectAsState()
+
+    LaunchedEffect(Unit) {
+        isLoadingModel = true
+        aiExecutor.ensureModelForFeature(com.raulshma.dailylife.domain.AIFeature.REFLECTION)
+        isLoadingModel = false
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -112,7 +120,20 @@ fun AIReflectionsScreen(
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp),
         ) {
-            if (!isEngineReady) {
+            if (isLoadingModel) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Loading AI model...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else if (!isEngineReady) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
