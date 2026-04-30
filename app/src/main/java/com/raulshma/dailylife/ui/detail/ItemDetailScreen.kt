@@ -1942,6 +1942,52 @@ private fun DetailContentSection(
             }
         }
 
+        val savedAiSummary = item.aiSummary?.trim().orEmpty()
+        if (savedAiSummary.isNotBlank()) {
+            AnimatedVisibility(
+                visible = contentVisible,
+                enter = fadeIn(DailyLifeTween.fade()) + slideInVertically(
+                    DailyLifeTween.content(),
+                    initialOffsetY = { it / 3 }
+                ),
+            ) {
+                ElevatedCard(
+                    colors = CardDefaults.elevatedCardColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.SmartToy,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Text(
+                                text = "AI description",
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                        }
+                        Text(
+                            text = savedAiSummary,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
+        }
+
         if (item.tags.isNotEmpty()) {
             AnimatedVisibility(
                 visible = contentVisible,

@@ -578,13 +578,8 @@ class DailyLifeViewModel @Inject constructor(
                 val resolvedUri = mediaEncryptionManager.decryptToCache(uri, context) ?: uri
                 val rawBytes = context.contentResolver.openInputStream(resolvedUri)?.use { it.readBytes() }
                     ?: return@withContext null
-                val isHeic = isHeicHeader(rawBytes)
-                val bitmap = decodeBitmapForAi(rawBytes, maxAiImageDimension, isHeic) ?: return@withContext null
-                val imageBytes = if (isHeic) {
-                    bitmap.toJpegByteArrayWithLimit(maxAiImageDimension, maxAiImageBytes)
-                } else {
-                    bitmap.toPngByteArrayWithLimit(maxAiImageDimension, maxAiImageBytes)
-                }
+                val bitmap = decodeBitmapForAi(rawBytes, maxAiImageDimension) ?: return@withContext null
+                val imageBytes = bitmap.toPngByteArrayWithLimit(maxAiImageDimension, maxAiImageBytes)
                 Log.i(
                     TAG,
                     "Image for AI: ${bitmap.width}x${bitmap.height} -> ${imageBytes.width}x${imageBytes.height}, ${imageBytes.bytes.size} bytes",
@@ -595,56 +590,54 @@ class DailyLifeViewModel @Inject constructor(
         }
     }
 
-    private fun decodeBitmapForAi(rawBytes: ByteArray, maxDimension: Int, isHeic: Boolean): Bitmap? {
-        val bitmap = if (isHeic) {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
-                Log.w(TAG, "HEIC decode unsupported on API ${Build.VERSION.SDK_INT}")
-                return null
-            }
-            try {
-                val source = android.graphics.ImageDecoder.createSource(java.nio.ByteBuffer.wrap(rawBytes))
-                android.graphics.ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
-                    decoder.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE
-                    decoder.isMutableRequired = false
-                    decoder.setTargetColorSpace(android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.SRGB))
-                    decoder.setMemorySizePolicy(android.graphics.ImageDecoder.MEMORY_POLICY_LOW_RAM)
-                    val size = info.size
-                    val scale = maxDimension.toFloat() / maxOf(size.width, size.height)
-                    if (scale < 1f) {
-                        decoder.setTargetSize(
-                            (size.width * scale).toInt().coerceAtLeast(1),
-                            (size.height * scale).toInt().coerceAtLeast(1),
-                        )
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "HEIC decode failed", e)
-                null
-            }
+    private fun decodeBitmapForAi(rawBytes: ByteArray, maxDimension: Int): Bitmap? {
+        val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            decodeBitmapWithImageDecoder(rawBytes, maxDimension) ?: decodeBitmapWithBitmapFactory(rawBytes, maxDimension)
         } else {
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size, bounds)
-            val inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, maxDimension)
-            val options = BitmapFactory.Options().apply {
-                this.inSampleSize = inSampleSize
-                inPreferredConfig = Bitmap.Config.ARGB_8888
-            }
-            BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size, options)
+            decodeBitmapWithBitmapFactory(rawBytes, maxDimension)
         }
-        if (bitmap == null) return null
-        if (bitmap.config == Bitmap.Config.ARGB_8888) return bitmap
-        val normalized = bitmap.copy(Bitmap.Config.ARGB_8888, false)
-        if (normalized != null) bitmap.recycle()
-        return normalized ?: bitmap
+        return bitmap?.asArgb8888()
     }
 
-    private fun isHeicHeader(rawBytes: ByteArray): Boolean {
-        return rawBytes.size >= 12 && (
-            rawBytes[4] == 'f'.code.toByte() && rawBytes[5] == 't'.code.toByte() &&
-                rawBytes[6] == 'y'.code.toByte() && rawBytes[7] == 'p'.code.toByte() ||
-            rawBytes[4] == 'h'.code.toByte() && rawBytes[5] == 'e'.code.toByte() &&
-                rawBytes[6] == 'i'.code.toByte() && rawBytes[7] == 'c'.code.toByte()
-        )
+    private fun decodeBitmapWithImageDecoder(rawBytes: ByteArray, maxDimension: Int): Bitmap? {
+        return try {
+            val source = android.graphics.ImageDecoder.createSource(java.nio.ByteBuffer.wrap(rawBytes))
+            android.graphics.ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                decoder.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE
+                decoder.isMutableRequired = false
+                decoder.setTargetColorSpace(android.graphics.ColorSpace.get(android.graphics.ColorSpace.Named.SRGB))
+                decoder.setMemorySizePolicy(android.graphics.ImageDecoder.MEMORY_POLICY_LOW_RAM)
+                val size = info.size
+                val scale = maxDimension.toFloat() / maxOf(size.width, size.height)
+                if (scale < 1f) {
+                    decoder.setTargetSize(
+                        (size.width * scale).toInt().coerceAtLeast(1),
+                        (size.height * scale).toInt().coerceAtLeast(1),
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "ImageDecoder decode failed", e)
+            null
+        }
+    }
+
+    private fun decodeBitmapWithBitmapFactory(rawBytes: ByteArray, maxDimension: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, maxDimension)
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        return BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size, options)
+    }
+
+    private fun Bitmap.asArgb8888(): Bitmap {
+        if (config == Bitmap.Config.ARGB_8888) return this
+        val normalized = copy(Bitmap.Config.ARGB_8888, false)
+        if (normalized != null) recycle()
+        return normalized ?: this
     }
 
     private fun Bitmap.toPngByteArrayWithLimit(maxDimension: Int, maxBytes: Int): ImageBytes {
@@ -665,41 +658,10 @@ class DailyLifeViewModel @Inject constructor(
                 if (current !== this) current.recycle()
                 return ImageBytes(bytes, currentW, currentH)
             }
-            val nextW = (currentW * 0.75f).toInt().coerceAtLeast(1)
-            val nextH = (currentH * 0.75f).toInt().coerceAtLeast(1)
-            val next = Bitmap.createScaledBitmap(current, nextW, nextH, true)
-            if (current !== this) current.recycle()
-            current = next
-            currentW = nextW
-            currentH = nextH
-        }
-    }
-
-    private fun Bitmap.toJpegByteArrayWithLimit(maxDimension: Int, maxBytes: Int): ImageBytes {
-        val needsResize = width > maxDimension || height > maxDimension
-        var current = if (needsResize) {
-            val scale = maxDimension.toFloat() / maxOf(width, height)
-            val targetW = (width * scale).toInt().coerceAtLeast(1)
-            val targetH = (height * scale).toInt().coerceAtLeast(1)
-            Bitmap.createScaledBitmap(this, targetW, targetH, true)
-        } else {
-            this
-        }
-        var currentW = current.width
-        var currentH = current.height
-        while (true) {
-            var quality = 85
-            var bytes = current.compressToJpeg(quality)
-            while (bytes.size > maxBytes && quality >= 50) {
-                quality -= 10
-                bytes = current.compressToJpeg(quality)
-            }
-            if (bytes.size <= maxBytes || (currentW <= 128 && currentH <= 128)) {
-                if (current !== this) current.recycle()
-                return ImageBytes(bytes, currentW, currentH)
-            }
-            val nextW = (currentW * 0.75f).toInt().coerceAtLeast(1)
-            val nextH = (currentH * 0.75f).toInt().coerceAtLeast(1)
+            val scale = kotlin.math.sqrt(maxBytes.toFloat() / bytes.size.toFloat())
+                .coerceIn(0.5f, 0.85f)
+            val nextW = (currentW * scale).toInt().coerceAtLeast(1)
+            val nextH = (currentH * scale).toInt().coerceAtLeast(1)
             val next = Bitmap.createScaledBitmap(current, nextW, nextH, true)
             if (current !== this) current.recycle()
             current = next
@@ -711,12 +673,6 @@ class DailyLifeViewModel @Inject constructor(
     private fun Bitmap.compressToPng(): ByteArray {
         val stream = ByteArrayOutputStream()
         compress(Bitmap.CompressFormat.PNG, 100, stream)
-        return stream.toByteArray()
-    }
-
-    private fun Bitmap.compressToJpeg(quality: Int): ByteArray {
-        val stream = ByteArrayOutputStream()
-        compress(Bitmap.CompressFormat.JPEG, quality, stream)
         return stream.toByteArray()
     }
 
