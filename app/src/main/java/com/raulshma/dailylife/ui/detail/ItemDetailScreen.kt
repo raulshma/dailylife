@@ -63,8 +63,11 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.NotificationsOff
@@ -72,17 +75,21 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -125,6 +132,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.SubcomposeAsyncImage
+import com.raulshma.dailylife.domain.AIFeature
+import com.raulshma.dailylife.domain.AIModelCapability
 import com.raulshma.dailylife.domain.ItemNotificationSettings
 import com.raulshma.dailylife.domain.LifeItem
 import com.raulshma.dailylife.domain.NotificationSettings
@@ -175,6 +184,27 @@ fun ItemDetailScreen(
     onNavigateToItem: (Long) -> Unit = {},
     onViewHistory: () -> Unit = {},
     onStartFocusTimer: () -> Unit = {},
+    isAiEnabled: Boolean = false,
+    isFeatureAvailable: (com.raulshma.dailylife.domain.AIFeature) -> Boolean = { false },
+    aiGeneratedTitle: String = "",
+    aiGeneratedDescription: String = "",
+    aiGeneratedTags: List<String> = emptyList(),
+    aiMood: com.raulshma.dailylife.domain.MoodResult? = null,
+    aiPhotoDescription: String = "",
+    aiAudioSummary: String = "",
+    isAiGenerating: Boolean = false,
+    aiError: String? = null,
+    onGenerateTitle: (String) -> Unit = {},
+    onGenerateDescription: (String, String) -> Unit = { _, _ -> },
+    onSuggestTags: (String, String) -> Unit = { _, _ -> },
+    onAnalyzeMood: (String, String) -> Unit = { _, _ -> },
+    onDescribePhoto: (String) -> Unit = {},
+    onSummarizeAudio: (String) -> Unit = {},
+    onApplyTitle: (Long, String) -> Unit = { _, _ -> },
+    onApplyTags: (Long, Set<String>) -> Unit = { _, _ -> },
+    onApplyDescription: (Long, String) -> Unit = { _, _ -> },
+    onClearAiError: () -> Unit = {},
+    onCancelAi: () -> Unit = {},
 ) {
     val haptic = LocalHapticFeedback.current
     val occurrenceStats = item.occurrenceStats()
@@ -776,6 +806,27 @@ fun ItemDetailScreen(
                             contentVisible = contentVisible,
                             onNotificationsChanged = onNotificationsChanged,
                             onViewHistory = onViewHistory,
+                            isAiEnabled = isAiEnabled,
+                            isFeatureAvailable = isFeatureAvailable,
+                            aiGeneratedTitle = aiGeneratedTitle,
+                            aiGeneratedDescription = aiGeneratedDescription,
+                            aiGeneratedTags = aiGeneratedTags,
+                            aiMood = aiMood,
+                            aiPhotoDescription = aiPhotoDescription,
+                            aiAudioSummary = aiAudioSummary,
+                            isAiGenerating = isAiGenerating,
+                            aiError = aiError,
+                            onGenerateTitle = onGenerateTitle,
+                            onGenerateDescription = onGenerateDescription,
+                            onSuggestTags = onSuggestTags,
+                            onAnalyzeMood = onAnalyzeMood,
+                            onDescribePhoto = onDescribePhoto,
+                            onSummarizeAudio = onSummarizeAudio,
+                            onApplyTitle = onApplyTitle,
+                            onApplyTags = onApplyTags,
+                            onApplyDescription = onApplyDescription,
+                            onClearAiError = onClearAiError,
+                            onCancelAi = onCancelAi,
                         )
                     }
                 }
@@ -1814,6 +1865,27 @@ private fun DetailContentSection(
     contentVisible: Boolean,
     onNotificationsChanged: (ItemNotificationSettings) -> Unit,
     onViewHistory: () -> Unit = {},
+    isAiEnabled: Boolean = false,
+    isFeatureAvailable: (com.raulshma.dailylife.domain.AIFeature) -> Boolean = { false },
+    aiGeneratedTitle: String = "",
+    aiGeneratedDescription: String = "",
+    aiGeneratedTags: List<String> = emptyList(),
+    aiMood: com.raulshma.dailylife.domain.MoodResult? = null,
+    aiPhotoDescription: String = "",
+    aiAudioSummary: String = "",
+    isAiGenerating: Boolean = false,
+    aiError: String? = null,
+    onGenerateTitle: (String) -> Unit = {},
+    onGenerateDescription: (String, String) -> Unit = { _, _ -> },
+    onSuggestTags: (String, String) -> Unit = { _, _ -> },
+    onAnalyzeMood: (String, String) -> Unit = { _, _ -> },
+    onDescribePhoto: (String) -> Unit = {},
+    onSummarizeAudio: (String) -> Unit = {},
+    onApplyTitle: (Long, String) -> Unit = { _, _ -> },
+    onApplyTags: (Long, Set<String>) -> Unit = { _, _ -> },
+    onApplyDescription: (Long, String) -> Unit = { _, _ -> },
+    onClearAiError: () -> Unit = {},
+    onCancelAi: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier.padding(horizontal = 20.dp),
@@ -1896,6 +1968,40 @@ private fun DetailContentSection(
                         )
                     }
                 }
+            }
+        }
+
+        if (isAiEnabled) {
+            AnimatedVisibility(
+                visible = contentVisible,
+                enter = fadeIn(DailyLifeTween.fade()) + slideInVertically(
+                    DailyLifeTween.content(),
+                    initialOffsetY = { it / 3 }
+                ),
+            ) {
+                AIToolsSection(
+                    item = item,
+                    isFeatureAvailable = isFeatureAvailable,
+                    aiGeneratedTitle = aiGeneratedTitle,
+                    aiGeneratedDescription = aiGeneratedDescription,
+                    aiGeneratedTags = aiGeneratedTags,
+                    aiMood = aiMood,
+                    aiPhotoDescription = aiPhotoDescription,
+                    aiAudioSummary = aiAudioSummary,
+                    isAiGenerating = isAiGenerating,
+                    aiError = aiError,
+                    onGenerateTitle = onGenerateTitle,
+                    onGenerateDescription = onGenerateDescription,
+                    onSuggestTags = onSuggestTags,
+                    onAnalyzeMood = onAnalyzeMood,
+                    onDescribePhoto = onDescribePhoto,
+                    onSummarizeAudio = onSummarizeAudio,
+                    onApplyTitle = onApplyTitle,
+                    onApplyTags = onApplyTags,
+                    onApplyDescription = onApplyDescription,
+                    onClearAiError = onClearAiError,
+                    onCancelAi = onCancelAi,
+                )
             }
         }
 
@@ -2089,6 +2195,394 @@ private fun DetailContentSection(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AIToolsSection(
+    item: LifeItem,
+    isFeatureAvailable: (AIFeature) -> Boolean,
+    aiGeneratedTitle: String,
+    aiGeneratedDescription: String,
+    aiGeneratedTags: List<String>,
+    aiMood: com.raulshma.dailylife.domain.MoodResult?,
+    aiPhotoDescription: String,
+    aiAudioSummary: String,
+    isAiGenerating: Boolean,
+    aiError: String?,
+    onGenerateTitle: (String) -> Unit,
+    onGenerateDescription: (String, String) -> Unit,
+    onSuggestTags: (String, String) -> Unit,
+    onAnalyzeMood: (String, String) -> Unit,
+    onDescribePhoto: (String) -> Unit,
+    onSummarizeAudio: (String) -> Unit,
+    onApplyTitle: (Long, String) -> Unit,
+    onApplyTags: (Long, Set<String>) -> Unit,
+    onApplyDescription: (Long, String) -> Unit,
+    onClearAiError: () -> Unit,
+    onCancelAi: () -> Unit,
+) {
+    val hasPhoto = item.inferImagePreviewUrl() != null
+    val hasVideo = item.inferVideoPlaybackUrl() != null
+    val hasAudio = item.inferAudioUrl() != null
+    val hasBody = item.displayBody().isNotBlank()
+    val imageUrl = item.inferImagePreviewUrl() ?: item.inferVideoPlaybackUrl()
+    val audioUrl = item.inferAudioUrl() ?: item.inferVideoPlaybackUrl()
+    var appliedLabel by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(appliedLabel) {
+        if (appliedLabel != null) {
+            delay(2000L)
+            appliedLabel = null
+        }
+    }
+
+    LaunchedEffect(aiError) {
+        if (aiError != null) {
+            delay(5000L)
+            onClearAiError()
+        }
+    }
+
+    ElevatedCard(
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.SmartToy,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = "AI Tools",
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                if (isAiGenerating) {
+                    Spacer(modifier = Modifier.weight(1f))
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                    IconButton(onClick = onCancelAi, modifier = Modifier.size(24.dp)) {
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = "Cancel",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
+            }
+
+            AnimatedVisibility(visible = appliedLabel != null) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.Done,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text(
+                        text = appliedLabel ?: "",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
+            }
+
+            AnimatedVisibility(visible = aiError != null && !isAiGenerating) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.errorContainer)
+                        .clickable { onClearAiError() }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text(
+                        text = aiError ?: "",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                AIActionChip(
+                    label = "Generate Title",
+                    icon = Icons.Filled.Edit,
+                    enabled = isFeatureAvailable(AIFeature.SMART_TITLE) && hasBody,
+                    disabledReason = when {
+                        !hasBody -> "No text content"
+                        else -> "Requires text model"
+                    },
+                    onClick = { onGenerateTitle(item.displayBody()) },
+                )
+
+                AIActionChip(
+                    label = "Generate Description",
+                    icon = Icons.Filled.Edit,
+                    enabled = isFeatureAvailable(AIFeature.SUMMARIZE) && hasBody,
+                    disabledReason = when {
+                        !hasBody -> "No text content"
+                        else -> "Requires text model"
+                    },
+                    onClick = { onGenerateDescription(item.title, item.displayBody()) },
+                )
+
+                AIActionChip(
+                    label = "Suggest Tags",
+                    icon = Icons.Filled.Tag,
+                    enabled = isFeatureAvailable(AIFeature.TAG_SUGGESTION) && hasBody,
+                    disabledReason = when {
+                        !hasBody -> "No text content"
+                        else -> "Requires text model"
+                    },
+                    onClick = { onSuggestTags(item.title, item.displayBody()) },
+                )
+
+                AIActionChip(
+                    label = "Analyze Mood",
+                    icon = Icons.Filled.SmartToy,
+                    enabled = isFeatureAvailable(AIFeature.MOOD_ANALYSIS) && hasBody,
+                    disabledReason = when {
+                        !hasBody -> "No text content"
+                        else -> "Requires text model"
+                    },
+                    onClick = { onAnalyzeMood(item.title, item.displayBody()) },
+                )
+
+                if (hasPhoto || hasVideo) {
+                    AIActionChip(
+                        label = "Describe Photo",
+                        icon = Icons.Filled.Image,
+                        enabled = isFeatureAvailable(AIFeature.PHOTO_DESCRIPTION) && imageUrl != null,
+                        disabledReason = when {
+                            imageUrl == null -> "No image available"
+                            else -> "Requires vision model"
+                        },
+                        onClick = { imageUrl?.let(onDescribePhoto) },
+                    )
+                }
+
+                if (hasAudio || hasVideo) {
+                    AIActionChip(
+                        label = "Summarize Audio",
+                        icon = Icons.Filled.Mic,
+                        enabled = isFeatureAvailable(AIFeature.AUDIO_SUMMARY) && audioUrl != null,
+                        disabledReason = when {
+                            audioUrl == null -> "No audio available"
+                            else -> "Requires audio model"
+                        },
+                        onClick = { audioUrl?.let(onSummarizeAudio) },
+                    )
+                }
+            }
+
+            if (aiGeneratedTitle.isNotBlank()) {
+                AIResultRow(
+                    label = "Suggested title",
+                    value = aiGeneratedTitle,
+                    onApply = {
+                        onApplyTitle(item.id, aiGeneratedTitle.trim())
+                        appliedLabel = "Title updated"
+                    },
+                )
+            }
+
+            if (aiGeneratedDescription.isNotBlank()) {
+                AIResultRow(
+                    label = "Generated description",
+                    value = aiGeneratedDescription,
+                    onApply = {
+                        onApplyDescription(item.id, aiGeneratedDescription.trim())
+                        appliedLabel = "Description applied"
+                    },
+                )
+            }
+
+            if (aiGeneratedTags.isNotEmpty()) {
+                AIResultRow(
+                    label = "Suggested tags",
+                    value = aiGeneratedTags.joinToString(", "),
+                    onApply = {
+                        onApplyTags(item.id, aiGeneratedTags.toSet())
+                        appliedLabel = "Tags updated"
+                    },
+                )
+            }
+
+            if (aiMood != null) {
+                AIResultRow(
+                    label = "Detected mood",
+                    value = "${aiMood.moodLabel.replaceFirstChar { it.uppercase() }} (${(aiMood.confidence * 100).toInt()}%)",
+                    onApply = {
+                        val moodText = "Mood: ${aiMood.moodLabel.replaceFirstChar { c -> c.uppercase() }} (${(aiMood.confidence * 100).toInt()}%)"
+                        onApplyDescription(item.id, moodText)
+                        appliedLabel = "Mood saved"
+                    },
+                )
+            }
+
+            if (aiPhotoDescription.isNotBlank()) {
+                AIResultRow(
+                    label = "Photo description",
+                    value = aiPhotoDescription,
+                    onApply = {
+                        onApplyDescription(item.id, aiPhotoDescription.trim())
+                        appliedLabel = "Photo description applied"
+                    },
+                )
+            }
+
+            if (aiAudioSummary.isNotBlank()) {
+                AIResultRow(
+                    label = "Audio summary",
+                    value = aiAudioSummary,
+                    onApply = {
+                        onApplyDescription(item.id, aiAudioSummary.trim())
+                        appliedLabel = "Audio summary applied"
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AIActionChip(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    enabled: Boolean,
+    disabledReason: String,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(8.dp)
+    Surface(
+        shape = shape,
+        color = if (enabled) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant
+        },
+        modifier = Modifier.clip(shape).then(
+            if (enabled) {
+                Modifier.clickable(onClick = onClick)
+            } else {
+                Modifier
+            }
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (enabled) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                },
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (enabled) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun AIResultRow(
+    label: String,
+    value: String,
+    onApply: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Medium,
+        )
+        Text(
+            text = if (value.isNotBlank()) value else "Generating...",
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (value.isNotBlank()) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        )
+        if (value.isNotBlank()) {
+            FilledTonalButton(
+                onClick = onApply,
+                modifier = Modifier.align(Alignment.End),
+            ) {
+                Icon(
+                    Icons.Filled.Done,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Apply")
             }
         }
     }

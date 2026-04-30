@@ -432,10 +432,15 @@ fun DailyLifeApp(
     val lastBackupResult by viewModel.lastBackupResult.collectAsStateWithLifecycle()
     val encryptionProgress by viewModel.encryptionProgress.collectAsStateWithLifecycle()
     val aiSmartTitle by viewModel.aiSmartTitle.collectAsStateWithLifecycle()
+    val aiSummary by viewModel.aiSummary.collectAsStateWithLifecycle()
     val aiTagSuggestions by viewModel.aiTagSuggestions.collectAsStateWithLifecycle()
+    val aiMood by viewModel.aiMood.collectAsStateWithLifecycle()
+    val aiPhotoDescription by viewModel.aiPhotoDescription.collectAsStateWithLifecycle()
+    val aiAudioSummary by viewModel.aiAudioSummary.collectAsStateWithLifecycle()
     val aiRewrittenText by viewModel.aiRewrittenText.collectAsStateWithLifecycle()
     val aiInferredType by viewModel.aiInferredType.collectAsStateWithLifecycle()
     val isAiGenerating by viewModel.isAiGenerating.collectAsStateWithLifecycle()
+    val aiError by viewModel.aiError.collectAsStateWithLifecycle()
     val aiSearchFilters by viewModel.aiSearchFilters.collectAsStateWithLifecycle()
     val isAiEnabled by viewModel.isAiEnabled.collectAsStateWithLifecycle(initialValue = true)
     val engineState by viewModel.engineState.collectAsStateWithLifecycle()
@@ -816,6 +821,27 @@ fun DailyLifeApp(
                             },
                             onViewHistory = { completionHistoryItemId = item.id },
                             onStartFocusTimer = { focusTimerItemId = item.id },
+                            isAiEnabled = isAiEnabled,
+                            isFeatureAvailable = { feature -> viewModel.isFeatureAvailable(feature) },
+                            aiGeneratedTitle = if (isAiEnabled) aiSmartTitle else "",
+                            aiGeneratedDescription = if (isAiEnabled) aiSummary else "",
+                            aiGeneratedTags = if (isAiEnabled) aiTagSuggestions else emptyList(),
+                            aiMood = if (isAiEnabled) aiMood else null,
+                            aiPhotoDescription = if (isAiEnabled) aiPhotoDescription else "",
+                            aiAudioSummary = if (isAiEnabled) aiAudioSummary else "",
+                            isAiGenerating = if (isAiEnabled) isAiGenerating else false,
+                            aiError = if (isAiEnabled) aiError else null,
+                            onGenerateTitle = { body -> viewModel.generateSmartTitle(body) },
+                            onGenerateDescription = { title, body -> viewModel.summarizeEntry(title, body) },
+                            onSuggestTags = { title, body -> viewModel.suggestTags(title, body) },
+                            onAnalyzeMood = { title, body -> viewModel.analyzeMood(title, body) },
+                            onDescribePhoto = { uri -> viewModel.describePhotoFromUri(uri) },
+                            onSummarizeAudio = { uri -> viewModel.summarizeAudioFromUri(uri) },
+                            onApplyTitle = { id, title -> viewModel.applyAiTitle(id, title) },
+                            onApplyTags = { id, tags -> viewModel.applyAiTags(id, tags) },
+                            onApplyDescription = { id, desc -> viewModel.applyAiSummary(id, desc) },
+                            onClearAiError = { viewModel.clearAiError() },
+                            onCancelAi = { viewModel.cancelAiGeneration() },
                         )
                     } ?: Box(
                         modifier = Modifier.fillMaxSize(),

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.LocationManager
+import android.net.Uri
 import android.os.BatteryManager
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -37,6 +38,7 @@ import com.raulshma.dailylife.data.CollectionCounts
 import com.raulshma.dailylife.domain.SnapshotStats
 import com.raulshma.dailylife.domain.TaskStatus
 import com.raulshma.dailylife.domain.EngineState
+import com.raulshma.dailylife.domain.AIFeature
 import com.raulshma.dailylife.domain.WritingTone
 import com.raulshma.dailylife.domain.inferImagePreviewUrl
 import com.raulshma.dailylife.domain.inferVideoPlaybackUrl
@@ -416,6 +418,36 @@ class DailyLifeViewModel @Inject constructor(
         _selectedItem.value = repository.getItem(itemId)
     }
 
+    fun isFeatureAvailable(feature: AIFeature): Boolean {
+        return aiExecutor.isFeatureAvailable(feature)
+    }
+
+    fun applyAiTitle(itemId: Long, title: String) {
+        viewModelScope.launch {
+            repository.updateItemTitle(itemId, title)
+            refreshSelectedItem(itemId)
+            _aiSmartTitle.value = ""
+        }
+    }
+
+    fun applyAiTags(itemId: Long, tags: Set<String>) {
+        viewModelScope.launch {
+            repository.updateItemTags(itemId, tags)
+            refreshSelectedItem(itemId)
+            _aiTagSuggestions.value = emptyList()
+        }
+    }
+
+    fun applyAiSummary(itemId: Long, summary: String) {
+        viewModelScope.launch {
+            repository.updateItemAiSummary(itemId, summary)
+            refreshSelectedItem(itemId)
+            _aiSummary.value = ""
+            _aiPhotoDescription.value = ""
+            _aiAudioSummary.value = ""
+        }
+    }
+
     fun fetchModelCatalog() {
         viewModelScope.launch { modelManager.fetchCatalog() }
     }
@@ -550,6 +582,64 @@ class DailyLifeViewModel @Inject constructor(
             } finally {
                 _isAiGenerating.value = false
             }
+        }
+    }
+
+    fun describePhotoFromUri(uriString: String) {
+        aiJob?.cancel()
+        _aiPhotoDescription.value = ""
+        _aiError.value = null
+        _isAiGenerating.value = true
+        aiJob = viewModelScope.launch {
+            try {
+                val bytes = readMediaBytes(uriString)
+                if (bytes != null) {
+                    aiExecutor.describePhoto(bytes).collect { _aiPhotoDescription.value = it }
+                } else {
+                    _aiError.value = "Failed to read image"
+                }
+            } catch (e: Exception) {
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    Log.w(TAG, "describePhotoFromUri failed", e)
+                    _aiError.value = e.message
+                }
+            } finally {
+                _isAiGenerating.value = false
+            }
+        }
+    }
+
+    fun summarizeAudioFromUri(uriString: String) {
+        aiJob?.cancel()
+        _aiAudioSummary.value = ""
+        _aiError.value = null
+        _isAiGenerating.value = true
+        aiJob = viewModelScope.launch {
+            try {
+                val bytes = readMediaBytes(uriString)
+                if (bytes != null) {
+                    aiExecutor.summarizeAudio(bytes).collect { _aiAudioSummary.value = it }
+                } else {
+                    _aiError.value = "Failed to read audio"
+                }
+            } catch (e: Exception) {
+                if (e !is kotlinx.coroutines.CancellationException) {
+                    Log.w(TAG, "summarizeAudioFromUri failed", e)
+                    _aiError.value = e.message
+                }
+            } finally {
+                _isAiGenerating.value = false
+            }
+        }
+    }
+
+    private suspend fun readMediaBytes(uriString: String): ByteArray? {
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val uri = Uri.parse(uriString)
+                val resolvedUri = mediaEncryptionManager.decryptToCache(uri, context) ?: uri
+                context.contentResolver.openInputStream(resolvedUri)?.use { it.readBytes() }
+            }.getOrNull()
         }
     }
 
