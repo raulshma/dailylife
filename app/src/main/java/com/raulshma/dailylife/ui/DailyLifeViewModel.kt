@@ -183,6 +183,10 @@ class DailyLifeViewModel @Inject constructor(
     }
 
     fun selectItem(itemId: Long, preload: LifeItem? = null) {
+        if (_selectedItem.value?.id != itemId) {
+            cancelAiGeneration()
+            clearAiState()
+        }
         if (preload != null) _selectedItem.value = preload
         viewModelScope.launch {
             _selectedItem.value = repository.getItem(itemId)

@@ -1957,7 +1957,7 @@ private fun DetailContentSection(
 
     Column(
         modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         AnimatedVisibility(
             visible = contentVisible,
@@ -1966,21 +1966,10 @@ private fun DetailContentSection(
                 initialOffsetY = { it / 3 }
             ),
         ) {
-            DetailOverviewCards(
+            DetailAtAGlanceCard(
                 item = item,
                 occurrenceStats = occurrenceStats,
                 globalSettings = globalSettings,
-            )
-        }
-
-        AnimatedVisibility(
-            visible = contentVisible,
-            enter = fadeIn(DailyLifeTween.fade()) + slideInVertically(
-                DailyLifeTween.content(),
-                initialOffsetY = { it / 3 }
-            ),
-        ) {
-            DetailQuickActions(
                 canCopy = displayBody.isNotBlank() || item.aiSummary?.isNotBlank() == true,
                 onCopy = { copyItemToClipboard(context, item) },
                 onShare = { shareItem(context, item) },
@@ -1995,18 +1984,11 @@ private fun DetailContentSection(
                     initialOffsetY = { it / 3 }
                 ),
             ) {
-                ElevatedCard(
-                    colors = CardDefaults.elevatedCardColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        text = displayBody,
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.padding(16.dp),
-                    )
-                }
+                DetailTextCard(
+                    title = "Content",
+                    icon = Icons.Filled.Info,
+                    text = displayBody,
+                )
             }
         }
 
@@ -2019,40 +2001,11 @@ private fun DetailContentSection(
                     initialOffsetY = { it / 3 }
                 ),
             ) {
-                ElevatedCard(
-                    colors = CardDefaults.elevatedCardColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.SmartToy,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Text(
-                                text = "AI description",
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                style = MaterialTheme.typography.titleSmall,
-                            )
-                        }
-                        Text(
-                            text = savedAiSummary,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                    }
-                }
+                DetailTextCard(
+                    title = "AI description",
+                    icon = Icons.Filled.SmartToy,
+                    text = savedAiSummary,
+                )
             }
         }
 
@@ -2064,24 +2017,7 @@ private fun DetailContentSection(
                     initialOffsetY = { it / 3 }
                 ),
             ) {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    item.tags.forEach { tag ->
-                        AssistChip(
-                            onClick = {},
-                            label = { Text("#$tag") },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Label,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            },
-                        )
-                    }
-                }
+                DetailTagsCard(tags = item.tags)
             }
         }
 
@@ -2119,8 +2055,6 @@ private fun DetailContentSection(
             }
         }
 
-        HorizontalDivider()
-
         val metadataItems = buildList {
             add("Favorite" to if (item.isFavorite) "Yes" else "No")
             add("Pinned" to if (item.isPinned) "Yes" else "No")
@@ -2136,26 +2070,24 @@ private fun DetailContentSection(
             }
         }
 
-        metadataItems.forEachIndexed { index, (label, value) ->
-            AnimatedVisibility(
-                visible = contentVisible,
-                enter = fadeIn(
-                    androidx.compose.animation.core.tween(
-                        durationMillis = DailyLifeDuration.SHORT,
-                        delayMillis = staggerDelay(index, baseDelayMs = 40),
-                        easing = DailyLifeEasing.Enter,
-                    )
-                ) + slideInVertically(
-                    androidx.compose.animation.core.tween(
-                        durationMillis = DailyLifeDuration.MEDIUM,
-                        delayMillis = staggerDelay(index, baseDelayMs = 40),
-                        easing = DailyLifeEasing.Enter,
-                    ),
-                    initialOffsetY = { it / 4 }
+        AnimatedVisibility(
+            visible = contentVisible,
+            enter = fadeIn(
+                androidx.compose.animation.core.tween(
+                    durationMillis = DailyLifeDuration.SHORT,
+                    delayMillis = staggerDelay(4, baseDelayMs = 40),
+                    easing = DailyLifeEasing.Enter,
+                )
+            ) + slideInVertically(
+                androidx.compose.animation.core.tween(
+                    durationMillis = DailyLifeDuration.MEDIUM,
+                    delayMillis = staggerDelay(4, baseDelayMs = 40),
+                    easing = DailyLifeEasing.Enter,
                 ),
-            ) {
-                DetailLine(label = label, value = value)
-            }
+                initialOffsetY = { it / 4 }
+            ),
+        ) {
+            DetailMetadataCard(metadataItems = metadataItems)
         }
 
         val effectiveTime = item.notificationSettings.timeOverride
@@ -2177,38 +2109,16 @@ private fun DetailContentSection(
                 initialOffsetY = { it / 4 }
             ),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Icon(
-                    imageVector = if (item.notificationSettings.enabled) {
-                        Icons.Filled.Notifications
-                    } else {
-                        Icons.Filled.NotificationsOff
-                    },
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-                Text(
-                    text = "Item notifications at ${effectiveTime.format(com.raulshma.dailylife.ui.TimeFormatter)}",
-                    modifier = Modifier.weight(1f),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                Switch(
-                    checked = item.notificationSettings.enabled,
-                    onCheckedChange = {
-                        onNotificationsChanged(item.notificationSettings.copy(enabled = it))
-                    }
-                )
-            }
+            DetailNotificationCard(
+                enabled = item.notificationSettings.enabled,
+                timeText = effectiveTime.format(com.raulshma.dailylife.ui.TimeFormatter),
+                onEnabledChanged = {
+                    onNotificationsChanged(item.notificationSettings.copy(enabled = it))
+                },
+            )
         }
 
         if (item.completionHistory.isNotEmpty()) {
-            HorizontalDivider()
-
             AnimatedVisibility(
                 visible = contentVisible,
                 enter = fadeIn(DailyLifeTween.fade<Float>()) + slideInVertically(
@@ -2216,32 +2126,28 @@ private fun DetailContentSection(
                     initialOffsetY = { it / 3 }
                 ),
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "Completion History",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.elevatedCardColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                    ),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        SectionHeader(icon = Icons.Filled.Done, title = "Completion history")
 
-                    item.completionHistory
-                        .sortedByDescending { it.completedAt }
-                        .take(3)
-                        .forEach { record ->
-                            ElevatedCard(
-                                colors = CardDefaults.elevatedCardColors(
-                                    containerColor = if (record.missed) {
-                                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
-                                    } else {
-                                        MaterialTheme.colorScheme.surface
-                                    },
-                                ),
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
+                        item.completionHistory
+                            .sortedByDescending { it.completedAt }
+                            .take(3)
+                            .forEachIndexed { index, record ->
+                                if (index > 0) {
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                }
                                 Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
+                                    modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 ) {
@@ -2291,21 +2197,18 @@ private fun DetailContentSection(
                                     }
                                 }
                             }
-                        }
 
-                    if (item.completionHistory.size > 3) {
                         TextButton(
                             onClick = onViewHistory,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Text("View all ${item.completionHistory.size} entries")
-                        }
-                    } else {
-                        TextButton(
-                            onClick = onViewHistory,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text("View history")
+                            Text(
+                                if (item.completionHistory.size > 3) {
+                                    "View all ${item.completionHistory.size} entries"
+                                } else {
+                                    "View history"
+                                }
+                            )
                         }
                     }
                 }
@@ -2776,10 +2679,13 @@ private fun DetailBottomAction(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DetailOverviewCards(
+private fun DetailAtAGlanceCard(
     item: LifeItem,
     occurrenceStats: OccurrenceStats,
     globalSettings: NotificationSettings,
+    canCopy: Boolean,
+    onCopy: () -> Unit,
+    onShare: () -> Unit,
 ) {
     val effectiveTime = item.notificationSettings.timeOverride
         ?: globalSettings.preferredTime
@@ -2792,31 +2698,93 @@ private fun DetailOverviewCards(
         else -> "No schedule"
     }
 
-    FlowRow(
+    ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
     ) {
-        DetailOverviewCard(label = "Created", value = item.createdAt.format(TimestampFormatter))
-        DetailOverviewCard(label = "Status", value = status)
-        DetailOverviewCard(label = "Cadence", value = cadence)
-        DetailOverviewCard(label = "Done", value = occurrenceStats.completedCount.toString())
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                TypeBadge(type = item.type, boxSize = 42.dp)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item.type.label,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = item.createdAt.format(TimestampFormatter),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                DetailPill(label = "Status", value = status)
+                DetailPill(label = "Schedule", value = cadence)
+                DetailPill(label = "Completed", value = occurrenceStats.completedCount.toString())
+                if (occurrenceStats.currentStreak > 0) {
+                    DetailPill(label = "Streak", value = occurrenceStats.currentStreak.toString())
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilledTonalButton(
+                    onClick = onCopy,
+                    enabled = canCopy,
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Copy")
+                }
+                FilledTonalButton(
+                    onClick = onShare,
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Share")
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun DetailOverviewCard(
+private fun DetailPill(
     label: String,
     value: String,
 ) {
     Surface(
         shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
-        modifier = Modifier.widthIn(min = 142.dp, max = 220.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f),
+        modifier = Modifier.widthIn(min = 124.dp, max = 220.dp),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Text(
                 text = label,
@@ -2838,33 +2806,180 @@ private fun DetailOverviewCard(
 }
 
 @Composable
-private fun DetailQuickActions(
-    canCopy: Boolean,
-    onCopy: () -> Unit,
-    onShare: () -> Unit,
+private fun DetailTextCard(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    text: String,
 ) {
-    FlowRow(
+    ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
     ) {
-        FilledTonalButton(
-            onClick = onCopy,
-            enabled = canCopy,
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(17.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("Copy text")
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = title,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.titleSmall,
+                )
+            }
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
         }
-        FilledTonalButton(
-            onClick = onShare,
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DetailTagsCard(tags: Set<String>) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(17.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("Share")
+            SectionHeader(icon = Icons.Filled.Tag, title = "Tags")
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                tags.forEach { tag ->
+                    AssistChip(
+                        onClick = {},
+                        label = { Text("#$tag") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Label,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        },
+                    )
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun DetailMetadataCard(metadataItems: List<Pair<String, String>>) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            SectionHeader(icon = Icons.Filled.Info, title = "Details")
+            metadataItems.forEachIndexed { index, (label, value) ->
+                if (index > 0) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                }
+                DetailLine(label = label, value = value)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailNotificationCard(
+    enabled: Boolean,
+    timeText: String,
+    onEnabledChanged: (Boolean) -> Unit,
+) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                imageVector = if (enabled) {
+                    Icons.Filled.Notifications
+                } else {
+                    Icons.Filled.NotificationsOff
+                },
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Notifications",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = if (enabled) "Item alerts at $timeText" else "Item alerts are off",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = enabled,
+                onCheckedChange = onEnabledChanged,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SectionHeader(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(18.dp),
+        )
+        Text(
+            text = title,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.titleSmall,
+        )
     }
 }
 
