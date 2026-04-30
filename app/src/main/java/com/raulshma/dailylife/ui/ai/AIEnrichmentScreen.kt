@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -41,7 +43,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteSweep
@@ -94,6 +98,7 @@ import com.raulshma.dailylife.domain.EnrichmentSettings
 import com.raulshma.dailylife.domain.EnrichmentTask
 import com.raulshma.dailylife.domain.EnrichmentTaskStatus
 import com.raulshma.dailylife.domain.LifeItemType
+import com.raulshma.dailylife.domain.requiredCapabilities
 import com.raulshma.dailylife.ui.ai.components.AIGradientAccent
 import com.raulshma.dailylife.ui.ai.components.AIMetadataBadge
 import com.raulshma.dailylife.ui.ai.components.AISparkleIcon
@@ -102,12 +107,14 @@ import com.raulshma.dailylife.ui.theme.DailyLifeEasing
 import com.raulshma.dailylife.ui.theme.DailyLifeSpring
 import androidx.compose.animation.core.FastOutSlowInEasing
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AIEnrichmentScreen(
     progress: EnrichmentProgress,
     settings: EnrichmentSettings,
     history: List<EnrichmentTask>,
+    modelCapabilities: Set<com.raulshma.dailylife.domain.AIModelCapability>,
+    defaultModelName: String?,
     onSettingsChanged: (EnrichmentSettings) -> Unit,
     onStartBatch: () -> Unit,
     onPause: () -> Unit,
@@ -172,6 +179,8 @@ fun AIEnrichmentScreen(
                     settings = settings,
                     onSettingsChanged = onSettingsChanged,
                     isProcessing = progress.isActive,
+                    modelCapabilities = modelCapabilities,
+                    defaultModelName = defaultModelName,
                 )
             }
 
@@ -214,6 +223,8 @@ private fun EnrichmentSettingsSection(
     settings: EnrichmentSettings,
     onSettingsChanged: (EnrichmentSettings) -> Unit,
     isProcessing: Boolean,
+    modelCapabilities: Set<com.raulshma.dailylife.domain.AIModelCapability>,
+    defaultModelName: String?,
 ) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
@@ -230,50 +241,61 @@ private fun EnrichmentSettingsSection(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                val hasTextGen = com.raulshma.dailylife.domain.AIModelCapability.TEXT_GENERATION in modelCapabilities
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (settings.enabled && hasTextGen) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerHighest
+                    },
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (settings.enabled) {
-                            MaterialTheme.colorScheme.primaryContainer
+                    Icon(
+                        Icons.Filled.SmartToy,
+                        contentDescription = null,
+                        modifier = Modifier.padding(8.dp).size(20.dp),
+                        tint = if (settings.enabled && hasTextGen) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
                         } else {
-                            MaterialTheme.colorScheme.surfaceContainerHighest
+                            MaterialTheme.colorScheme.onSurfaceVariant
                         },
-                    ) {
-                        Icon(
-                            Icons.Filled.SmartToy,
-                            contentDescription = null,
-                            modifier = Modifier.padding(8.dp).size(20.dp),
-                            tint = if (settings.enabled) {
-                                MaterialTheme.colorScheme.onPrimaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                        )
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Auto-Enrichment",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            text = if (settings.enabled) "Enriches new items automatically" else "Disabled",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Auto-Enrichment",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = when {
+                            modelCapabilities.isEmpty() -> "No model installed"
+                            !hasTextGen -> "Model missing text generation"
+                            settings.enabled -> "Enriches new items automatically"
+                            else -> "Disabled"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (!hasTextGen) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
                 }
                 Switch(
                     checked = settings.enabled,
                     onCheckedChange = { onSettingsChanged(settings.copy(enabled = it)) },
-                    enabled = !isProcessing,
+                    enabled = !isProcessing && hasTextGen,
                 )
+            }
+
+            if (modelCapabilities.isEmpty() ||
+                com.raulshma.dailylife.domain.AIModelCapability.TEXT_GENERATION !in modelCapabilities
+            ) {
+                ModelIncompatibleBanner(defaultModelName = defaultModelName)
             }
 
             SectionLabel(text = "Features")
@@ -281,13 +303,14 @@ private fun EnrichmentSettingsSection(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 EnrichmentFeature.entries.forEach { feature ->
                     val isSelected = feature in settings.features
+                    val featureSupported = feature.requiredCapabilities().all { it in modelCapabilities }
                     val (icon, title, description) = featureInfo(feature)
                     FeatureToggleChip(
                         icon = icon,
                         title = title,
                         description = description,
                         isSelected = isSelected,
-                        enabled = !isProcessing,
+                        enabled = !isProcessing && featureSupported,
                         onClick = {
                             val newFeatures = if (isSelected) {
                                 settings.features - feature
@@ -303,9 +326,10 @@ private fun EnrichmentSettingsSection(
             SectionLabel(text = "Item Types")
 
             val eligibleTypes = settings.eligibleTypes
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 LifeItemType.entries.forEach { type ->
                     val isSelected = type in eligibleTypes
@@ -319,7 +343,7 @@ private fun EnrichmentSettingsSection(
                             }
                             onSettingsChanged(settings.copy(eligibleTypes = newTypes))
                         },
-                        enabled = !isProcessing,
+                        enabled = !isProcessing && modelCapabilities.isNotEmpty(),
                         label = {
                             Text(
                                 type.name,
@@ -333,30 +357,68 @@ private fun EnrichmentSettingsSection(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                    ) {
-                        Icon(
-                            Icons.Filled.Archive,
-                            contentDescription = null,
-                            modifier = Modifier.padding(5.dp).size(14.dp),
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                        )
-                    }
-                    Text(
-                        text = "Skip archived items",
-                        style = MaterialTheme.typography.bodyMedium,
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                ) {
+                    Icon(
+                        Icons.Filled.Archive,
+                        contentDescription = null,
+                        modifier = Modifier.padding(5.dp).size(14.dp),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
                     )
                 }
+                Text(
+                    text = "Skip archived items",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
                 Switch(
                     checked = settings.skipArchived,
                     onCheckedChange = { onSettingsChanged(settings.copy(skipArchived = it)) },
                     enabled = !isProcessing,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModelIncompatibleBanner(defaultModelName: String?) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(
+                Icons.Filled.ErrorOutline,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.error,
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (defaultModelName != null) "Model capabilities limited" else "No model installed",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+                Text(
+                    text = if (defaultModelName != null) {
+                        "$defaultModelName only supports some enrichment features. Install models with VISION or AUDIO capabilities to unlock photo and audio enrichment."
+                    } else {
+                        "Download a model to use enrichment. Models with TEXT_GENERATION handle titles/tags/descriptions. VISION models describe photos. AUDIO models summarize recordings."
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f),
                 )
             }
         }
@@ -1221,6 +1283,16 @@ private fun featureInfo(feature: EnrichmentFeature): Triple<ImageVector, String,
             Icons.Filled.Description,
             "Description",
             "Generate AI summaries and descriptions",
+        )
+        EnrichmentFeature.PHOTO_DESCRIPTION -> Triple(
+            Icons.Filled.CameraAlt,
+            "Photo Description",
+            "Describe photos using vision AI",
+        )
+        EnrichmentFeature.AUDIO_SUMMARY -> Triple(
+            Icons.Filled.Audiotrack,
+            "Audio Summary",
+            "Summarize audio recordings",
         )
     }
 

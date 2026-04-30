@@ -208,6 +208,7 @@ import com.raulshma.dailylife.domain.inferTypeFromText
 import com.raulshma.dailylife.domain.inferVideoPlaybackUrl
 import com.raulshma.dailylife.data.CollectionCounts
 import com.raulshma.dailylife.domain.SnapshotStats
+import com.raulshma.dailylife.domain.supports
 import com.raulshma.dailylife.ui.TimelineEntry
 import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
@@ -957,6 +958,9 @@ fun DailyLifeApp(
                             progress = viewModel.enrichmentProgress.collectAsStateWithLifecycle().value,
                             settings = viewModel.enrichmentSettings.collectAsStateWithLifecycle().value,
                             history = viewModel.enrichmentHistory.collectAsStateWithLifecycle().value,
+                            modelCapabilities = viewModel.modelManager.getDefaultModel()?.capabilities
+                                ?: emptySet(),
+                            defaultModelName = viewModel.modelManager.getDefaultModel()?.name,
                             onSettingsChanged = viewModel::updateEnrichmentSettings,
                             onStartBatch = viewModel::startEnrichmentBatch,
                             onPause = viewModel::pauseEnrichment,

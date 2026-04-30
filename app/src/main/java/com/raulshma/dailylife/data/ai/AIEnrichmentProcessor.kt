@@ -2,14 +2,21 @@ package com.raulshma.dailylife.data.ai
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.Uri
 import com.raulshma.dailylife.data.DailyLifeRepository
+import com.raulshma.dailylife.data.security.MediaEncryptionManager
+import com.raulshma.dailylife.domain.AIModel
 import com.raulshma.dailylife.domain.EnrichmentFeature
 import com.raulshma.dailylife.domain.EnrichmentProgress
 import com.raulshma.dailylife.domain.EnrichmentProcessorStatus
 import com.raulshma.dailylife.domain.EnrichmentTask
 import com.raulshma.dailylife.domain.EnrichmentTaskStatus
 import com.raulshma.dailylife.domain.LifeItem
+import com.raulshma.dailylife.domain.LifeItemType
 import com.raulshma.dailylife.domain.displayBody
+import com.raulshma.dailylife.domain.inferAudioUrl
+import com.raulshma.dailylife.domain.inferImagePreviewUrl
+import com.raulshma.dailylife.domain.requiredCapabilities
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -24,6 +31,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -34,7 +42,8 @@ class AIEnrichmentProcessor @Inject constructor(
     private val featureExecutor: AIFeatureExecutor,
     private val modelManager: ModelManager,
     private val chatRepository: AIChatRepository,
-    @ApplicationContext context: Context,
+    private val encryptionManager: MediaEncryptionManager,
+    @ApplicationContext private val appContext: Context,
 ) {
     companion object {
         private const val PREFS_NAME = "ai_enrichment_prefs"
@@ -46,7 +55,7 @@ class AIEnrichmentProcessor @Inject constructor(
     }
 
     private val prefs: SharedPreferences =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val processorJob = AtomicReference<Job?>(null)
@@ -73,12 +82,7 @@ class AIEnrichmentProcessor @Inject constructor(
         val types = typesCsv?.split(",")
             ?.mapNotNull { runCatching { com.raulshma.dailylife.domain.LifeItemType.valueOf(it) }.getOrNull() }
             ?.toSet()
-            ?: setOf(
-                com.raulshma.dailylife.domain.LifeItemType.Thought,
-                com.raulshma.dailylife.domain.LifeItemType.Note,
-                com.raulshma.dailylife.domain.LifeItemType.Task,
-                com.raulshma.dailylife.domain.LifeItemType.Reminder,
-            )
+            ?: com.raulshma.dailylife.domain.LifeItemType.entries.toSet()
 
         return com.raulshma.dailylife.domain.EnrichmentSettings(
             enabled = enabled,
@@ -225,9 +229,15 @@ class AIEnrichmentProcessor @Inject constructor(
     ) {
         val item = repository.getItem(itemId) ?: return
 
+        val model = modelManager.getDefaultModel()
+        if (model == null) {
+            recordTask(itemId, EnrichmentFeature.SMART_TITLE, EnrichmentTaskStatus.SKIPPED, null, "No model")
+            return
+        }
+
         for (feature in settings.features) {
             if (!scope.isActive) break
-            if (!shouldEnrichFeature(item, feature)) {
+            if (!shouldEnrichFeature(item, feature, model)) {
                 recordTask(itemId, feature, EnrichmentTaskStatus.SKIPPED, null, null)
                 continue
             }
@@ -240,6 +250,8 @@ class AIEnrichmentProcessor @Inject constructor(
                     EnrichmentFeature.SMART_TITLE -> enrichTitle(item)
                     EnrichmentFeature.TAGS -> enrichTags(item)
                     EnrichmentFeature.DESCRIPTION -> enrichDescription(item)
+                    EnrichmentFeature.PHOTO_DESCRIPTION -> enrichPhoto(item)
+                    EnrichmentFeature.AUDIO_SUMMARY -> enrichAudio(item)
                 }
                 val processingTime = System.currentTimeMillis() - startTime
                 if (result) {
@@ -259,14 +271,31 @@ class AIEnrichmentProcessor @Inject constructor(
         }
     }
 
-    private suspend fun shouldEnrichFeature(item: LifeItem, feature: EnrichmentFeature): Boolean {
-        val body = item.displayBody()
-        if (body.isBlank()) return false
+    private fun shouldEnrichFeature(
+        item: LifeItem,
+        feature: EnrichmentFeature,
+        model: AIModel,
+    ): Boolean {
+        if (!feature.requiredCapabilities().all { it in model.capabilities }) return false
 
         return when (feature) {
-            EnrichmentFeature.SMART_TITLE -> item.title == item.type.label
-            EnrichmentFeature.TAGS -> item.tags.isEmpty()
-            EnrichmentFeature.DESCRIPTION -> item.aiSummary.isNullOrBlank()
+            EnrichmentFeature.SMART_TITLE -> {
+                item.displayBody().isNotBlank() && item.title == item.type.label
+            }
+            EnrichmentFeature.TAGS -> {
+                item.displayBody().isNotBlank() && item.tags.isEmpty()
+            }
+            EnrichmentFeature.DESCRIPTION -> {
+                item.displayBody().isNotBlank() && item.aiSummary.isNullOrBlank()
+            }
+            EnrichmentFeature.PHOTO_DESCRIPTION -> {
+                val uri = item.inferImagePreviewUrl()
+                uri != null && item.aiSummary.isNullOrBlank()
+            }
+            EnrichmentFeature.AUDIO_SUMMARY -> {
+                val uri = item.inferAudioUrl()
+                uri != null && item.aiSummary.isNullOrBlank()
+            }
         }
     }
 
@@ -298,6 +327,40 @@ class AIEnrichmentProcessor @Inject constructor(
         if (summary.isBlank()) return false
         repository.updateItemAiSummary(item.id, summary)
         return true
+    }
+
+    private suspend fun enrichPhoto(item: LifeItem): Boolean {
+        val uriString = item.inferImagePreviewUrl() ?: return false
+        val imageBytes = readMediaBytes(uriString) ?: return false
+        val fullDescription = StringBuilder()
+        featureExecutor.describePhoto(imageBytes).collect { fullDescription.append(it) }
+        val description = fullDescription.toString().trim()
+        if (description.isBlank()) return false
+        repository.updateItemAiSummary(item.id, description)
+        return true
+    }
+
+    private suspend fun enrichAudio(item: LifeItem): Boolean {
+        val uriString = item.inferAudioUrl() ?: return false
+        val audioBytes = readMediaBytes(uriString) ?: return false
+        val fullSummary = StringBuilder()
+        featureExecutor.summarizeAudio(audioBytes).collect { fullSummary.append(it) }
+        val summary = fullSummary.toString().trim()
+        if (summary.isBlank()) return false
+        repository.updateItemAiSummary(item.id, summary)
+        return true
+    }
+
+    private suspend fun readMediaBytes(uriString: String): ByteArray? {
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val decryptedUri = encryptionManager.decryptToCache(Uri.parse(uriString), appContext)
+                    ?: Uri.parse(uriString)
+                val file = decryptedUri.path?.let { java.io.File(it) }
+                    ?: return@withContext null
+                file.readBytes()
+            }.getOrNull()
+        }
     }
 
     private suspend fun recordTask(

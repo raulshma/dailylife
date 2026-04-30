@@ -4,6 +4,17 @@ enum class EnrichmentFeature {
     SMART_TITLE,
     TAGS,
     DESCRIPTION,
+    PHOTO_DESCRIPTION,
+    AUDIO_SUMMARY,
+}
+
+fun EnrichmentFeature.requiredCapabilities(): Set<com.raulshma.dailylife.domain.AIModelCapability> = when (this) {
+    EnrichmentFeature.SMART_TITLE, EnrichmentFeature.TAGS, EnrichmentFeature.DESCRIPTION ->
+        setOf(com.raulshma.dailylife.domain.AIModelCapability.TEXT_GENERATION)
+    EnrichmentFeature.PHOTO_DESCRIPTION ->
+        setOf(com.raulshma.dailylife.domain.AIModelCapability.VISION)
+    EnrichmentFeature.AUDIO_SUMMARY ->
+        setOf(com.raulshma.dailylife.domain.AIModelCapability.AUDIO)
 }
 
 data class EnrichmentSettings(
