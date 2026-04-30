@@ -164,7 +164,7 @@ $entriesSummary"""
     suspend fun describePhoto(imageBytes: ByteArray): Flow<String> {
         val model = ensureModelForFeature(AIFeature.PHOTO_DESCRIPTION)
             ?: return flowOf("")
-        val prompt = "Describe this photo in 2-3 sentences. Focus on the main subjects, setting, and mood of the image."
+        val prompt = "Write a natural, human-sounding description of this photo in 2-3 sentences. Start directly with what stands out instead of 'This is a...'. Use plain, conversational language, and mention the main subjects, setting, and mood without sounding formal or robotic."
         return engineService.generateWithImage(prompt, imageBytes)
             .withMetrics(AIFeature.PHOTO_DESCRIPTION, prompt.length)
     }
