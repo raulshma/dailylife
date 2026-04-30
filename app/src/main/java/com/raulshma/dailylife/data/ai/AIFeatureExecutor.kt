@@ -85,14 +85,32 @@ class AIFeatureExecutor @Inject constructor(
             }
     }
 
-    suspend fun generateSmartTitle(body: String): Flow<String> {
+    suspend fun generateSmartTitle(
+        body: String,
+        imageBytes: ByteArray? = null,
+        audioBytes: ByteArray? = null,
+    ): Flow<String> {
         val model = ensureModelForFeature(AIFeature.SMART_TITLE)
             ?: return flowOf("")
-        val prompt = """Generate a short, concise title (max 8 words) for a journal entry with the following content. Return ONLY the title, nothing else.
+        val prompt = when {
+            imageBytes != null -> """Generate a short, concise title (max 8 words) for this photo-based journal entry. Return ONLY the title, nothing else.
+
+Context:
+${body.take(1000)}"""
+            audioBytes != null -> """Generate a short, concise title (max 8 words) for this audio-based journal entry. Return ONLY the title, nothing else.
+
+Context:
+${body.take(1000)}"""
+            else -> """Generate a short, concise title (max 8 words) for a journal entry with the following content. Return ONLY the title, nothing else.
 
 Content:
 ${body.take(1000)}"""
-        return engineService.generateText(prompt)
+        }
+        return when {
+            imageBytes != null -> engineService.generateWithImage(prompt, imageBytes)
+            audioBytes != null -> engineService.generateWithAudio(prompt, audioBytes)
+            else -> engineService.generateText(prompt)
+        }
             .withMetrics(AIFeature.SMART_TITLE, prompt.length)
     }
 

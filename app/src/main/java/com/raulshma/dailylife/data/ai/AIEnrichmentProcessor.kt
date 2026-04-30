@@ -302,8 +302,12 @@ class AIEnrichmentProcessor @Inject constructor(
 
     private suspend fun enrichTitle(item: LifeItem): Boolean {
         val body = item.displayBody()
+        val imageUri = item.inferImagePreviewUrl()
+        val audioUri = item.inferAudioUrl()
+        val imageBytes = if (imageUri != null) readMediaBytes(imageUri) else null
+        val audioBytes = if (audioUri != null) readMediaBytes(audioUri) else null
         val fullTitle = StringBuilder()
-        featureExecutor.generateSmartTitle(body).collect { fullTitle.append(it) }
+        featureExecutor.generateSmartTitle(body, imageBytes, audioBytes).collect { fullTitle.append(it) }
         val title = fullTitle.toString().trim()
         if (title.isBlank() || title == item.title) return false
         repository.updateItemTitle(item.id, title)

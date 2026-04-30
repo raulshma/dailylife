@@ -841,7 +841,7 @@ fun DailyLifeApp(
                             aiAudioSummary = if (isAiEnabled) aiAudioSummary else "",
                             isAiGenerating = if (isAiEnabled) isAiGenerating else false,
                             aiError = if (isAiEnabled) aiError else null,
-                            onGenerateTitle = { body -> viewModel.generateSmartTitle(body) },
+                            onGenerateTitle = viewModel::generateSmartTitle,
                             onGenerateDescription = { title, body -> viewModel.summarizeEntry(title, body) },
                             onSuggestTags = { title, body -> viewModel.suggestTags(title, body) },
                             onAnalyzeMood = { title, body -> viewModel.analyzeMood(title, body) },

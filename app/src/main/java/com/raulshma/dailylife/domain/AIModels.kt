@@ -77,6 +77,13 @@ fun AIFeature.requiredCapabilities(): Set<AIModelCapability> = when (this) {
 }
 
 fun AIModel.supports(feature: AIFeature): Boolean {
+    if (feature == AIFeature.SMART_TITLE) {
+        return capabilities.any {
+            it == AIModelCapability.TEXT_GENERATION ||
+                it == AIModelCapability.VISION ||
+                it == AIModelCapability.AUDIO
+        }
+    }
     return feature.requiredCapabilities().all { it in capabilities }
 }
 

@@ -53,6 +53,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.Instant
+import java.io.File
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -508,11 +509,36 @@ class DailyLifeViewModel @Inject constructor(
         viewModelScope.launch { modelManager.fetchCatalog() }
     }
 
-    fun generateSmartTitle(body: String) {
+    fun generateSmartTitle(
+        body: String,
+        imageUri: String? = null,
+        audioUri: String? = null,
+    ) {
         _aiSmartTitle.value = ""
         _aiError.value = null
         startAiJob {
-            aiExecutor.generateSmartTitle(body).collect { _aiSmartTitle.value = it }
+            val imageBytes = imageUri?.let { readImageBytesForAi(it) }
+            if (imageUri != null && imageBytes == null) {
+                _aiError.value = "Failed to read image"
+                return@startAiJob
+            }
+
+            val audioBytes = when {
+                audioUri == null -> null
+                else -> {
+                    val audioFilePath = resolveMediaFilePath(audioUri)
+                    when {
+                        audioFilePath != null -> File(audioFilePath).takeIf { it.exists() }?.readBytes()
+                        else -> readMediaBytes(audioUri)
+                    }
+                }
+            }
+            if (audioUri != null && audioBytes == null) {
+                _aiError.value = "Failed to read audio"
+                return@startAiJob
+            }
+
+            aiExecutor.generateSmartTitle(body, imageBytes, audioBytes).collect { _aiSmartTitle.value = it }
         }
     }
 

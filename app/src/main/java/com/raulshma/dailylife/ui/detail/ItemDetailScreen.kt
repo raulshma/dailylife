@@ -203,7 +203,7 @@ fun ItemDetailScreen(
     aiAudioSummary: String = "",
     isAiGenerating: Boolean = false,
     aiError: String? = null,
-    onGenerateTitle: (String) -> Unit = {},
+    onGenerateTitle: (String, String?, String?) -> Unit = { _, _, _ -> },
     onGenerateDescription: (String, String) -> Unit = { _, _ -> },
     onSuggestTags: (String, String) -> Unit = { _, _ -> },
     onAnalyzeMood: (String, String) -> Unit = { _, _ -> },
@@ -1944,7 +1944,7 @@ private fun DetailContentSection(
     aiAudioSummary: String = "",
     isAiGenerating: Boolean = false,
     aiError: String? = null,
-    onGenerateTitle: (String) -> Unit = {},
+    onGenerateTitle: (String, String?, String?) -> Unit = { _, _, _ -> },
     onGenerateDescription: (String, String) -> Unit = { _, _ -> },
     onSuggestTags: (String, String) -> Unit = { _, _ -> },
     onAnalyzeMood: (String, String) -> Unit = { _, _ -> },
@@ -2249,7 +2249,7 @@ private fun AIToolsSection(
     aiAudioSummary: String,
     isAiGenerating: Boolean,
     aiError: String?,
-    onGenerateTitle: (String) -> Unit,
+    onGenerateTitle: (String, String?, String?) -> Unit,
     onGenerateDescription: (String, String) -> Unit,
     onSuggestTags: (String, String) -> Unit,
     onAnalyzeMood: (String, String) -> Unit,
@@ -2388,12 +2388,12 @@ private fun AIToolsSection(
                 AIActionChip(
                     label = "Generate Title",
                     icon = Icons.Filled.Edit,
-                    enabled = isFeatureAvailable(AIFeature.SMART_TITLE) && hasBody,
+                    enabled = isFeatureAvailable(AIFeature.SMART_TITLE) && (hasBody || hasPhoto || hasAudio),
                     disabledReason = when {
-                        !hasBody -> "No text content"
-                        else -> "Requires text model"
+                        !hasBody && !hasPhoto && !hasAudio -> "No text, image, or audio content"
+                        else -> "Requires a compatible model"
                     },
-                    onClick = { onGenerateTitle(item.displayBody()) },
+                    onClick = { onGenerateTitle(item.displayBody(), imageUrl, audioUrl) },
                 )
 
                 AIActionChip(
