@@ -56,6 +56,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
@@ -140,7 +141,9 @@ import com.raulshma.dailylife.domain.RecurrenceFrequency
 import com.raulshma.dailylife.domain.RecurrenceRule
 import com.raulshma.dailylife.domain.TaskStatus
 import com.raulshma.dailylife.domain.WeekOfMonth
+import com.raulshma.dailylife.domain.WritingTone
 import com.raulshma.dailylife.ui.capture.AudioRecorder
+import androidx.compose.material3.CircularProgressIndicator
 import com.raulshma.dailylife.ui.capture.SpeechTranscriber
 import com.raulshma.dailylife.ui.capture.hasAudioPermission
 import com.raulshma.dailylife.ui.capture.hasCameraPermission
@@ -162,6 +165,16 @@ internal fun QuickAddScreen(
     allTags: List<String> = emptyList(),
     isEditMode: Boolean = false,
     encryptionProgress: EncryptionProgress? = null,
+    aiSmartTitle: String = "",
+    aiTagSuggestions: List<String> = emptyList(),
+    aiRewrittenText: String = "",
+    isAiGenerating: Boolean = false,
+    onGenerateSmartTitle: (String) -> Unit = {},
+    onSuggestTags: (String, String) -> Unit = { _, _ -> },
+    onRewriteText: (String, WritingTone) -> Unit = { _, _ -> },
+    onApplyAiTitle: (String) -> Unit = {},
+    onApplyAiTags: (List<String>) -> Unit = {},
+    onApplyAiRewrite: (String) -> Unit = {},
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         QuickAddContent(
@@ -176,6 +189,16 @@ internal fun QuickAddScreen(
             allTags = allTags,
             isEditMode = isEditMode,
             encryptionProgress = encryptionProgress,
+            aiSmartTitle = aiSmartTitle,
+            aiTagSuggestions = aiTagSuggestions,
+            aiRewrittenText = aiRewrittenText,
+            isAiGenerating = isAiGenerating,
+            onGenerateSmartTitle = onGenerateSmartTitle,
+            onSuggestTags = onSuggestTags,
+            onRewriteText = onRewriteText,
+            onApplyAiTitle = onApplyAiTitle,
+            onApplyAiTags = onApplyAiTags,
+            onApplyAiRewrite = onApplyAiRewrite,
         )
     }
 }
@@ -194,6 +217,16 @@ private fun QuickAddContent(
     allTags: List<String> = emptyList(),
     isEditMode: Boolean = false,
     encryptionProgress: EncryptionProgress? = null,
+    aiSmartTitle: String = "",
+    aiTagSuggestions: List<String> = emptyList(),
+    aiRewrittenText: String = "",
+    isAiGenerating: Boolean = false,
+    onGenerateSmartTitle: (String) -> Unit = {},
+    onSuggestTags: (String, String) -> Unit = { _, _ -> },
+    onRewriteText: (String, WritingTone) -> Unit = { _, _ -> },
+    onApplyAiTitle: (String) -> Unit = {},
+    onApplyAiTags: (List<String>) -> Unit = {},
+    onApplyAiRewrite: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
@@ -608,29 +641,69 @@ private fun QuickAddContent(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // Title
-                BasicTextField(
-                    value = title,
-                    onValueChange = { if (it.length <= 120) title = it },
-                    modifier = Modifier.fillMaxWidth().focusRequester(titleFocusRequester),
-                    textStyle = MaterialTheme.typography.headlineSmall.copy(
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.SemiBold
-                    ),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    singleLine = true,
-                    decorationBox = { innerTextField ->
-                        if (title.isEmpty()) {
-                            Text(
-                                "What's on your mind?",
-                                style = MaterialTheme.typography.headlineSmall.copy(
-                                    fontWeight = FontWeight.SemiBold
-                                ),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BasicTextField(
+                        value = title,
+                        onValueChange = { if (it.length <= 120) title = it },
+                        modifier = Modifier.weight(1f).focusRequester(titleFocusRequester),
+                        textStyle = MaterialTheme.typography.headlineSmall.copy(
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        singleLine = true,
+                        decorationBox = { innerTextField ->
+                            if (title.isEmpty()) {
+                                Text(
+                                    "What's on your mind?",
+                                    style = MaterialTheme.typography.headlineSmall.copy(
+                                        fontWeight = FontWeight.SemiBold
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            innerTextField()
                         }
-                        innerTextField()
+                    )
+                    if (body.isNotBlank() && title.isBlank()) {
+                        IconButton(
+                            onClick = { onGenerateSmartTitle(body) },
+                            enabled = !isAiGenerating,
+                            modifier = Modifier.size(32.dp),
+                        ) {
+                            if (isAiGenerating && aiSmartTitle.isBlank()) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(
+                                    Icons.Filled.AutoAwesome,
+                                    contentDescription = "Generate title",
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
                     }
-                )
+                }
+                if (aiSmartTitle.isNotBlank() && title.isBlank()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            aiSmartTitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { onApplyAiTitle(aiSmartTitle) }) {
+                            Text("Apply", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
 
                 // Body
                 if (selectedType == LifeItemType.Task) {
@@ -787,6 +860,43 @@ private fun QuickAddContent(
                             AssistChip(
                                 onClick = { tags = if (tags.isBlank()) tag else "$tags, $tag" },
                                 label = { Text("+$tag") }
+                            )
+                        }
+
+                        if (aiTagSuggestions.isNotEmpty()) {
+                            aiTagSuggestions.forEach { tag ->
+                                if (tag !in currentTagSet) {
+                                    AssistChip(
+                                        onClick = { onApplyAiTags(listOf(tag)) },
+                                        label = { Text("+$tag") },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Filled.AutoAwesome,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(12.dp),
+                                                tint = MaterialTheme.colorScheme.primary,
+                                            )
+                                        },
+                                    )
+                                }
+                            }
+                        } else if ((title.isNotBlank() || body.isNotBlank()) && currentTagSet.size < 5) {
+                            AssistChip(
+                                onClick = { onSuggestTags(title, body) },
+                                label = {
+                                    if (isAiGenerating && aiTagSuggestions.isEmpty()) {
+                                        CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp)
+                                    } else {
+                                        Text("AI Tags")
+                                    }
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Filled.AutoAwesome,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(12.dp),
+                                    )
+                                },
                             )
                         }
                     }

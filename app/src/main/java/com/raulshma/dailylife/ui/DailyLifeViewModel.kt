@@ -11,6 +11,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import com.raulshma.dailylife.data.DailyLifeRepository
+import com.raulshma.dailylife.data.ai.AIFeatureExecutor
+import com.raulshma.dailylife.data.ai.LiteRTEngineService
+import com.raulshma.dailylife.data.ai.ModelManager
 import com.raulshma.dailylife.data.backup.S3BackupRepository
 import com.raulshma.dailylife.data.RoomDailyLifeStore
 import com.raulshma.dailylife.data.security.EncryptionProgress
@@ -23,11 +26,13 @@ import com.raulshma.dailylife.domain.ItemNotificationSettings
 import com.raulshma.dailylife.domain.LifeItem
 import com.raulshma.dailylife.domain.LifeItemDraft
 import com.raulshma.dailylife.domain.LifeItemType
+import com.raulshma.dailylife.domain.MoodResult
 import com.raulshma.dailylife.domain.NotificationSettings
 import com.raulshma.dailylife.domain.S3BackupSettings
 import com.raulshma.dailylife.data.CollectionCounts
 import com.raulshma.dailylife.domain.SnapshotStats
 import com.raulshma.dailylife.domain.TaskStatus
+import com.raulshma.dailylife.domain.WritingTone
 import com.raulshma.dailylife.domain.inferImagePreviewUrl
 import com.raulshma.dailylife.domain.inferVideoPlaybackUrl
 import com.raulshma.dailylife.notifications.GeofenceManager
@@ -43,6 +48,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -55,6 +61,9 @@ class DailyLifeViewModel @Inject constructor(
     private val s3BackupRepository: S3BackupRepository,
     private val roomStore: RoomDailyLifeStore,
     private val geofenceManager: GeofenceManager,
+    val modelManager: ModelManager,
+    val aiExecutor: AIFeatureExecutor,
+    val engineService: LiteRTEngineService,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
     val state = repository.state
@@ -78,6 +87,35 @@ class DailyLifeViewModel @Inject constructor(
     val selectedItem: StateFlow<LifeItem?> = _selectedItem.asStateFlow()
 
     private var saveJob: Job? = null
+
+    private val _aiSmartTitle = MutableStateFlow("")
+    val aiSmartTitle = _aiSmartTitle.asStateFlow()
+
+    private val _aiTagSuggestions = MutableStateFlow<List<String>>(emptyList())
+    val aiTagSuggestions = _aiTagSuggestions.asStateFlow()
+
+    private val _aiSummary = MutableStateFlow("")
+    val aiSummary = _aiSummary.asStateFlow()
+
+    private val _aiRewrittenText = MutableStateFlow("")
+    val aiRewrittenText = _aiRewrittenText.asStateFlow()
+
+    private val _aiMood = MutableStateFlow<MoodResult?>(null)
+    val aiMood = _aiMood.asStateFlow()
+
+    private val _aiPhotoDescription = MutableStateFlow("")
+    val aiPhotoDescription = _aiPhotoDescription.asStateFlow()
+
+    private val _aiAudioSummary = MutableStateFlow("")
+    val aiAudioSummary = _aiAudioSummary.asStateFlow()
+
+    private val _aiSearchFilters = MutableStateFlow("")
+    val aiSearchFilters = _aiSearchFilters.asStateFlow()
+
+    private val _isAiGenerating = MutableStateFlow(false)
+    val isAiGenerating = _isAiGenerating.asStateFlow()
+
+    private var aiJob: Job? = null
 
     init {
         viewModelScope.launch { repository.rolloverMissedOccurrences() }
@@ -345,5 +383,139 @@ class DailyLifeViewModel @Inject constructor(
 
     private suspend fun refreshSelectedItem(itemId: Long) {
         _selectedItem.value = repository.getItem(itemId)
+    }
+
+    fun fetchModelCatalog() {
+        viewModelScope.launch { modelManager.fetchCatalog() }
+    }
+
+    fun generateSmartTitle(body: String) {
+        aiJob?.cancel()
+        _aiSmartTitle.value = ""
+        _isAiGenerating.value = true
+        aiJob = viewModelScope.launch {
+            try {
+                aiExecutor.generateSmartTitle(body).collect { _aiSmartTitle.value = it }
+            } catch (_: Exception) {
+            } finally {
+                _isAiGenerating.value = false
+            }
+        }
+    }
+
+    fun suggestTags(title: String, body: String) {
+        aiJob?.cancel()
+        _aiTagSuggestions.value = emptyList()
+        _isAiGenerating.value = true
+        aiJob = viewModelScope.launch {
+            try {
+                aiExecutor.suggestTags(title, body).collect { _aiTagSuggestions.value = it }
+            } catch (_: Exception) {
+            } finally {
+                _isAiGenerating.value = false
+            }
+        }
+    }
+
+    fun summarizeEntry(title: String, body: String) {
+        aiJob?.cancel()
+        _aiSummary.value = ""
+        _isAiGenerating.value = true
+        aiJob = viewModelScope.launch {
+            try {
+                aiExecutor.summarizeEntry(title, body).collect { _aiSummary.value = it }
+            } catch (_: Exception) {
+            } finally {
+                _isAiGenerating.value = false
+            }
+        }
+    }
+
+    fun analyzeMood(title: String, body: String) {
+        aiJob?.cancel()
+        _aiMood.value = null
+        _isAiGenerating.value = true
+        aiJob = viewModelScope.launch {
+            try {
+                aiExecutor.analyzeMood(title, body).collect { _aiMood.value = it }
+            } catch (_: Exception) {
+            } finally {
+                _isAiGenerating.value = false
+            }
+        }
+    }
+
+    fun rewriteText(text: String, tone: WritingTone) {
+        aiJob?.cancel()
+        _aiRewrittenText.value = ""
+        _isAiGenerating.value = true
+        aiJob = viewModelScope.launch {
+            try {
+                aiExecutor.rewriteText(text, tone).collect { _aiRewrittenText.value = it }
+            } catch (_: Exception) {
+            } finally {
+                _isAiGenerating.value = false
+            }
+        }
+    }
+
+    fun describePhoto(imageBytes: ByteArray) {
+        aiJob?.cancel()
+        _aiPhotoDescription.value = ""
+        _isAiGenerating.value = true
+        aiJob = viewModelScope.launch {
+            try {
+                aiExecutor.describePhoto(imageBytes).collect { _aiPhotoDescription.value = it }
+            } catch (_: Exception) {
+            } finally {
+                _isAiGenerating.value = false
+            }
+        }
+    }
+
+    fun summarizeAudio(audioBytes: ByteArray) {
+        aiJob?.cancel()
+        _aiAudioSummary.value = ""
+        _isAiGenerating.value = true
+        aiJob = viewModelScope.launch {
+            try {
+                aiExecutor.summarizeAudio(audioBytes).collect { _aiAudioSummary.value = it }
+            } catch (_: Exception) {
+            } finally {
+                _isAiGenerating.value = false
+            }
+        }
+    }
+
+    fun naturalLanguageSearch(query: String) {
+        aiJob?.cancel()
+        _aiSearchFilters.value = ""
+        _isAiGenerating.value = true
+        aiJob = viewModelScope.launch {
+            try {
+                val tags = allTags.firstOrNull() ?: emptyList()
+                aiExecutor.naturalLanguageSearch(query, tags).collect { _aiSearchFilters.value = it }
+            } catch (_: Exception) {
+            } finally {
+                _isAiGenerating.value = false
+            }
+        }
+    }
+
+    fun cancelAiGeneration() {
+        aiJob?.cancel()
+        engineService.cancelGeneration()
+        _isAiGenerating.value = false
+    }
+
+    fun clearAiState() {
+        _aiSmartTitle.value = ""
+        _aiTagSuggestions.value = emptyList()
+        _aiSummary.value = ""
+        _aiRewrittenText.value = ""
+        _aiMood.value = null
+        _aiPhotoDescription.value = ""
+        _aiAudioSummary.value = ""
+        _aiSearchFilters.value = ""
     }
 }

@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.EventRepeat
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
@@ -74,6 +75,9 @@ fun SettingsScreen(
     onSaveS3: (S3BackupSettings) -> Unit,
     onBackupNow: () -> Unit,
     onClearResult: () -> Unit,
+    onNavigateToModelManager: () -> Unit = {},
+    aiStorageUsed: Long = 0L,
+    defaultModelName: String? = null,
     onBack: () -> Unit,
 ) {
     Scaffold(
@@ -119,6 +123,13 @@ fun SettingsScreen(
                     onSave = onSaveS3,
                     onBackupNow = onBackupNow,
                     onClearResult = onClearResult,
+                )
+            }
+            item {
+                AIAssistantSection(
+                    onNavigateToModelManager = onNavigateToModelManager,
+                    storageUsed = aiStorageUsed,
+                    defaultModelName = defaultModelName,
                 )
             }
             item {
@@ -545,6 +556,78 @@ private fun HorizontalDivider() {
         thickness = 1.dp,
         color = MaterialTheme.colorScheme.outlineVariant,
     )
+}
+
+@Composable
+private fun AIAssistantSection(
+    onNavigateToModelManager: () -> Unit,
+    storageUsed: Long,
+    defaultModelName: String?,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Filled.SmartToy,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "AI Assistant",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+
+        Text(
+            text = "Download on-device AI models for smart titles, tag suggestions, summaries, mood analysis, photo descriptions, and more. All processing happens locally on your device.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        if (defaultModelName != null) {
+            Text(
+                text = "Default model: $defaultModelName",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+
+        if (storageUsed > 0) {
+            Text(
+                text = "AI storage: ${formatStorageBytes(storageUsed)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        OutlinedButton(
+            onClick = onNavigateToModelManager,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Filled.SmartToy, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Manage AI Models")
+        }
+
+        HorizontalDivider()
+    }
+}
+
+private fun formatStorageBytes(bytes: Long): String {
+    if (bytes < 1024) return "$bytes B"
+    val kb = bytes / 1024.0
+    if (kb < 1024) return "${"%.0f".format(kb)} KB"
+    val mb = kb / 1024.0
+    if (mb < 1024) return "${"%.0f".format(mb)} MB"
+    val gb = mb / 1024.0
+    return "${"%.1f".format(gb)} GB"
 }
 
 @Composable

@@ -99,6 +99,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Tune
@@ -193,6 +195,7 @@ import com.raulshma.dailylife.domain.RecurrenceRule
 import com.raulshma.dailylife.domain.S3BackupSettings
 import com.raulshma.dailylife.domain.StorageError
 import com.raulshma.dailylife.domain.TaskStatus
+import com.raulshma.dailylife.domain.WritingTone
 import com.raulshma.dailylife.domain.displayBody
 import com.raulshma.dailylife.domain.inferAudioUrl
 import com.raulshma.dailylife.domain.inferImagePreviewUrl
@@ -251,6 +254,9 @@ private sealed class Screen {
     data class CompletionHistory(val itemId: Long) : Screen()
     data class FocusTimer(val itemId: Long) : Screen()
     data object Settings : Screen()
+    data object ModelManager : Screen()
+    data object AIChat : Screen()
+    data object AIReflections : Screen()
 }
 
 internal val LocalSharedTransitionScope = staticCompositionLocalOf<SharedTransitionScope?> { null }
@@ -416,6 +422,11 @@ fun DailyLifeApp(
     val s3Settings by viewModel.s3BackupSettings.collectAsStateWithLifecycle()
     val lastBackupResult by viewModel.lastBackupResult.collectAsStateWithLifecycle()
     val encryptionProgress by viewModel.encryptionProgress.collectAsStateWithLifecycle()
+    val aiSmartTitle by viewModel.aiSmartTitle.collectAsStateWithLifecycle()
+    val aiTagSuggestions by viewModel.aiTagSuggestions.collectAsStateWithLifecycle()
+    val aiRewrittenText by viewModel.aiRewrittenText.collectAsStateWithLifecycle()
+    val isAiGenerating by viewModel.isAiGenerating.collectAsStateWithLifecycle()
+    val aiSearchFilters by viewModel.aiSearchFilters.collectAsStateWithLifecycle()
     var quickAddDraft by rememberSaveable(stateSaver = QuickAddDraftSaver) {
         mutableStateOf(QuickAddDraft())
     }
@@ -430,11 +441,18 @@ fun DailyLifeApp(
     }
     var completionHistoryItemId by rememberSaveable { mutableStateOf<Long?>(null) }
     var focusTimerItemId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var showAIModelManager by rememberSaveable { mutableStateOf(false) }
+    var showAIChat by rememberSaveable { mutableStateOf(false) }
+    var showAIReflections by rememberSaveable { mutableStateOf(false) }
+    var isAiSearchActive by rememberSaveable { mutableStateOf(false) }
     var pendingQuickAddSave by remember { mutableStateOf(false) }
     var pendingEditSave by remember { mutableStateOf(false) }
     var preloadedDetailItem by remember { mutableStateOf<LifeItem?>(null) }
 
     val screen = when {
+        showAIChat -> Screen.AIChat
+        showAIReflections -> Screen.AIReflections
+        showAIModelManager -> Screen.ModelManager
         focusTimerItemId != null -> Screen.FocusTimer(focusTimerItemId!!)
         completionHistoryItemId != null -> Screen.CompletionHistory(completionHistoryItemId!!)
         selectedItemId != null -> Screen.Detail(selectedItemId!!)
@@ -444,8 +462,11 @@ fun DailyLifeApp(
 
     var skipStaggerAnimation by remember { mutableStateOf(false) }
 
-    BackHandler(enabled = focusTimerItemId != null || completionHistoryItemId != null || selectedItemId != null || showSettings) {
+    BackHandler(enabled = showAIChat || showAIReflections || showAIModelManager || focusTimerItemId != null || completionHistoryItemId != null || selectedItemId != null || showSettings) {
         when {
+            showAIChat -> showAIChat = false
+            showAIReflections -> showAIReflections = false
+            showAIModelManager -> showAIModelManager = false
             focusTimerItemId != null -> focusTimerItemId = null
             completionHistoryItemId != null -> completionHistoryItemId = null
             selectedItemId != null -> {
@@ -698,6 +719,12 @@ fun DailyLifeApp(
                         },
                         onShowQuickAdd = { showQuickAdd = true },
                         onShowSettings = { showSettings = true },
+                        onShowAIChat = { showAIChat = true },
+                        onShowAIReflections = { showAIReflections = true },
+                        isAiSearchActive = isAiSearchActive,
+                        isAiGenerating = isAiGenerating,
+                        onToggleAiSearch = { isAiSearchActive = !isAiSearchActive },
+                        onAiSearchQuery = { viewModel.naturalLanguageSearch(it) },
                         contentPadding = PaddingValues(),
                     )
 
@@ -812,7 +839,34 @@ fun DailyLifeApp(
                             },
                             onBackupNow = { viewModel.performS3Backup() },
                             onClearResult = { viewModel.clearBackupResult() },
+                            onNavigateToModelManager = { showAIModelManager = true },
+                            aiStorageUsed = viewModel.modelManager.getStorageUsage(),
+                            defaultModelName = viewModel.modelManager.getDefaultModel()?.name,
                             onBack = { showSettings = false },
+                        )
+                    }
+
+                    is Screen.ModelManager -> {
+                        com.raulshma.dailylife.ui.ai.ModelManagerScreen(
+                            modelManager = viewModel.modelManager,
+                            onBack = { showAIModelManager = false },
+                        )
+                    }
+
+                    is Screen.AIChat -> {
+                        com.raulshma.dailylife.ui.ai.AIChatScreen(
+                            aiExecutor = viewModel.aiExecutor,
+                            engineService = viewModel.engineService,
+                            onBack = { showAIChat = false },
+                        )
+                    }
+
+                    is Screen.AIReflections -> {
+                        com.raulshma.dailylife.ui.ai.AIReflectionsScreen(
+                            aiExecutor = viewModel.aiExecutor,
+                            engineService = viewModel.engineService,
+                            recentEntries = emptyList(),
+                            onBack = { showAIReflections = false },
                         )
                     }
                 }
@@ -870,6 +924,20 @@ fun DailyLifeApp(
                 },
                 allTags = allTags,
                 encryptionProgress = encryptionProgress,
+                aiSmartTitle = aiSmartTitle,
+                aiTagSuggestions = aiTagSuggestions,
+                aiRewrittenText = aiRewrittenText,
+                isAiGenerating = isAiGenerating,
+                onGenerateSmartTitle = { viewModel.generateSmartTitle(it) },
+                onSuggestTags = { t, b -> viewModel.suggestTags(t, b) },
+                onRewriteText = { text, tone -> viewModel.rewriteText(text, tone) },
+                onApplyAiTitle = { quickAddDraft = quickAddDraft.copy(title = it) },
+                onApplyAiTags = { tags ->
+                    val currentSet = quickAddDraft.tags.split(",").map { it.trim() }.filter { it.isNotBlank() }.toSet()
+                    val newTags = (currentSet + tags).joinToString(", ")
+                    quickAddDraft = quickAddDraft.copy(tags = newTags)
+                },
+                onApplyAiRewrite = { quickAddDraft = quickAddDraft.copy(body = it) },
             )
         }
     }
@@ -928,11 +996,24 @@ fun DailyLifeApp(
                 allTags = allTags,
                 isEditMode = true,
                 encryptionProgress = encryptionProgress,
+                aiSmartTitle = aiSmartTitle,
+                aiTagSuggestions = aiTagSuggestions,
+                aiRewrittenText = aiRewrittenText,
+                isAiGenerating = isAiGenerating,
+                onGenerateSmartTitle = { viewModel.generateSmartTitle(it) },
+                onSuggestTags = { t, b -> viewModel.suggestTags(t, b) },
+                onRewriteText = { text, tone -> viewModel.rewriteText(text, tone) },
+                onApplyAiTitle = { editDraft = editDraft.copy(title = it) },
+                onApplyAiTags = { tags ->
+                    val currentSet = editDraft.tags.split(",").map { it.trim() }.filter { it.isNotBlank() }.toSet()
+                    val newTags = (currentSet + tags).joinToString(", ")
+                    editDraft = editDraft.copy(tags = newTags)
+                },
+                onApplyAiRewrite = { editDraft = editDraft.copy(body = it) },
             )
         }
     }
-    }
-
+}
 }
 
 @Composable
@@ -1000,6 +1081,12 @@ private fun MainScaffold(
     onCollectionSelected: (String) -> Unit,
     onShowQuickAdd: () -> Unit,
     onShowSettings: () -> Unit,
+    onShowAIChat: () -> Unit = {},
+    onShowAIReflections: () -> Unit = {},
+    isAiSearchActive: Boolean = false,
+    isAiGenerating: Boolean = false,
+    onToggleAiSearch: () -> Unit = {},
+    onAiSearchQuery: (String) -> Unit = {},
     contentPadding: PaddingValues,
 ) {
     val density = androidx.compose.ui.platform.LocalDensity.current
@@ -1040,6 +1127,24 @@ private fun MainScaffold(
                     )
                 },
                 actions = {
+                    IconButton(
+                        onClick = onShowAIReflections,
+                        modifier = Modifier.padding(end = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.AutoAwesome,
+                            contentDescription = "AI Reflections",
+                        )
+                    }
+                    IconButton(
+                        onClick = onShowAIChat,
+                        modifier = Modifier.padding(end = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.SmartToy,
+                            contentDescription = "AI Chat",
+                        )
+                    }
                     IconButton(
                         onClick = onShowSettings,
                         modifier = Modifier.padding(end = 8.dp)
@@ -1134,6 +1239,10 @@ private fun MainScaffold(
                         onTaskStatusChanged = onTaskStatusChanged,
                         onCompleted = onCompleted,
                         onStorageErrorDismissed = onStorageErrorDismissed,
+                        isAiSearchActive = isAiSearchActive,
+                        isAiGenerating = isAiGenerating,
+                        onToggleAiSearch = onToggleAiSearch,
+                        onAiSearchQuery = onAiSearchQuery,
                     )
                 }
 

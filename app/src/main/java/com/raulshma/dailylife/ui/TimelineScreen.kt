@@ -69,6 +69,10 @@ fun TimelineScreen(
     onTaskStatusChanged: (Long, TaskStatus) -> Unit,
     onCompleted: (Long) -> Unit,
     onStorageErrorDismissed: () -> Unit,
+    isAiSearchActive: Boolean = false,
+    isAiGenerating: Boolean = false,
+    onToggleAiSearch: () -> Unit = {},
+    onAiSearchQuery: (String) -> Unit = {},
 ) {
     val entries = remember(pagingItems.itemSnapshotList) {
         val snapshot = pagingItems.itemSnapshotList
@@ -99,7 +103,10 @@ fun TimelineScreen(
             SearchBarRow(
                 query = state.filters.query,
                 onSearchChanged = onSearchChanged,
-                onOpenFilters = { showAdvancedFilters = true }
+                onOpenFilters = { showAdvancedFilters = true },
+                isAiSearchActive = isAiSearchActive,
+                onToggleAiSearch = onToggleAiSearch,
+                isAiGenerating = isAiGenerating,
             )
 
             QuickFiltersCarousel(
@@ -270,7 +277,10 @@ fun TimelineScreen(
 private fun SearchBarRow(
     query: String,
     onSearchChanged: (String) -> Unit,
-    onOpenFilters: () -> Unit
+    onOpenFilters: () -> Unit,
+    isAiSearchActive: Boolean = false,
+    onToggleAiSearch: () -> Unit = {},
+    isAiGenerating: Boolean = false,
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val animatedElevation by animateDpAsState(
@@ -314,6 +324,21 @@ private fun SearchBarRow(
             },
             trailingIcon = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isAiGenerating) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    IconButton(onClick = onToggleAiSearch) {
+                        Icon(
+                            Icons.Filled.AutoAwesome,
+                            contentDescription = "AI Search",
+                            tint = if (isAiSearchActive) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     if (query.isNotBlank()) {
                         IconButton(onClick = { onSearchChanged("") }) {
                             Icon(Icons.Filled.Close, contentDescription = "Clear search")

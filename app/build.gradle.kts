@@ -100,6 +100,8 @@ dependencies {
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.biometric)
     implementation(libs.play.services.location)
+    implementation(libs.moshi)
+    implementation(libs.moshi.kotlin)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)

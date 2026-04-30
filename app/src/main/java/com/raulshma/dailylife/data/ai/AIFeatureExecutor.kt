@@ -1,0 +1,162 @@
+package com.raulshma.dailylife.data.ai
+
+import com.raulshma.dailylife.domain.AIModel
+import com.raulshma.dailylife.domain.AIFeature
+import com.raulshma.dailylife.domain.LifeItem
+import com.raulshma.dailylife.domain.MoodResult
+import com.raulshma.dailylife.domain.WritingTone
+import com.raulshma.dailylife.domain.displayBody
+import com.raulshma.dailylife.domain.supports
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class AIFeatureExecutor @Inject constructor(
+    private val engineService: LiteRTEngineService,
+    private val modelManager: ModelManager,
+) {
+    suspend fun ensureModelForFeature(feature: AIFeature): AIModel? {
+        val model = modelManager.getDefaultModel() ?: return null
+        if (!model.supports(feature)) return null
+        if (engineService.loadedModelId != model.id) {
+            engineService.loadModel(model).getOrNull() ?: return null
+        }
+        return model
+    }
+
+    fun isFeatureAvailable(feature: AIFeature): Boolean {
+        val model = modelManager.getDefaultModel() ?: return false
+        return model.supports(feature)
+    }
+
+    suspend fun generateSmartTitle(body: String): Flow<String> {
+        ensureModelForFeature(AIFeature.SMART_TITLE)
+        val prompt = """Generate a short, concise title (max 8 words) for a journal entry with the following content. Return ONLY the title, nothing else.
+
+Content:
+${body.take(1000)}"""
+        return engineService.generateText(prompt)
+    }
+
+    suspend fun suggestTags(title: String, body: String): Flow<List<String>> {
+        ensureModelForFeature(AIFeature.TAG_SUGGESTION)
+        val prompt = """Suggest up to 5 relevant tags for this journal entry. Return ONLY comma-separated tags, nothing else. Use lowercase, no hashtags.
+
+Title: ${title.take(200)}
+Content: ${body.take(1000)}"""
+        return engineService.generateText(prompt).map { response ->
+            response.split(",")
+                .map { it.trim().lowercase() }
+                .filter { it.isNotBlank() && it.length <= 30 }
+                .distinct()
+                .take(5)
+        }
+    }
+
+    suspend fun summarizeEntry(title: String, body: String): Flow<String> {
+        ensureModelForFeature(AIFeature.SUMMARIZE)
+        val prompt = """Summarize this journal entry in 2-3 concise sentences. Focus on the key points and emotions expressed.
+
+Title: ${title.take(200)}
+Content: ${body.take(2000)}"""
+        return engineService.generateText(prompt)
+    }
+
+    suspend fun analyzeMood(title: String, body: String): Flow<MoodResult> {
+        ensureModelForFeature(AIFeature.MOOD_ANALYSIS)
+        val prompt = """Analyze the emotional tone of this journal entry. Respond with EXACTLY this format: MOOD_LABEL|CONFIDENCE
+
+Where MOOD_LABEL is one of: happy, sad, anxious, calm, energetic, angry, grateful, neutral
+And CONFIDENCE is a number between 0.0 and 1.0
+
+Title: ${title.take(200)}
+Content: ${body.take(1000)}"""
+        return engineService.generateText(prompt).map { response ->
+            val parts = response.trim().split("|")
+            val label = parts.getOrNull(0)?.trim()?.lowercase() ?: "neutral"
+            val confidence = parts.getOrNull(1)?.trim()?.toFloatOrNull() ?: 0.5f
+            MoodResult(
+                moodLabel = label,
+                confidence = confidence.coerceIn(0f, 1f),
+            )
+        }
+    }
+
+    suspend fun generateReflection(entries: List<LifeItem>, startDate: LocalDate, endDate: LocalDate): Flow<String> {
+        ensureModelForFeature(AIFeature.REFLECTION)
+        val dateFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy")
+        val entriesSummary = entries.take(30).joinToString("\n") { entry ->
+            val date = entry.createdAt.format(DateTimeFormatter.ofPattern("MMM d"))
+            val cleanBody = entry.displayBody().take(200)
+            "- [$date] ${entry.title.take(100)}: $cleanBody"
+        }
+        val prompt = """Based on these journal entries from ${startDate.format(dateFormatter)} to ${endDate.format(dateFormatter)}, write a thoughtful reflection. Identify patterns, highlight memorable moments, and offer gentle insights. Write in a warm, supportive tone.
+
+Entries:
+$entriesSummary"""
+        return engineService.generateText(prompt, systemInstruction = "You are a compassionate personal journal assistant. Provide thoughtful reflections based on the user's journal entries. Be supportive and insightful.")
+    }
+
+    suspend fun describePhoto(imageBytes: ByteArray): Flow<String> {
+        ensureModelForFeature(AIFeature.PHOTO_DESCRIPTION)
+        val prompt = "Describe this photo in 2-3 sentences. Focus on the main subjects, setting, and mood of the image."
+        return engineService.generateWithImage(prompt, imageBytes)
+    }
+
+    suspend fun summarizeAudio(audioBytes: ByteArray): Flow<String> {
+        ensureModelForFeature(AIFeature.AUDIO_SUMMARY)
+        val prompt = "Listen to this audio recording and provide a brief summary of its content in 2-3 sentences."
+        return engineService.generateWithAudio(prompt, audioBytes)
+    }
+
+    suspend fun chatWithJournal(message: String, contextEntries: List<LifeItem>): Flow<String> {
+        ensureModelForFeature(AIFeature.CHAT)
+        val context = if (contextEntries.isNotEmpty()) {
+            "Recent journal context:\n" + contextEntries.take(10).joinToString("\n") { entry ->
+                val date = entry.createdAt.format(DateTimeFormatter.ofPattern("MMM d"))
+                "- [$date] ${entry.title}: ${entry.displayBody().take(150)}"
+            } + "\n\n"
+        } else ""
+
+        return engineService.chat(
+            messages = listOf("user" to "$context$message"),
+            systemInstruction = "You are a helpful personal journal assistant. You help the user reflect on their journal entries, answer questions about their past activities, and provide supportive insights. Be concise and warm. If the user asks about their journal, refer to the provided context."
+        )
+    }
+
+    suspend fun rewriteText(text: String, tone: WritingTone): Flow<String> {
+        ensureModelForFeature(AIFeature.WRITING_ASSISTANT)
+        val toneInstruction = when (tone) {
+            WritingTone.FORMAL -> "Rewrite in a formal, professional tone"
+            WritingTone.CASUAL -> "Rewrite in a casual, friendly tone"
+            WritingTone.CONCISE -> "Rewrite to be more concise and direct"
+            WritingTone.CREATIVE -> "Rewrite in a creative, expressive style"
+            WritingTone.FIX_GRAMMAR -> "Fix any grammar, spelling, or punctuation errors without changing the style"
+        }
+        val prompt = """$toneInstruction. Return ONLY the rewritten text, nothing else.
+
+Text:
+${text.take(2000)}"""
+        return engineService.generateText(prompt)
+    }
+
+    suspend fun naturalLanguageSearch(query: String, availableTags: List<String>): Flow<String> {
+        ensureModelForFeature(AIFeature.NL_SEARCH)
+        val tagsList = availableTags.take(50).joinToString(", ")
+        val prompt = """Convert this natural language search query into structured filters for a journal app. Return ONLY a JSON object with these possible fields (omit fields that aren't relevant):
+- "query": text to search for in titles and content
+- "type": one of "Thought", "Note", "Task", "Reminder", "Photo", "Video", "Audio", "Location", "Pdf", "Mixed"
+- "tags": array of relevant tags from the available list
+- "favoritesOnly": true if user wants favorites only
+- "dateRange": {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"} if a date range is specified
+
+Available tags: $tagsList
+
+User query: $query"""
+        return engineService.generateText(prompt)
+    }
+}
