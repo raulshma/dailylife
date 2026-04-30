@@ -57,6 +57,9 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         Configuration.getInstance().userAgentValue = packageName
         enableEdgeToEdge()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
         requestNotificationPermissionIfNeeded()
         handleShareIntent(intent)
 

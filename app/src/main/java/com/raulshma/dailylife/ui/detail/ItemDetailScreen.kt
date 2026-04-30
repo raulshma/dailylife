@@ -10,6 +10,7 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.util.Base64
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.core.Animatable
@@ -39,12 +40,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -53,9 +57,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Label
@@ -66,6 +68,7 @@ import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Notifications
@@ -312,6 +315,11 @@ fun ItemDetailScreen(
     val horizontalChromePadding: Dp = if (isWideLayout) 24.dp else 8.dp
     val topChromeMaxWidth: Dp = if (isWideLayout) 980.dp else 10_000.dp
     val bottomChromeMaxWidth: Dp = if (isWideLayout) 760.dp else 10_000.dp
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val detailSheetMaxHeight = if (isWideLayout) 0.72f else 0.64f
+    val detailBottomPadding = with(density) {
+        WindowInsets.navigationBars.getBottom(this).toDp()
+    } + 28.dp
     val dragVisualOffset = animateFloatAsState(
         targetValue = dragVisualOffsetPx,
         animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing),
@@ -359,132 +367,132 @@ fun ItemDetailScreen(
         )
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .pointerInput(showDetails) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    dragAxisLocked = false
-                    isHorizontalDrag = false
-                    dragAccumulator = 0f
-                    totalDx = 0f
-                    totalDy = 0f
+    BackHandler(enabled = showDetails) {
+        showDetails = false
+        registerChromeInteraction()
+    }
 
-                    val pointerId = down.id
-                    var previousPosition = down.position
+    val itemGestureModifier = if (showDetails) {
+        Modifier
+    } else {
+        Modifier.pointerInput(item.id, isPdfItem, isZoomedIn) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                val canHandleVerticalDrag = !isPdfItem || down.position.y > size.height * 0.72f
+                dragAxisLocked = false
+                isHorizontalDrag = false
+                dragAccumulator = 0f
+                totalDx = 0f
+                totalDy = 0f
 
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val activePointers =
-                            event.changes.count { it.pressed }
+                val pointerId = down.id
+                var previousPosition = down.position
 
-                        if (activePointers >= 2 || isZoomedIn) {
-                            // multi-touch (pinch-to-zoom) or zoomed-in pan:
-                            // pass events through, don't consume
-                            continue
-                        }
+                while (true) {
+                    val event = awaitPointerEvent()
+                    val activePointers = event.changes.count { it.pressed }
 
-                        val change =
-                            event.changes.firstOrNull { it.id == pointerId }
+                    if (activePointers >= 2 || isZoomedIn) {
+                        continue
+                    }
 
-                        if (change == null || !change.pressed) {
-                            // pointer up — handle drag end
-                            if (isHorizontalDrag) {
-                                val swipeThreshold =
-                                    size.width * 0.25f
-                                val currentIndex =
-                                    navigableItemIds.indexOf(item.id)
-                                val navigateTo = when {
-                                    horizontalDragOffset < -swipeThreshold && currentIndex != -1 && currentIndex < navigableItemIds.lastIndex -> navigableItemIds[currentIndex + 1]
-                                    horizontalDragOffset > swipeThreshold && currentIndex != -1 && currentIndex > 0 -> navigableItemIds[currentIndex - 1]
-                                    else -> null
-                                }
-                                if (navigateTo != null) {
-                                    onNavigateToItem(navigateTo)
-                                } else {
-                                    scope.launch {
-                                        Animatable(horizontalDragOffset).animateTo(
-                                            targetValue = 0f,
-                                            animationSpec = tween(
-                                                durationMillis = 220,
-                                                easing = LinearOutSlowInEasing,
-                                            ),
-                                        ) {
-                                            horizontalDragOffset = value
-                                        }
-                                    }
-                                }
-                            } else if (!isPdfItem) {
-                                 when {
-                                    dragAccumulator <= -120f && !showDetails -> {
-                                        showDetails = true
-                                        chromeVisible = true
-                                        dragVisualOffsetPx = 0f
-                                    }
+                    val change = event.changes.firstOrNull { it.id == pointerId }
 
-                                    dragAccumulator >= 180f && !showDetails -> {
-                                        onBack()
-                                    }
-
-                                     abs(dragAccumulator) >= 24f && !showDetails -> {
-                                        chromeVisible =
-                                            dragAccumulator < 0f
-                                        chromeInteractionTick += 1
-                                    }
-                                }
-                                dragAccumulator = 0f
-                                dragVisualOffsetPx = 0f
+                    if (change == null || !change.pressed) {
+                        if (isHorizontalDrag) {
+                            val swipeThreshold = size.width * 0.25f
+                            val currentIndex = navigableItemIds.indexOf(item.id)
+                            val navigateTo = when {
+                                horizontalDragOffset < -swipeThreshold && currentIndex != -1 && currentIndex < navigableItemIds.lastIndex -> navigableItemIds[currentIndex + 1]
+                                horizontalDragOffset > swipeThreshold && currentIndex != -1 && currentIndex > 0 -> navigableItemIds[currentIndex - 1]
+                                else -> null
+                            }
+                            if (navigateTo != null) {
+                                onNavigateToItem(navigateTo)
                             } else {
-                                // PDF: reset drag state without triggering actions
-                                dragAccumulator = 0f
-                                dragVisualOffsetPx = 0f
-                            }
-                            dragAxisLocked = false
-                            break
-                        }
-
-                        val dragAmount =
-                            change.position - previousPosition
-                        previousPosition = change.position
-
-                        if (!dragAxisLocked) {
-                            totalDx += dragAmount.x
-                            totalDy += dragAmount.y
-                            if (kotlin.math.abs(totalDx) > kotlin.math.abs(totalDy) * 1.2f && kotlin.math.abs(totalDx) > 10f) {
-                                dragAxisLocked = true
-                                isHorizontalDrag = true
-                            } else if (kotlin.math.abs(totalDy) > kotlin.math.abs(totalDx) * 1.2f && kotlin.math.abs(totalDy) > 10f) {
-                                dragAxisLocked = true
-                                isHorizontalDrag = false
-                            }
-                        }
-
-                        if (dragAxisLocked) {
-                            if (isHorizontalDrag) {
-                                change.consume()
-                                horizontalDragOffset += dragAmount.x
-                            } else if (!isPdfItem) {
-                                change.consume()
-                                dragAccumulator += dragAmount.y
-                                if (dragAmount.y < -8f) {
-                                    chromeVisible = true
-                                }
-                                if (!showDetails) {
-                                    if (dragAmount.y > 0f && !chromeVisible) {
-                                        dragVisualOffsetPx =
-                                            (dragVisualOffsetPx + (dragAmount.y * 0.9f)).coerceAtMost(360f)
-                                    } else if (dragAmount.y < 0f) {
-                                        dragVisualOffsetPx =
-                                            (dragVisualOffsetPx + (dragAmount.y * 0.6f)).coerceAtLeast(0f)
+                                scope.launch {
+                                    Animatable(horizontalDragOffset).animateTo(
+                                        targetValue = 0f,
+                                        animationSpec = tween(
+                                            durationMillis = 220,
+                                            easing = LinearOutSlowInEasing,
+                                        ),
+                                    ) {
+                                        horizontalDragOffset = value
                                     }
                                 }
+                            }
+                        } else if (canHandleVerticalDrag) {
+                            when {
+                                dragAccumulator <= -120f -> {
+                                    showDetails = true
+                                    chromeVisible = true
+                                    dragVisualOffsetPx = 0f
+                                }
+
+                                dragAccumulator >= 180f -> {
+                                    onBack()
+                                }
+
+                                abs(dragAccumulator) >= 24f -> {
+                                    chromeVisible = dragAccumulator < 0f
+                                    chromeInteractionTick += 1
+                                }
+                            }
+                            dragAccumulator = 0f
+                            dragVisualOffsetPx = 0f
+                        } else {
+                            dragAccumulator = 0f
+                            dragVisualOffsetPx = 0f
+                        }
+                        dragAxisLocked = false
+                        break
+                    }
+
+                    val dragAmount = change.position - previousPosition
+                    previousPosition = change.position
+
+                    if (!dragAxisLocked) {
+                        totalDx += dragAmount.x
+                        totalDy += dragAmount.y
+                        if (kotlin.math.abs(totalDx) > kotlin.math.abs(totalDy) * 1.2f && kotlin.math.abs(totalDx) > 10f) {
+                            dragAxisLocked = true
+                            isHorizontalDrag = true
+                        } else if (canHandleVerticalDrag && kotlin.math.abs(totalDy) > kotlin.math.abs(totalDx) * 1.2f && kotlin.math.abs(totalDy) > 10f) {
+                            dragAxisLocked = true
+                            isHorizontalDrag = false
+                        }
+                    }
+
+                    if (dragAxisLocked) {
+                        if (isHorizontalDrag) {
+                            change.consume()
+                            horizontalDragOffset += dragAmount.x
+                        } else if (canHandleVerticalDrag) {
+                            change.consume()
+                            dragAccumulator += dragAmount.y
+                            if (dragAmount.y < -8f) {
+                                chromeVisible = true
+                            }
+                            if (dragAmount.y > 0f && !chromeVisible) {
+                                dragVisualOffsetPx =
+                                    (dragVisualOffsetPx + (dragAmount.y * 0.9f)).coerceAtMost(360f)
+                            } else if (dragAmount.y < 0f) {
+                                dragVisualOffsetPx =
+                                    (dragVisualOffsetPx + (dragAmount.y * 0.6f)).coerceAtLeast(0f)
                             }
                         }
                     }
                 }
             }
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .then(itemGestureModifier)
             .graphicsLayer {
                 translationX = horizontalDragOffset
             }
@@ -522,7 +530,7 @@ fun ItemDetailScreen(
         )
 
         AnimatedVisibility(
-            visible = chromeVisible,
+            visible = chromeVisible && !showDetails,
             enter = chromeEnter,
             exit = chromeExit,
         ) {
@@ -606,18 +614,18 @@ fun ItemDetailScreen(
                         },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        AnimatedActionButton(
+                        DetailBottomAction(
                             icon = Icons.Filled.PushPin,
-                            contentDescription = if (item.isPinned) "Unpin" else "Pin",
+                            label = if (item.isPinned) "Pinned" else "Pin",
                             tint = if (item.isPinned) MaterialTheme.colorScheme.tertiary else Color.White,
                             onClick = {
                                 registerChromeInteraction()
                                 onPinnedToggled()
                             },
                         )
-                        AnimatedActionButton(
+                        DetailBottomAction(
                             icon = if (item.isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
-                            contentDescription = if (item.isFavorite) "Remove favorite" else "Add favorite",
+                            label = if (item.isFavorite) "Saved" else "Save",
                             tint = if (item.isFavorite) MaterialTheme.colorScheme.tertiary else Color.White,
                             onClick = {
                                 registerChromeInteraction()
@@ -626,24 +634,34 @@ fun ItemDetailScreen(
                             },
                             animate = item.isFavorite,
                         )
-                        IconButton(onClick = {
-                            registerChromeInteraction()
-                            onEdit()
-                        }) {
-                            Icon(Icons.Filled.Edit, contentDescription = "Edit item", tint = Color.White)
-                        }
-                        IconButton(onClick = {
-                            registerChromeInteraction()
-                            showDeleteDialog = true
-                        }) {
-                            Icon(Icons.Filled.Delete, contentDescription = "Delete item", tint = Color.White)
-                        }
-                        IconButton(onClick = {
-                            registerChromeInteraction()
-                            onCompleted()
-                            justCompleted = true
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        }) {
+                        DetailBottomAction(
+                            icon = Icons.Filled.Edit,
+                            label = "Edit",
+                            tint = Color.White,
+                            onClick = {
+                                registerChromeInteraction()
+                                onEdit()
+                            },
+                        )
+                        DetailBottomAction(
+                            icon = Icons.Filled.Delete,
+                            label = "Delete",
+                            tint = Color.White,
+                            onClick = {
+                                registerChromeInteraction()
+                                showDeleteDialog = true
+                            },
+                        )
+                        DetailBottomAction(
+                            label = "Done",
+                            tint = if (justCompleted) Color(0xFF4CAF50) else Color.White,
+                            onClick = {
+                                registerChromeInteraction()
+                                onCompleted()
+                                justCompleted = true
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            },
+                        ) {
                             val checkScale by animateFloatAsState(
                                 targetValue = if (justCompleted) 1.35f else 1f,
                                 animationSpec = com.raulshma.dailylife.ui.theme.DailyLifeSpring.Bouncy,
@@ -685,7 +703,14 @@ fun ItemDetailScreen(
                         },
                         modifier = Modifier.align(Alignment.CenterHorizontally),
                     ) {
-                        Text("Swipe up for details", color = Color.White)
+                        Icon(
+                            imageVector = Icons.Filled.Info,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Details", color = Color.White)
                     }
                 }
             }
@@ -760,14 +785,14 @@ fun ItemDetailScreen(
             ) { it },
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.54f)
+                .fillMaxHeight(detailSheetMaxHeight)
                 .align(Alignment.BottomCenter),
         ) {
             Surface(
                 modifier = Modifier
                     .fillMaxSize()
                     .nestedScroll(dismissNestedScrollConnection),
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
                 color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 3.dp,
             ) {
@@ -792,42 +817,78 @@ fun ItemDetailScreen(
                         )
                     }
 
-                    Column(
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f)
-                            .verticalScroll(rememberScrollState())
-                            .padding(bottom = 32.dp),
+                            .padding(horizontal = 20.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        DetailContentSection(
-                            item = item,
-                            occurrenceStats = occurrenceStats,
-                            globalSettings = globalSettings,
-                            contentVisible = contentVisible,
-                            onNotificationsChanged = onNotificationsChanged,
-                            onViewHistory = onViewHistory,
-                            isAiEnabled = isAiEnabled,
-                            isFeatureAvailable = isFeatureAvailable,
-                            aiGeneratedTitle = aiGeneratedTitle,
-                            aiGeneratedDescription = aiGeneratedDescription,
-                            aiGeneratedTags = aiGeneratedTags,
-                            aiMood = aiMood,
-                            aiPhotoDescription = aiPhotoDescription,
-                            aiAudioSummary = aiAudioSummary,
-                            isAiGenerating = isAiGenerating,
-                            aiError = aiError,
-                            onGenerateTitle = onGenerateTitle,
-                            onGenerateDescription = onGenerateDescription,
-                            onSuggestTags = onSuggestTags,
-                            onAnalyzeMood = onAnalyzeMood,
-                            onDescribePhoto = onDescribePhoto,
-                            onSummarizeAudio = onSummarizeAudio,
-                            onApplyTitle = onApplyTitle,
-                            onApplyTags = onApplyTags,
-                            onApplyDescription = onApplyDescription,
-                            onClearAiError = onClearAiError,
-                            onCancelAi = onCancelAi,
-                        )
+                        TypeBadge(type = item.type, boxSize = 40.dp)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = item.title,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = "${item.type.label} - ${item.createdAt.format(TimestampFormatter)}",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                showDetails = false
+                                registerChromeInteraction()
+                            },
+                        ) {
+                            Icon(Icons.Filled.Close, contentDescription = "Close details")
+                        }
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentPadding = PaddingValues(bottom = detailBottomPadding),
+                    ) {
+                        item {
+                            DetailContentSection(
+                                item = item,
+                                occurrenceStats = occurrenceStats,
+                                globalSettings = globalSettings,
+                                contentVisible = contentVisible,
+                                onNotificationsChanged = onNotificationsChanged,
+                                onViewHistory = onViewHistory,
+                                isAiEnabled = isAiEnabled,
+                                isFeatureAvailable = isFeatureAvailable,
+                                aiGeneratedTitle = aiGeneratedTitle,
+                                aiGeneratedDescription = aiGeneratedDescription,
+                                aiGeneratedTags = aiGeneratedTags,
+                                aiMood = aiMood,
+                                aiPhotoDescription = aiPhotoDescription,
+                                aiAudioSummary = aiAudioSummary,
+                                isAiGenerating = isAiGenerating,
+                                aiError = aiError,
+                                onGenerateTitle = onGenerateTitle,
+                                onGenerateDescription = onGenerateDescription,
+                                onSuggestTags = onSuggestTags,
+                                onAnalyzeMood = onAnalyzeMood,
+                                onDescribePhoto = onDescribePhoto,
+                                onSummarizeAudio = onSummarizeAudio,
+                                onApplyTitle = onApplyTitle,
+                                onApplyTags = onApplyTags,
+                                onApplyDescription = onApplyDescription,
+                                onClearAiError = onClearAiError,
+                                onCancelAi = onCancelAi,
+                            )
+                        }
                     }
                 }
             }
@@ -1888,37 +1949,9 @@ private fun DetailContentSection(
     onCancelAi: () -> Unit = {},
 ) {
     Column(
-        modifier = Modifier.padding(horizontal = 20.dp),
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        AnimatedVisibility(
-            visible = contentVisible,
-            enter = fadeIn(DailyLifeTween.fade<Float>()) + slideInVertically(
-                DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>(),
-                initialOffsetY = { it / 3 }
-            ),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                TypeBadge(type = item.type)
-                Column {
-                    Text(
-                        text = item.type.label,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    Text(
-                        text = item.createdAt.format(TimestampFormatter),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                }
-            }
-        }
-
         if (item.displayBody().isNotBlank()) {
             AnimatedVisibility(
                 visible = contentVisible,
@@ -2657,36 +2690,51 @@ private fun DetailLine(label: String, value: String) {
 }
 
 @Composable
-private fun AnimatedActionButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    contentDescription: String,
+private fun DetailBottomAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    label: String,
     tint: Color,
     onClick: () -> Unit,
     animate: Boolean = false,
+    iconContent: (@Composable () -> Unit)? = null,
 ) {
     val scale by animateFloatAsState(
-        targetValue = if (animate) 1.2f else 1f,
+        targetValue = if (animate) 1.12f else 1f,
         animationSpec = com.raulshma.dailylife.ui.theme.DailyLifeSpring.Bouncy,
-        label = "actionScale"
-    )
-    val rotation by animateFloatAsState(
-        targetValue = if (animate) 0f else -15f,
-        animationSpec = com.raulshma.dailylife.ui.theme.DailyLifeSpring.Bouncy,
-        label = "actionRotation"
+        label = "bottomActionScale",
     )
 
-    IconButton(onClick = onClick) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = tint,
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+        modifier = Modifier.widthIn(min = 48.dp),
+    ) {
+        IconButton(
+            onClick = onClick,
             modifier = Modifier
+                .size(48.dp)
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
-                    rotationZ = rotation
-                }
-                .size(24.dp)
+                },
+        ) {
+            if (iconContent != null) {
+                iconContent()
+            } else if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = tint,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White.copy(alpha = 0.88f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
