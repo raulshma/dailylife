@@ -11,6 +11,20 @@
   <img src="https://img.shields.io/badge/License-GPL--3.0-blue?style=for-the-badge" alt="License">
 </p>
 
+</br>
+
+<p align="middle">
+    <img src="media-resources/screenshots/01.png" width="30%" />
+    <img src="media-resources/screenshots/02.png" width="30%" />
+    <img src="media-resources/screenshots/03.png" width="30%" />
+</p>
+
+<p align="middle">
+    <img src="media-resources/screenshots/04.png" width="30%" />
+    <img src="media-resources/screenshots/05.png" width="30%" />
+    <img src="media-resources/screenshots/06.png" width="30%" />
+</p>
+
 ## Project Overview
 
 DailyLife is a personal life journal and productivity app for Android. It captures thoughts, notes, tasks, reminders, photos, videos, audio recordings, locations, and PDFs in a single unified timeline. With recurring reminders, location-based triggers, speech-to-text, S3-compatible cloud backup, and full local encryption, it serves as a private and extensible daily companion.
