@@ -49,7 +49,7 @@ internal fun MediaMosaicTile(
 
     val mediaSharedModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
         with(sharedTransitionScope) {
-            Modifier.sharedElement(
+            Modifier.sharedBounds(
                 sharedContentState = rememberSharedContentState(key = SharedElementKeys.media(item.id)),
                 animatedVisibilityScope = animatedVisibilityScope,
             )
@@ -62,7 +62,7 @@ internal fun MediaMosaicTile(
             Modifier.sharedElement(
                 sharedContentState = rememberSharedContentState(key = SharedElementKeys.title(item.id)),
                 animatedVisibilityScope = animatedVisibilityScope,
-            )
+            ).skipToLookaheadSize()
         }
     } else {
         Modifier
@@ -72,7 +72,7 @@ internal fun MediaMosaicTile(
             Modifier.sharedElement(
                 sharedContentState = rememberSharedContentState(key = SharedElementKeys.typeBadge(item.id)),
                 animatedVisibilityScope = animatedVisibilityScope,
-            )
+            ).skipToLookaheadSize()
         }
     } else {
         Modifier
