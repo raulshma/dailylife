@@ -17,7 +17,6 @@
     <img src="media-resources/screenshots/01.png" width="18%" />
     <img src="media-resources/screenshots/02.png" width="18%" />
     <img src="media-resources/screenshots/03.png" width="18%" />
-    <img src="media-resources/screenshots/04.png" width="18%" />
     <img src="media-resources/screenshots/05.png" width="18%" />
     <img src="media-resources/screenshots/06.png" width="18%" />
 </p>
