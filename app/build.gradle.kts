@@ -57,6 +57,14 @@ android {
             )
             signingConfig = signingConfigs.getByName("release")
         }
+        register("releaseMinify") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".dev"
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
