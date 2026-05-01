@@ -2,6 +2,7 @@ package com.raulshma.dailylife.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -58,19 +59,23 @@ internal fun TypeBadge(
     type: LifeItemType,
     modifier: Modifier = Modifier,
     boxSize: Dp = 44.dp,
+    transparent: Boolean = false,
 ) {
     Box(
         modifier = Modifier
             .then(modifier)
             .size(boxSize)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primaryContainer),
+            .background(
+                if (transparent) Color.Transparent 
+                else MaterialTheme.colorScheme.primaryContainer
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             imageVector = type.icon(),
             contentDescription = type.label,
-            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            tint = if (transparent) Color.White else MaterialTheme.colorScheme.onPrimaryContainer,
             modifier = Modifier.size(boxSize * 0.45f),
         )
     }

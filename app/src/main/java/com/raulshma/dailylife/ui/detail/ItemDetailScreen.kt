@@ -590,7 +590,7 @@ fun ItemDetailScreen(
                             .weight(1f)
                             .then(titleSharedModifier),
                     )
-                    TypeBadge(type = item.type, modifier = badgeSharedModifier)
+                    TypeBadge(type = item.type, modifier = badgeSharedModifier, transparent = true)
                 }
                 }
 
