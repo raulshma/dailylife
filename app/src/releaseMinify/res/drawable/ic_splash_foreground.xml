@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="128dp"
+    android:height="128dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+
+    <!-- Book/journal body -->
+    <path
+        android:pathData="M156,148 L356,148 C364.8,148 372,155.2 372,164 L372,380 C372,388.8 364.8,396 356,396 L156,396 C147.2,396 140,388.8 140,380 L140,164 C140,155.2 147.2,148 156,148 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.95" />
+
+    <!-- Book spine -->
+    <path
+        android:pathData="M140,148 L154,148 C144.1,148 140,155.2 140,164 L140,380 C140,388.8 140,396 154,396 L140,396 C140,388.8 140,380 140,148 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.5" />
+
+    <!-- Text line 1 (bold) -->
+    <path
+        android:pathData="M170,176 L290,176 C291.1,176 292,177.3 292,179 L292,179 C292,180.7 291.1,182 290,182 L170,182 C168.9,182 168,180.7 168,179 L168,179 C168,177.3 168.9,176 170,176 Z"
+        android:fillColor="#2F5D8C"
+        android:fillAlpha="0.8" />
+
+    <!-- Text line 2 -->
+    <path
+        android:pathData="M170,196 L340,196 C341.1,196 342,197.3 342,199 L342,199 C342,200.7 341.1,202 340,202 L170,202 C168.9,202 168,200.7 168,199 L168,199 C168,197.3 168.9,196 170,196 Z"
+        android:fillColor="#2F5D8C"
+        android:fillAlpha="0.5" />
+
+    <!-- Text line 3 -->
+    <path
+        android:pathData="M170,216 L260,216 C261.1,216 262,217.3 262,219 L262,219 C262,220.7 261.1,222 260,222 L170,222 C168.9,222 168,220.7 168,219 L168,219 C168,217.3 168.9,216 170,216 Z"
+        android:fillColor="#2F5D8C"
+        android:fillAlpha="0.5" />
+
+    <!-- Checkbox -->
+    <path
+        android:pathData="M170,248 L188,248 C190.2,248 192,249.8 192,252 L192,260 C192,262.2 190.2,264 188,264 L170,264 C167.8,264 166,262.2 166,260 L166,252 C166,249.8 167.8,248 170,248 Z"
+        android:fillColor="#FFFFFF"
+        android:strokeColor="#4F6F52"
+        android:strokeWidth="2.5" />
+
+    <!-- Checkmark -->
+    <path
+        android:pathData="M173,258 L177,262 L185,252"
+        android:strokeColor="#4F6F52"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
+    <!-- Task text line -->
+    <path
+        android:pathData="M198,252 L298,252 C299.1,252 300,253.3 300,255 L300,255 C300,256.7 299.1,258 298,258 L198,258 C196.9,258 196,256.7 196,255 L196,255 C196,253.3 196.9,252 198,252 Z"
+        android:fillColor="#4F6F52"
+        android:fillAlpha="0.5" />
+
+    <!-- Camera body -->
+    <path
+        android:pathData="M170,284 L200,284 C203.3,284 206,286.7 206,290 L206,300 C206,303.3 203.3,306 200,306 L170,306 C166.7,306 164,303.3 164,300 L164,290 C164,286.7 166.7,284 170,284 Z"
+        android:fillColor="#9A5B36"
+        android:fillAlpha="0.7" />
+
+    <!-- Camera lens -->
+    <path
+        android:pathData="M185,294 m-6,0 a6,6 0 1,1 12,0 a6,6 0 1,1 -12,0"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:fillColor="#00000000" />
+
+    <!-- Camera flash bump -->
+    <path
+        android:pathData="M177,284 L180,278 L186,278 L189,284 Z"
+        android:fillColor="#9A5B36"
+        android:fillAlpha="0.7" />
+
+    <!-- Photo text line -->
+    <path
+        android:pathData="M210,288 L290,288 C291.1,288 292,289.3 292,291 L292,291 C292,292.7 291.1,294 290,294 L210,294 C208.9,294 208,292.7 208,291 L208,291 C208,289.3 208.9,288 210,288 Z"
+        android:fillColor="#9A5B36"
+        android:fillAlpha="0.5" />
+
+    <!-- Location pin -->
+    <path
+        android:pathData="M178,340 C178,336 182,332 186,332 C190,332 194,336 194,340 C194,346 186,356 186,356 C186,356 178,346 178,340 Z"
+        android:fillColor="#4F6F52"
+        android:fillAlpha="0.8" />
+
+    <!-- Location dot -->
+    <path
+        android:pathData="M186,340 m-2.5,0 a2.5,2.5 0 1,1 5,0 a2.5,2.5 0 1,1 -5,0"
+        android:fillColor="#FFFFFF" />
+
+    <!-- Location text line -->
+    <path
+        android:pathData="M202,342 L262,342 C263.1,342 264,343.3 264,345 L264,345 C264,346.7 263.1,348 262,348 L202,348 C200.9,348 200,346.7 200,345 L200,345 C200,343.3 200.9,342 202,342 Z"
+        android:fillColor="#4F6F52"
+        android:fillAlpha="0.5" />
+
+    <!-- Bookmark ribbon -->
+    <path
+        android:pathData="M360,148 L360,188 L348,178 L336,188 L336,148"
+        android:fillColor="#9A5B36"
+        android:fillAlpha="0.85" />
+
+    <group
+        android:rotation="-45"
+        android:translateX="380"
+        android:translateY="60">
+        <path
+            android:pathData="M0,0 L120,0 L120,32 L0,32 Z"
+            android:fillColor="#E53935" />
+        <path
+            android:pathData="M26,7 L31,7 L31,25 L27,25 L27,13 L23,17 L20,14 Z M36,7 L40,7 L40,25 L36,25 Z M44,7 L56,7 L56,11 L48,11 L48,14 L55,14 L55,18 L48,18 L48,25 L44,25 Z"
+            android:fillColor="#FFFFFF" />
+    </group>
+
+</vector>
