@@ -12,12 +12,17 @@ import com.google.ai.edge.litertlm.LogSeverity
 import com.raulshma.dailylife.domain.AIModel
 import com.raulshma.dailylife.domain.AIModelCapability
 import com.raulshma.dailylife.domain.EngineState
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -25,6 +30,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 private const val TAG = "LiteRTEngineService"
+private const val IDLE_UNLOAD_TIMEOUT_MS = 45_000L
 
 @Singleton
 class LiteRTEngineService @Inject constructor(
@@ -33,7 +39,12 @@ class LiteRTEngineService @Inject constructor(
     private var engine: Engine? = null
     private var currentModelId: String? = null
     private val mutex = Mutex()
+    @Volatile
     private var currentConversation: Conversation? = null
+    private val conversationLock = Any()
+
+    private val autoUnloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile private var autoUnloadJob: Job? = null
 
     private val _engineState = MutableStateFlow<EngineState>(EngineState.Idle)
     val engineState = _engineState.asStateFlow()
@@ -47,10 +58,30 @@ class LiteRTEngineService @Inject constructor(
     val loadedModelName: String?
         get() = (_engineState.value as? EngineState.Ready)?.modelName
 
+    private fun resetIdleTimer() {
+        autoUnloadJob?.cancel()
+        autoUnloadJob = autoUnloadScope.launch {
+            delay(IDLE_UNLOAD_TIMEOUT_MS)
+            mutex.withLock {
+                autoUnloadJob = null
+                if (engine != null) {
+                    Log.i(TAG, "Auto-unloading model after ${IDLE_UNLOAD_TIMEOUT_MS / 1000}s of inactivity")
+                    unloadModelInternal()
+                }
+            }
+        }
+    }
+
+    private fun cancelIdleTimer() {
+        autoUnloadJob?.cancel()
+        autoUnloadJob = null
+    }
+
     suspend fun loadModel(model: AIModel): Result<Unit> = mutex.withLock {
         withContext(Dispatchers.IO) {
             if (currentModelId == model.id && engine != null) {
                 _engineState.value = EngineState.Ready(model.name)
+                resetIdleTimer()
                 return@withContext Result.success(Unit)
             }
             unloadModelInternal()
@@ -75,10 +106,12 @@ class LiteRTEngineService @Inject constructor(
                 currentModelId = model.id
                 _engineState.value = EngineState.Ready(model.name)
                 Log.i(TAG, "Model loaded: ${model.name}")
+                resetIdleTimer()
                 Result.success(Unit)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load model: ${model.id}", e)
                 _engineState.value = EngineState.Error(e.message ?: "Unknown error")
+                cancelIdleTimer()
                 Result.failure(e)
             }
         }
@@ -91,6 +124,7 @@ class LiteRTEngineService @Inject constructor(
     }
 
     private fun unloadModelInternal() {
+        cancelIdleTimer()
         closeConversationInternal()
         engine?.close()
         engine = null
@@ -99,10 +133,14 @@ class LiteRTEngineService @Inject constructor(
     }
 
     private fun closeConversationInternal() {
+        val conv = synchronized(conversationLock) {
+            val c = currentConversation
+            currentConversation = null
+            c
+        }
         try {
-            currentConversation?.close()
+            conv?.close()
         } catch (_: Exception) {}
-        currentConversation = null
     }
 
     fun generateText(
@@ -125,6 +163,7 @@ class LiteRTEngineService @Inject constructor(
                     if (text.isNotEmpty()) {
                         fullResponse.append(text)
                         emit(fullResponse.toString())
+                        resetIdleTimer()
                     }
                 }
             } finally {
@@ -161,6 +200,7 @@ class LiteRTEngineService @Inject constructor(
                     if (text.isNotEmpty()) {
                         fullResponse.append(text)
                         emit(fullResponse.toString())
+                        resetIdleTimer()
                     }
                 }
             } finally {
@@ -194,6 +234,7 @@ class LiteRTEngineService @Inject constructor(
                     if (text.isNotEmpty()) {
                         fullResponse.append(text)
                         emit(fullResponse.toString())
+                        resetIdleTimer()
                     }
                 }
             } finally {
@@ -230,6 +271,7 @@ class LiteRTEngineService @Inject constructor(
                     if (text.isNotEmpty()) {
                         fullResponse.append(text)
                         emit(fullResponse.toString())
+                        resetIdleTimer()
                     }
                 }
             } finally {
@@ -267,6 +309,7 @@ class LiteRTEngineService @Inject constructor(
                     if (text.isNotEmpty()) {
                         fullResponse.append(text)
                         emit(fullResponse.toString())
+                        resetIdleTimer()
                     }
                 }
             } finally {
@@ -276,8 +319,9 @@ class LiteRTEngineService @Inject constructor(
     }.flowOn(Dispatchers.IO)
 
     fun cancelGeneration() {
+        val conv = synchronized(conversationLock) { currentConversation }
         try {
-            currentConversation?.cancelProcess()
+            conv?.cancelProcess()
         } catch (_: Exception) {}
     }
 }

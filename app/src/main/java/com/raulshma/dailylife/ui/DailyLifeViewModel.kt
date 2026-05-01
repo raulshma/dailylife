@@ -806,10 +806,10 @@ class DailyLifeViewModel @Inject constructor(
         aiTypeInferenceJob = viewModelScope.launch {
             try {
                 aiExecutor.inferType(title, body).collect { _aiInferredType.value = it }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
-                if (e !is kotlinx.coroutines.CancellationException) {
-                    Log.w(TAG, "inferTypeWithAI failed", e)
-                }
+                Log.w(TAG, "inferTypeWithAI failed", e)
             }
         }
     }

@@ -2541,38 +2541,44 @@ internal fun OpenStreetMapPreview(
     longitude: Double,
     mapTile: String? = null,
     modifier: Modifier = Modifier,
+    onMapReady: (MapView) -> Unit = {},
 ) {
     val isDarkTheme = isSystemInDarkTheme()
+
     AndroidView(
         modifier = modifier,
-        factory = { context ->
-            MapView(context).apply {
+        factory = { ctx ->
+            MapView(ctx).also { mapView ->
+                onMapReady(mapView)
                 val tileSource = when (mapTile) {
                     "Satellite" -> EsriSatellite
                     "OSM" -> TileSourceFactory.MAPNIK
                     "Auto" -> if (isDarkTheme) CartoDark else CartoLight
                     else -> TileSourceFactory.MAPNIK
                 }
-                setTileSource(tileSource)
-                setMultiTouchControls(false)
-                isTilesScaledToDpi = true
-                minZoomLevel = 2.0
-                maxZoomLevel = 19.5
+                mapView.setTileSource(tileSource)
+                mapView.setMultiTouchControls(false)
+                mapView.isTilesScaledToDpi = true
+                mapView.minZoomLevel = 2.0
+                mapView.maxZoomLevel = 19.5
+                mapView.setBuiltInZoomControls(false)
+
+                val point = GeoPoint(latitude, longitude)
+                mapView.controller.setZoom(14.5)
+                mapView.controller.setCenter(point)
+                mapView.overlays.removeAll { overlay -> overlay is Marker }
+                mapView.overlays.add(
+                    Marker(mapView).apply {
+                        position = point
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        icon = null
+                        title = "Saved location"
+                    },
+                )
+                mapView.invalidate()
             }
         },
         update = { mapView ->
-            val point = GeoPoint(latitude, longitude)
-            mapView.controller.setZoom(14.5)
-            mapView.controller.setCenter(point)
-            mapView.overlays.removeAll { overlay -> overlay is Marker }
-            mapView.overlays.add(
-                Marker(mapView).apply {
-                    position = point
-                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                    icon = null
-                    title = "Saved location"
-                },
-            )
             val newSource = when (mapTile) {
                 "Satellite" -> EsriSatellite
                 "OSM" -> TileSourceFactory.MAPNIK
@@ -2582,7 +2588,6 @@ internal fun OpenStreetMapPreview(
             if (mapView.tileProvider.tileSource != newSource) {
                 mapView.setTileSource(newSource)
             }
-            mapView.invalidate()
         },
     )
 }

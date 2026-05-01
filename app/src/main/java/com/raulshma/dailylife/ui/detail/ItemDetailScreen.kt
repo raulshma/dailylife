@@ -1039,6 +1039,7 @@ private fun AttachmentHeroSection(
 
                 location != null -> {
                     onVisualBrightnessMeasured(0.56f)
+                    var mapViewRef by remember { mutableStateOf<Any?>(null) }
                     if (heavyReady) {
                         Box(
                             modifier = Modifier
@@ -1050,7 +1051,30 @@ private fun AttachmentHeroSection(
                                 longitude = location.second,
                                 mapTile = mapTile,
                                 modifier = Modifier.fillMaxSize(),
+                                onMapReady = { mapView -> mapViewRef = mapView },
                             )
+                            Column(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .statusBarsPadding()
+                                    .padding(top = 8.dp, end = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                FilledTonalIconButton(
+                                    onClick = {
+                                        (mapViewRef as? org.osmdroid.views.MapView)?.controller?.zoomIn()
+                                    },
+                                ) {
+                                    Icon(Icons.Filled.Add, contentDescription = "Zoom in", tint = Color.White)
+                                }
+                                FilledTonalIconButton(
+                                    onClick = {
+                                        (mapViewRef as? org.osmdroid.views.MapView)?.controller?.zoomOut()
+                                    },
+                                ) {
+                                    Icon(Icons.Filled.Remove, contentDescription = "Zoom out", tint = Color.White)
+                                }
+                            }
                         }
                     } else {
                         Box(

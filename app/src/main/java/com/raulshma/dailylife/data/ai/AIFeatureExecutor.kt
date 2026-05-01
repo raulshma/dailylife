@@ -65,23 +65,25 @@ class AIFeatureExecutor @Inject constructor(
                 value
             }
             .onCompletion { throwable ->
-                val totalTime = System.currentTimeMillis() - startTime
-                val ttft = firstTokenTime?.let { it - startTime }
-                if (throwable != null) {
-                    hadError = true
-                    errorMsg = throwable.message
-                }
-                chatRepository.recordMetrics(
-                    feature = featureName,
-                    modelId = modelId,
-                    timeToFirstTokenMs = ttft,
-                    totalGenerationMs = totalTime,
-                    inputCharCount = inputCharCount,
-                    outputCharCount = outputLength,
-                    isError = hadError,
-                    errorMessage = errorMsg,
-                    conversationId = conversationId,
-                )
+                try {
+                    val totalTime = System.currentTimeMillis() - startTime
+                    val ttft = firstTokenTime?.let { it - startTime }
+                    if (throwable != null) {
+                        hadError = true
+                        errorMsg = throwable.message
+                    }
+                    chatRepository.recordMetrics(
+                        feature = featureName,
+                        modelId = modelId,
+                        timeToFirstTokenMs = ttft,
+                        totalGenerationMs = totalTime,
+                        inputCharCount = inputCharCount,
+                        outputCharCount = outputLength,
+                        isError = hadError,
+                        errorMessage = errorMsg,
+                        conversationId = conversationId,
+                    )
+                } catch (_: Exception) {}
             }
     }
 
