@@ -14,15 +14,12 @@
 </br>
 
 <p align="middle">
-    <img src="media-resources/screenshots/01.png" width="30%" />
-    <img src="media-resources/screenshots/02.png" width="30%" />
-    <img src="media-resources/screenshots/03.png" width="30%" />
-</p>
-
-<p align="middle">
-    <img src="media-resources/screenshots/04.png" width="30%" />
-    <img src="media-resources/screenshots/05.png" width="30%" />
-    <img src="media-resources/screenshots/06.png" width="30%" />
+    <img src="media-resources/screenshots/01.png" width="18%" />
+    <img src="media-resources/screenshots/02.png" width="18%" />
+    <img src="media-resources/screenshots/03.png" width="18%" />
+    <img src="media-resources/screenshots/04.png" width="18%" />
+    <img src="media-resources/screenshots/05.png" width="18%" />
+    <img src="media-resources/screenshots/06.png" width="18%" />
 </p>
 
 ## Project Overview
