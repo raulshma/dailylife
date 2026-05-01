@@ -544,7 +544,7 @@ class ModelManager @Inject constructor(
         prefs.edit().remove(KEY_DEFAULT_MODEL).apply()
     }
 
-    private val _aiEnabled = MutableStateFlow(prefs.getBoolean(KEY_AI_ENABLED, true))
+    private val _aiEnabled = MutableStateFlow(prefs.getBoolean(KEY_AI_ENABLED, false))
     val aiEnabled = _aiEnabled.asStateFlow()
 
     fun isAiEnabled(): Boolean = _aiEnabled.value

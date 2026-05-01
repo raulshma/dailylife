@@ -38,7 +38,9 @@ internal val DateFormatter = DateTimeFormatter.ofPattern("EEE, MMM d")
 @Composable
 internal fun DateHeader(date: LocalDate) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 4.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
