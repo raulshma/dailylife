@@ -23,6 +23,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.animateFloat
@@ -673,16 +674,15 @@ fun DailyLifeApp(
             transitionSpec = {
                 val initial = initialState
                 val target = targetState
-                val enter: EnterTransition
-                val exit: ExitTransition
                 when {
-                    initial is Screen.CompletionHistory && target is Screen.Detail -> {
-                        enter = fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { -it / 8 }
-                        exit = fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { it / 6 }
-                    }
-                    target is Screen.CompletionHistory -> {
-                        enter = fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { it / 6 }
-                        exit = fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { -it / 8 }
+                    (initial is Screen.Main && target is Screen.Detail) ||
+                    (initial is Screen.Detail && target is Screen.Main) -> {
+                        ContentTransform(
+                            fadeIn(DailyLifeTween.content<Float>()),
+                            fadeOut(DailyLifeTween.fade<Float>()),
+                            targetContentZIndex = 1f,
+                            sizeTransform = null
+                        )
                     }
                     initial is Screen.Detail && target is Screen.Detail -> {
                         val initialIndex = visibleItemIds.indexOf(initial.itemId)
@@ -692,44 +692,87 @@ fun DailyLifeApp(
                         } else {
                             target.itemId > initial.itemId
                         }
-                        if (isNext) {
-                            enter = fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { it / 6 }
-                            exit = fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { -it / 8 }
+                        val (enter, exit) = if (isNext) {
+                            fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { it / 3 } to
+                                fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { -it / 3 }
                         } else {
-                            enter = fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { -it / 6 }
-                            exit = fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { it / 8 }
+                            fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { -it / 3 } to
+                                fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { it / 3 }
                         }
+                        ContentTransform(enter, exit, targetContentZIndex = 1f, sizeTransform = null)
                     }
-                    initial is Screen.Main && target is Screen.Detail -> {
-                        enter = fadeIn(DailyLifeTween.content<Float>())
-                        exit = fadeOut(DailyLifeTween.fade<Float>())
+                    initial is Screen.CompletionHistory && target is Screen.Detail -> {
+                        ContentTransform(
+                            fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { -it / 3 },
+                            fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { it / 3 },
+                            targetContentZIndex = 1f,
+                            sizeTransform = null
+                        )
                     }
-                    initial is Screen.Detail && target is Screen.Main -> {
-                        enter = fadeIn(DailyLifeTween.content<Float>())
-                        exit = fadeOut(DailyLifeTween.fade<Float>())
+                    target is Screen.CompletionHistory -> {
+                        ContentTransform(
+                            fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { it / 3 },
+                            fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { -it / 3 },
+                            targetContentZIndex = 1f,
+                            sizeTransform = null
+                        )
                     }
-                    initial is Screen.Main && target is Screen.Settings -> {
-                        enter = fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { it / 6 }
-                        exit = fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { -it / 8 }
+                    initial is Screen.Main -> {
+                        ContentTransform(
+                            fadeIn(DailyLifeTween.depth<Float>()) + slideInHorizontally(DailyLifeTween.depth<androidx.compose.ui.unit.IntOffset>()) { it },
+                            fadeOut(DailyLifeTween.fade<Float>()) + scaleOut(
+                                animationSpec = DailyLifeTween.fade(),
+                                targetScale = 0.92f
+                            ),
+                            targetContentZIndex = 1f,
+                            sizeTransform = null
+                        )
                     }
-                    initial is Screen.Settings && target is Screen.Main -> {
-                        enter = fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { -it / 8 }
-                        exit = fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { it / 6 }
+                    target is Screen.Main -> {
+                        ContentTransform(
+                            fadeIn(DailyLifeTween.content<Float>()) + scaleIn(
+                                animationSpec = DailyLifeTween.content(),
+                                initialScale = 0.92f
+                            ),
+                            fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { it },
+                            targetContentZIndex = 0f,
+                            sizeTransform = null
+                        )
                     }
                     target is Screen.Detail -> {
-                        enter = fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { it / 6 }
-                        exit = fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { -it / 8 }
+                        ContentTransform(
+                            fadeIn(DailyLifeTween.depth<Float>()) + slideInHorizontally(DailyLifeTween.depth<androidx.compose.ui.unit.IntOffset>()) { it },
+                            fadeOut(DailyLifeTween.fade<Float>()) + scaleOut(
+                                animationSpec = DailyLifeTween.fade(),
+                                targetScale = 0.92f
+                            ),
+                            targetContentZIndex = 1f,
+                            sizeTransform = null
+                        )
                     }
                     target is Screen.Settings -> {
-                        enter = fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { it / 6 }
-                        exit = fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { -it / 8 }
+                        ContentTransform(
+                            fadeIn(DailyLifeTween.depth<Float>()) + slideInHorizontally(DailyLifeTween.depth<androidx.compose.ui.unit.IntOffset>()) { it },
+                            fadeOut(DailyLifeTween.fade<Float>()) + scaleOut(
+                                animationSpec = DailyLifeTween.fade(),
+                                targetScale = 0.92f
+                            ),
+                            targetContentZIndex = 1f,
+                            sizeTransform = null
+                        )
                     }
                     else -> {
-                        enter = fadeIn(DailyLifeTween.content<Float>()) + slideInHorizontally(DailyLifeTween.content<androidx.compose.ui.unit.IntOffset>()) { -it / 8 }
-                        exit = fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { it / 6 }
+                        ContentTransform(
+                            fadeIn(DailyLifeTween.content<Float>()) + scaleIn(
+                                animationSpec = DailyLifeTween.content(),
+                                initialScale = 0.92f
+                            ),
+                            fadeOut(DailyLifeTween.fade<Float>()) + slideOutHorizontally(DailyLifeTween.fade<androidx.compose.ui.unit.IntOffset>()) { it },
+                            targetContentZIndex = 0f,
+                            sizeTransform = null
+                        )
                     }
                 }
-                ContentTransform(enter, exit, targetContentZIndex = 1f, sizeTransform = null)
             },
             label = "screenTransition"
         ) { currentScreen ->

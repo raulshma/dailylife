@@ -98,6 +98,12 @@ object DailyLifeTween {
         durationMillis = DailyLifeDuration.INSTANT,
         easing = DailyLifeEasing.Enter
     )
+
+    /** Depth navigation — smooth screen-to-screen with spatial motion */
+    fun <T> depth(): FiniteAnimationSpec<T> = tween(
+        durationMillis = DailyLifeDuration.EMPHASIZED,
+        easing = DailyLifeEasing.Emphasized
+    )
 }
 
 object DailyLifeRepeat {
