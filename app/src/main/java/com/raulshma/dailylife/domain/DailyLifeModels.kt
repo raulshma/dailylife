@@ -272,6 +272,7 @@ data class LifeItemDraft(
     val reminderAt: LocalDateTime? = null,
     val recurrenceRule: RecurrenceRule = RecurrenceRule(),
     val notificationSettings: ItemNotificationSettings = ItemNotificationSettings(),
+    val createdAt: LocalDateTime? = null,
 )
 
 enum class StorageOperation {

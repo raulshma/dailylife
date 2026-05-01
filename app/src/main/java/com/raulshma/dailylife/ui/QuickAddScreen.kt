@@ -280,6 +280,8 @@ private fun QuickAddContent(
     var geofenceLatitude by rememberSaveable { mutableStateOf(initialDraft.geofenceLatitude) }
     var geofenceLongitude by rememberSaveable { mutableStateOf(initialDraft.geofenceLongitude) }
     var geofenceTrigger by rememberSaveable { mutableStateOf(initialDraft.geofenceTrigger) }
+    var createdDate by rememberSaveable { mutableStateOf(initialDraft.createdDate) }
+    var createdTime by rememberSaveable { mutableStateOf(initialDraft.createdTime) }
 
     var showAdvanced by rememberSaveable { mutableStateOf(initialDraft.showAdvanced) }
     var showReminderOptions by rememberSaveable { mutableStateOf(initialDraft.showReminderOptions) }
@@ -332,6 +334,8 @@ private fun QuickAddContent(
         geofenceTrigger = geofenceTrigger,
         showAdvanced = showAdvanced,
         showReminderOptions = showReminderOptions,
+        createdDate = createdDate,
+        createdTime = createdTime,
     )
 
     fun parseRecurrenceRule(): RecurrenceRule {
@@ -366,6 +370,7 @@ private fun QuickAddContent(
             geofenceTrigger = GeofenceTrigger.entries.firstOrNull { it.name.equals(geofenceTrigger, ignoreCase = true) }
                 ?: GeofenceTrigger.Arrival,
         ),
+        createdAt = parseReminderDateTime(createdDate, createdTime),
     )
 
     fun resetLocalDraft() {
@@ -389,6 +394,8 @@ private fun QuickAddContent(
         geofenceTrigger = "Arrival"
         showAdvanced = false
         showReminderOptions = false
+        createdDate = ""
+        createdTime = ""
     }
 
     DisposableEffect(Unit) {
@@ -530,7 +537,8 @@ private fun QuickAddContent(
     LaunchedEffect(
         selectedType, title, body, tags, favorite, pinned,
         reminderDate, reminderTime, notificationsEnabled,
-        overrideTime, recurring, showAdvanced, showReminderOptions
+        overrideTime, recurring, showAdvanced, showReminderOptions,
+        createdDate, createdTime,
     ) {
         onDraftChanged(currentDraftSnapshot())
     }
@@ -1304,6 +1312,38 @@ private fun QuickAddContent(
                                     checked = recurring,
                                     onCheckedChange = { recurring = it }
                                 )
+                                if (!isEditMode) {
+                                    Text(
+                                        text = "Created date/time",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    ReminderDateTimeRow(
+                                        reminderDate = parseDateOrNull(createdDate),
+                                        reminderTime = parseTimeOrNull(createdTime),
+                                        onDateClick = {
+                                            showDatePicker(
+                                                context = context,
+                                                initialDate = parseDateOrNull(createdDate) ?: LocalDate.now(),
+                                                onDateSelected = { selected ->
+                                                    createdDate = selected.toString()
+                                                    if (createdTime.isBlank()) createdTime = LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+                                                }
+                                            )
+                                        },
+                                        onTimeClick = {
+                                            showTimePicker(
+                                                context = context,
+                                                initialTime = parseTimeOrNull(createdTime) ?: LocalTime.now(),
+                                                onTimeSelected = { selected ->
+                                                    if (createdDate.isBlank()) createdDate = LocalDate.now().toString()
+                                                    createdTime = selected.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+                                                }
+                                            )
+                                        },
+                                        onClear = { createdDate = ""; createdTime = "" }
+                                    )
+                                }
                             }
                         }
                     }

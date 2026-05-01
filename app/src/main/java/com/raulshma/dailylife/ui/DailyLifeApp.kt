@@ -317,6 +317,8 @@ data class QuickAddDraft(
     val geofenceTrigger: String = "Arrival",
     val showAdvanced: Boolean = false,
     val showReminderOptions: Boolean = false,
+    val createdDate: String = "",
+    val createdTime: String = "",
 )
 
 internal val QuickAddDraftSaver = mapSaver(
@@ -342,6 +344,8 @@ internal val QuickAddDraftSaver = mapSaver(
             "geofenceTrigger" to it.geofenceTrigger,
             "showAdvanced" to it.showAdvanced,
             "showReminderOptions" to it.showReminderOptions,
+            "createdDate" to it.createdDate,
+            "createdTime" to it.createdTime,
         )
     },
     restore = {
@@ -366,6 +370,8 @@ internal val QuickAddDraftSaver = mapSaver(
             geofenceTrigger = it["geofenceTrigger"] as? String ?: "Arrival",
             showAdvanced = it["showAdvanced"] as? Boolean ?: false,
             showReminderOptions = it["showReminderOptions"] as? Boolean ?: false,
+            createdDate = it["createdDate"] as? String ?: "",
+            createdTime = it["createdTime"] as? String ?: "",
         )
     },
 )
