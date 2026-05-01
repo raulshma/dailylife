@@ -38,3 +38,23 @@
     public static **[] values();
     public static ** valueOf(java.lang.String);
 }
+
+-keep class com.raulshma.dailylife.domain.** { *; }
+-keep class com.raulshma.dailylife.data.backup.** { *; }
+
+-keep class com.squareup.moshi.** { *; }
+-keep class com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory { *; }
+-dontwarn com.squareup.moshi.**
+
+-keep class androidx.savedstate.** { *; }
+-dontwarn androidx.savedstate.**
+
+-keep class androidx.lifecycle.SavedStateHandle** { *; }
+-keep class androidx.lifecycle.viewmodel.** { *; }
+-dontwarn androidx.lifecycle.viewmodel.**
+
+-keep class dagger.hilt.android.internal.lifecycle.** { *; }
+-dontwarn dagger.hilt.android.internal.lifecycle.**
+
+-keep class androidx.compose.ui.savedstate.** { *; }
+-dontwarn androidx.compose.ui.savedstate.**

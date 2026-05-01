@@ -50,7 +50,7 @@ import com.raulshma.dailylife.domain.*
 import java.time.LocalDate
 
 internal sealed class TimelineEntry {
-    data class DateHeader(val date: LocalDate) : TimelineEntry()
+    data class DateHeader(val date: LocalDate, val index: Int) : TimelineEntry()
     data class Item(val index: Int, val id: Long) : TimelineEntry()
 }
 
@@ -86,11 +86,12 @@ fun TimelineScreen(
         val snapshot = pagingItems.itemSnapshotList
         val result = mutableListOf<TimelineEntry>()
         val seenDates = mutableSetOf<LocalDate>()
+        var headerIndex = 0
         for (i in snapshot.indices) {
             val item = snapshot[i] ?: continue
             val date = item.createdAt.toLocalDate()
             if (date !in seenDates) {
-                result.add(TimelineEntry.DateHeader(date))
+                result.add(TimelineEntry.DateHeader(date, headerIndex++))
                 seenDates.add(date)
             }
             result.add(TimelineEntry.Item(i, item.id))
@@ -202,7 +203,7 @@ fun TimelineScreen(
                     count = entries.size,
                     key = { index ->
                         when (val entry = entries[index]) {
-                            is TimelineEntry.DateHeader -> "date-${entry.date}"
+                            is TimelineEntry.DateHeader -> "date-${entry.date}-${entry.index}"
                             is TimelineEntry.Item -> "item-${entry.id}"
                         }
                     },

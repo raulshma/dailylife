@@ -65,11 +65,12 @@ internal fun PhotosMosaicScreen(
         val snapshot = pagingItems.itemSnapshotList
         val result = mutableListOf<TimelineEntry>()
         val seenDates = mutableSetOf<LocalDate>()
+        var headerIndex = 0
         for (i in snapshot.indices) {
             val item = snapshot[i] ?: continue
             val date = item.createdAt.toLocalDate()
             if (date !in seenDates) {
-                result.add(TimelineEntry.DateHeader(date))
+                result.add(TimelineEntry.DateHeader(date, headerIndex++))
                 seenDates.add(date)
             }
             result.add(TimelineEntry.Item(i, item.id))
