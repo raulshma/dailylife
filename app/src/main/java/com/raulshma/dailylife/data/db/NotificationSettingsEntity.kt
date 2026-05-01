@@ -13,4 +13,7 @@ data class NotificationSettingsEntity(
     val defaultSnoozeMinutes: Int,
     val batchNotifications: Boolean,
     val respectDoNotDisturb: Boolean,
+    val missedGracePeriodMinutes: Int = 30,
+    val notificationSoundUri: String? = null,
+    val vibrationEnabled: Boolean = true,
 )

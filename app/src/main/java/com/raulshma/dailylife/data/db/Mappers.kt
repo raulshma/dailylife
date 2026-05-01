@@ -58,6 +58,8 @@ internal fun LifeItemEntity.toLifeItem(
         geofenceRadiusMeters = geofenceRadiusMeters,
         geofenceTrigger = GeofenceTrigger.entries.firstOrNull { it.name == geofenceTrigger }
             ?: GeofenceTrigger.Arrival,
+        notificationSoundUri = notificationSoundUri,
+        vibrationEnabled = vibrationEnabled,
     ),
     completionHistory = completionEntities.map { it.toCompletionRecord() },
     isArchived = isArchived,
@@ -104,6 +106,8 @@ internal fun LifeItem.toEntity(): LifeItemEntity = LifeItemEntity(
     geofenceTrigger = notificationSettings.geofenceTrigger.name,
     isArchived = isArchived,
     aiSummary = aiSummary,
+    notificationSoundUri = notificationSettings.notificationSoundUri,
+    vibrationEnabled = notificationSettings.vibrationEnabled,
 )
 
 internal fun CompletionRecord.toEntity(): CompletionRecordEntity = CompletionRecordEntity(
@@ -127,6 +131,9 @@ internal fun NotificationSettings.toEntity(): NotificationSettingsEntity =
         defaultSnoozeMinutes = defaultSnoozeMinutes.coerceAtLeast(1),
         batchNotifications = batchNotifications,
         respectDoNotDisturb = respectDoNotDisturb,
+        missedGracePeriodMinutes = missedGracePeriodMinutes.coerceAtLeast(0),
+        notificationSoundUri = notificationSoundUri,
+        vibrationEnabled = vibrationEnabled,
     )
 
 internal fun NotificationSettingsEntity.toNotificationSettings(): NotificationSettings =
@@ -138,6 +145,9 @@ internal fun NotificationSettingsEntity.toNotificationSettings(): NotificationSe
         defaultSnoozeMinutes = defaultSnoozeMinutes.coerceAtLeast(1),
         batchNotifications = batchNotifications,
         respectDoNotDisturb = respectDoNotDisturb,
+        missedGracePeriodMinutes = missedGracePeriodMinutes.coerceAtLeast(0),
+        notificationSoundUri = notificationSoundUri,
+        vibrationEnabled = vibrationEnabled,
     )
 
 internal fun S3BackupSettings.toEntity(): S3BackupSettingsEntity = S3BackupSettingsEntity(

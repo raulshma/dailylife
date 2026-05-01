@@ -22,6 +22,9 @@ data class ReminderScheduleRequest(
     val snoozeMinutes: Int,
     val batchNotifications: Boolean,
     val respectDoNotDisturb: Boolean,
+    val gracePeriodMinutes: Int = 30,
+    val notificationSoundUri: String? = null,
+    val vibrationEnabled: Boolean = true,
 )
 
 fun LifeItem.nextReminderRequest(
@@ -40,6 +43,11 @@ fun LifeItem.nextReminderRequest(
         dueAt
     }
 
+    val effectiveSoundUri = notificationSettings.notificationSoundUri
+        ?: globalSettings.notificationSoundUri
+    val effectiveVibration = notificationSettings.vibrationEnabled
+        ?: globalSettings.vibrationEnabled
+
     return ReminderScheduleRequest(
         itemId = id,
         title = title.ifBlank { type.label },
@@ -51,6 +59,9 @@ fun LifeItem.nextReminderRequest(
             .coerceAtLeast(1),
         batchNotifications = globalSettings.batchNotifications,
         respectDoNotDisturb = globalSettings.respectDoNotDisturb,
+        gracePeriodMinutes = globalSettings.missedGracePeriodMinutes.coerceAtLeast(0),
+        notificationSoundUri = effectiveSoundUri,
+        vibrationEnabled = effectiveVibration,
     )
 }
 
@@ -187,4 +198,22 @@ private fun daysUntilNextCandidate(
 
     val elapsedIntervals = elapsedDays / stepDays
     return elapsedIntervals * stepDays
+}
+
+fun LifeItem.upcomingOccurrences(
+    globalSettings: NotificationSettings,
+    from: LocalDateTime = LocalDateTime.now(),
+    count: Int = 10,
+): List<LocalDateTime> {
+    if (!globalSettings.globalEnabled || !notificationSettings.enabled) return emptyList()
+    if (!isRecurring && taskStatus == com.raulshma.dailylife.domain.TaskStatus.Done) return emptyList()
+
+    val results = mutableListOf<LocalDateTime>()
+    var cursor = from
+    repeat(count) {
+        val next = nextDueAt(globalSettings, cursor) ?: return results
+        results.add(next)
+        cursor = next.plusMinutes(1)
+    }
+    return results
 }

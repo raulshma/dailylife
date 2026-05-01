@@ -117,6 +117,8 @@ dependencies {
     implementation(libs.litertlm.android)
     implementation(libs.multiplatform.markdown.renderer.android)
     implementation(libs.multiplatform.markdown.renderer.m3)
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.hilt.work)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
@@ -131,4 +133,5 @@ dependencies {
 
     ksp(libs.hilt.compiler)
     ksp(libs.androidx.room.compiler)
+    ksp(libs.androidx.hilt.compiler)
 }

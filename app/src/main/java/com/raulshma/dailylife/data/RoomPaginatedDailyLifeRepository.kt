@@ -317,6 +317,7 @@ class RoomPaginatedDailyLifeRepository(
                 type = draft.type.name,
                 title = draft.title.ifBlank { draft.type.label },
                 body = draft.body,
+                createdAt = draft.createdAt?.toString() ?: existing.item.createdAt,
                 tags = normalizeTags(draft.tags).sorted().joinToString(","),
                 isFavorite = draft.isFavorite,
                 isPinned = draft.isPinned,
@@ -335,6 +336,8 @@ class RoomPaginatedDailyLifeRepository(
                 geofenceLongitude = draft.notificationSettings.geofenceLongitude,
                 geofenceRadiusMeters = draft.notificationSettings.geofenceRadiusMeters,
                 geofenceTrigger = draft.notificationSettings.geofenceTrigger.name,
+                notificationSoundUri = draft.notificationSettings.notificationSoundUri,
+                vibrationEnabled = draft.notificationSettings.vibrationEnabled,
             )
             dao.insertItem(updated)
             dao.getItemById(itemId)!!.toLifeItem()

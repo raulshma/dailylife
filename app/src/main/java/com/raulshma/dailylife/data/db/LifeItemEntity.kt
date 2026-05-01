@@ -42,4 +42,6 @@ data class LifeItemEntity(
     val geofenceTrigger: String = "Arrival",
     val isArchived: Boolean = false,
     val aiSummary: String? = null,
+    val notificationSoundUri: String? = null,
+    val vibrationEnabled: Boolean? = null,
 )

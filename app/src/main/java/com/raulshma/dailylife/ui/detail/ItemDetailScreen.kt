@@ -58,6 +58,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -83,11 +85,13 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Tag
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CardDefaults
@@ -100,6 +104,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -112,6 +118,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -220,13 +227,15 @@ fun ItemDetailScreen(
 ) {
     val haptic = LocalHapticFeedback.current
     val occurrenceStats = item.occurrenceStats()
-    val hasVisualMedia = item.inferImagePreviewUrl() != null ||
-        item.inferVideoPlaybackUrl() != null ||
-        item.inferLocationPreview() != null ||
-        item.inferPdfUrl() != null
-    val hasVideoMedia = item.inferVideoPlaybackUrl() != null
-    val hasAudioMedia = item.inferAudioUrl() != null
-    val isPdfItem = item.inferPdfUrl() != null
+    val imageUrl by remember(item.id, item.title, item.body) { mutableStateOf(item.inferImagePreviewUrl()) }
+    val videoUrl by remember(item.id, item.title, item.body) { mutableStateOf(item.inferVideoPlaybackUrl()) }
+    val audioUrl by remember(item.id, item.title, item.body) { mutableStateOf(item.inferAudioUrl()) }
+    val pdfUrl by remember(item.id, item.title, item.body) { mutableStateOf(item.inferPdfUrl()) }
+    val locationPreview = remember(item.id, item.title, item.body) { item.inferLocationPreview() }
+    val hasVisualMedia = imageUrl != null || videoUrl != null || locationPreview != null || pdfUrl != null
+    val hasVideoMedia = videoUrl != null
+    val hasAudioMedia = audioUrl != null
+    val isPdfItem = pdfUrl != null
 
     var contentVisible by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -915,12 +924,12 @@ private fun AttachmentHeroSection(
     onZoomChanged: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    val imageUrl = item.inferImagePreviewUrl()
-    val videoUrl = item.inferVideoPlaybackUrl()
-    val audioUrl = item.inferAudioUrl()
-    val pdfUrl = item.inferPdfUrl()
-    val location = item.inferLocationPreview()
-    val mapTile = item.inferLocationMapTile()
+    val imageUrl = remember(item.id, item.title, item.body) { item.inferImagePreviewUrl() }
+    val videoUrl = remember(item.id, item.title, item.body) { item.inferVideoPlaybackUrl() }
+    val audioUrl = remember(item.id, item.title, item.body) { item.inferAudioUrl() }
+    val pdfUrl = remember(item.id, item.title, item.body) { item.inferPdfUrl() }
+    val location = remember(item.id, item.title, item.body) { item.inferLocationPreview() }
+    val mapTile = remember(item.id, item.title, item.body) { item.inferLocationMapTile() }
 
     val decryptedImage = rememberDecryptedMediaUri(imageUrl)
     val decryptedVideo = rememberDecryptedMediaUri(videoUrl)
@@ -934,7 +943,7 @@ private fun AttachmentHeroSection(
         decryptedVideo == null
 
     val hasVisual = decryptedImage != null || decryptedVideo != null || location != null || decryptedPdf != null
-    val displayBody = item.displayBody()
+    val displayBody = remember(item.id, item.title, item.body) { item.displayBody() }
     val hasText = displayBody.isNotBlank()
 
     if (decryptedAudio != null && !hasVisual) {
@@ -1167,19 +1176,39 @@ private fun PdfDetailViewer(pdfUrl: String, modifier: Modifier = Modifier) {
             val pfd = openPdfDescriptor(context, pdfUrl) ?: return@launch
             try {
                 val renderer = PdfRenderer(pfd)
-                val bitmaps = mutableListOf<Bitmap>()
                 val pageCount = renderer.pageCount.coerceAtMost(50)
-                for (i in 0 until pageCount) {
+                val initialBatch = pageCount.coerceAtMost(6)
+                val bitmaps = mutableListOf<Bitmap>()
+                for (i in 0 until initialBatch) {
                     val page = renderer.openPage(i)
-                    val bitmap = Bitmap.createBitmap(page.width, page.height, Bitmap.Config.ARGB_8888)
+                    val scale = 2f.coerceAtMost(2048f / maxOf(page.width, page.height))
+                    val w = (page.width * scale).toInt().coerceAtLeast(1)
+                    val h = (page.height * scale).toInt().coerceAtLeast(1)
+                    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
                     page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                     page.close()
                     bitmaps.add(bitmap)
                 }
-                renderer.close()
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                     pageBitmaps = bitmaps
                 }
+                if (pageCount > initialBatch) {
+                    val remaining = mutableListOf<Bitmap>()
+                    for (i in initialBatch until pageCount) {
+                        val page = renderer.openPage(i)
+                        val scale = 2f.coerceAtMost(2048f / maxOf(page.width, page.height))
+                        val w = (page.width * scale).toInt().coerceAtLeast(1)
+                        val h = (page.height * scale).toInt().coerceAtLeast(1)
+                        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        page.close()
+                        remaining.add(bitmap)
+                    }
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        pageBitmaps = bitmaps + remaining
+                    }
+                }
+                renderer.close()
             } catch (_: Throwable) {
             } finally {
                 runCatching { pfd.close() }
@@ -2174,11 +2203,9 @@ private fun DetailContentSection(
             ),
         ) {
             DetailNotificationCard(
-                enabled = item.notificationSettings.enabled,
+                item = item,
                 timeText = effectiveTime.format(com.raulshma.dailylife.ui.TimeFormatter),
-                onEnabledChanged = {
-                    onNotificationsChanged(item.notificationSettings.copy(enabled = it))
-                },
+                onNotificationsChanged = onNotificationsChanged,
             )
         }
 
@@ -2306,12 +2333,15 @@ private fun AIToolsSection(
     onClearAiError: () -> Unit,
     onCancelAi: () -> Unit,
 ) {
-    val hasPhoto = item.inferImagePreviewUrl() != null
-    val hasVideo = item.inferVideoPlaybackUrl() != null
-    val hasAudio = item.inferAudioUrl() != null
-    val hasBody = item.displayBody().isNotBlank()
-    val imageUrl = item.inferImagePreviewUrl() ?: item.inferVideoPlaybackUrl()
-    val audioUrl = item.inferAudioUrl() ?: item.inferVideoPlaybackUrl()
+    val imageUrl = remember(item.id, item.title, item.body) { item.inferImagePreviewUrl() }
+    val videoUrl = remember(item.id, item.title, item.body) { item.inferVideoPlaybackUrl() }
+    val audioUrl = remember(item.id, item.title, item.body) { item.inferAudioUrl() }
+    val hasPhoto = imageUrl != null
+    val hasVideo = videoUrl != null
+    val hasAudio = audioUrl != null
+    val hasBody = remember(item.id, item.title, item.body) { item.displayBody().isNotBlank() }
+    val mediaImageUrl = imageUrl ?: videoUrl
+    val mediaAudioUrl = audioUrl ?: videoUrl
     var appliedLabel by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(appliedLabel) {
@@ -2438,7 +2468,7 @@ private fun AIToolsSection(
                         !hasBody && !hasPhoto && !hasAudio -> "No text, image, or audio content"
                         else -> "Requires a compatible model"
                     },
-                    onClick = { onGenerateTitle(item.displayBody(), imageUrl, audioUrl) },
+                    onClick = { onGenerateTitle(item.displayBody(), mediaImageUrl, mediaAudioUrl) },
                 )
 
                 AIActionChip(
@@ -2478,12 +2508,12 @@ private fun AIToolsSection(
                     AIActionChip(
                         label = "Describe Photo",
                         icon = Icons.Filled.Image,
-                        enabled = isFeatureAvailable(AIFeature.PHOTO_DESCRIPTION) && imageUrl != null,
+                        enabled = isFeatureAvailable(AIFeature.PHOTO_DESCRIPTION) && mediaImageUrl != null,
                         disabledReason = when {
-                            imageUrl == null -> "No image available"
+                            mediaImageUrl == null -> "No image available"
                             else -> "Requires vision model"
                         },
-                        onClick = { imageUrl?.let(onDescribePhoto) },
+                        onClick = { mediaImageUrl?.let(onDescribePhoto) },
                     )
                 }
 
@@ -2491,12 +2521,12 @@ private fun AIToolsSection(
                     AIActionChip(
                         label = "Summarize Audio",
                         icon = Icons.Filled.Mic,
-                        enabled = isFeatureAvailable(AIFeature.AUDIO_SUMMARY) && audioUrl != null,
+                        enabled = isFeatureAvailable(AIFeature.AUDIO_SUMMARY) && mediaAudioUrl != null,
                         disabledReason = when {
-                            audioUrl == null -> "No audio available"
+                            mediaAudioUrl == null -> "No audio available"
                             else -> "Requires audio model"
                         },
-                        onClick = { audioUrl?.let(onSummarizeAudio) },
+                        onClick = { mediaAudioUrl?.let(onSummarizeAudio) },
                     )
                 }
             }
@@ -3140,11 +3170,24 @@ private fun DetailMetadataCard(metadataItems: List<Pair<String, String>>) {
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun DetailNotificationCard(
-    enabled: Boolean,
+    item: com.raulshma.dailylife.domain.LifeItem,
     timeText: String,
-    onEnabledChanged: (Boolean) -> Unit,
+    onNotificationsChanged: (com.raulshma.dailylife.domain.ItemNotificationSettings) -> Unit,
 ) {
+    val notificationSettings = item.notificationSettings
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    var timeOverrideText by rememberSaveable(notificationSettings) {
+        mutableStateOf(notificationSettings.timeOverride?.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")) ?: "")
+    }
+    var snoozeText by rememberSaveable(notificationSettings) {
+        mutableStateOf(notificationSettings.snoozeMinutes?.toString() ?: "")
+    }
+    var windowText by rememberSaveable(notificationSettings) {
+        mutableStateOf(notificationSettings.flexibleWindowMinutes?.toString() ?: "")
+    }
+
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -3152,39 +3195,138 @@ private fun DetailNotificationCard(
             containerColor = MaterialTheme.colorScheme.surface,
         ),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(
-                imageVector = if (enabled) {
-                    Icons.Filled.Notifications
-                } else {
-                    Icons.Filled.NotificationsOff
-                },
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Notifications",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(
+                    imageVector = if (notificationSettings.enabled) {
+                        Icons.Filled.Notifications
+                    } else {
+                        Icons.Filled.NotificationsOff
+                    },
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
                 )
-                Text(
-                    text = if (enabled) "Item alerts at $timeText" else "Item alerts are off",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Notifications",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = if (notificationSettings.enabled) "Item alerts at $timeText" else "Item alerts are off",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = notificationSettings.enabled,
+                    onCheckedChange = { onNotificationsChanged(notificationSettings.copy(enabled = it)) },
                 )
             }
-            Switch(
-                checked = enabled,
-                onCheckedChange = onEnabledChanged,
-            )
+
+            androidx.compose.animation.AnimatedVisibility(visible = expanded && notificationSettings.enabled) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    OutlinedTextField(
+                        value = timeOverrideText,
+                        onValueChange = { timeOverrideText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("Time override (HH:mm)") },
+                        placeholder = { Text("Use global default") },
+                        leadingIcon = { Icon(Icons.Filled.AccessTime, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                    )
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedTextField(
+                            value = snoozeText,
+                            onValueChange = { snoozeText = it },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            label = { Text("Snooze (min)") },
+                            placeholder = { Text("Default") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        )
+                        OutlinedTextField(
+                            value = windowText,
+                            onValueChange = { windowText = it },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            label = { Text("Window (min)") },
+                            placeholder = { Text("Default") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text("Vibration", style = MaterialTheme.typography.bodyMedium)
+                        Switch(
+                            checked = notificationSettings.vibrationEnabled ?: true,
+                            onCheckedChange = { onNotificationsChanged(notificationSettings.copy(vibrationEnabled = it)) },
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                onNotificationsChanged(
+                                    notificationSettings.copy(
+                                        timeOverride = com.raulshma.dailylife.ui.parseTimeOrNull(timeOverrideText),
+                                        snoozeMinutes = snoozeText.toIntOrNull()?.coerceAtLeast(1),
+                                        flexibleWindowMinutes = windowText.toIntOrNull()?.coerceAtLeast(0),
+                                    )
+                                )
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(Icons.Filled.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Apply")
+                        }
+                    }
+
+                    if (notificationSettings.geofenceLatitude != null && notificationSettings.geofenceLongitude != null) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.LocationOn,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.tertiary,
+                            )
+                            Text(
+                                text = "Geofence: ${String.format("%.4f", notificationSettings.geofenceLatitude)}, ${String.format("%.4f", notificationSettings.geofenceLongitude)} (${notificationSettings.geofenceTrigger.label})",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

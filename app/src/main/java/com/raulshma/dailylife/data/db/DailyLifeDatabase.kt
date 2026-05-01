@@ -15,7 +15,7 @@ import androidx.room.TypeConverters
         AIMetricsEntity::class,
         AIEnrichmentTaskEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)

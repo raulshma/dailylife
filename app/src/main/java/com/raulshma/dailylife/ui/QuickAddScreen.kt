@@ -282,6 +282,8 @@ private fun QuickAddContent(
     var geofenceTrigger by rememberSaveable { mutableStateOf(initialDraft.geofenceTrigger) }
     var createdDate by rememberSaveable { mutableStateOf(initialDraft.createdDate) }
     var createdTime by rememberSaveable { mutableStateOf(initialDraft.createdTime) }
+    var notificationSoundUri by rememberSaveable { mutableStateOf(initialDraft.notificationSoundUri) }
+    var notificationVibration by rememberSaveable { mutableStateOf(initialDraft.notificationVibration) }
 
     var showAdvanced by rememberSaveable { mutableStateOf(initialDraft.showAdvanced) }
     var showReminderOptions by rememberSaveable { mutableStateOf(initialDraft.showReminderOptions) }
@@ -336,6 +338,8 @@ private fun QuickAddContent(
         showReminderOptions = showReminderOptions,
         createdDate = createdDate,
         createdTime = createdTime,
+        notificationSoundUri = notificationSoundUri,
+        notificationVibration = notificationVibration,
     )
 
     fun parseRecurrenceRule(): RecurrenceRule {
@@ -369,6 +373,8 @@ private fun QuickAddContent(
             geofenceLongitude = geofenceLongitude.toDoubleOrNull(),
             geofenceTrigger = GeofenceTrigger.entries.firstOrNull { it.name.equals(geofenceTrigger, ignoreCase = true) }
                 ?: GeofenceTrigger.Arrival,
+            notificationSoundUri = notificationSoundUri,
+            vibrationEnabled = notificationVibration,
         ),
         createdAt = parseReminderDateTime(createdDate, createdTime),
     )
@@ -382,7 +388,7 @@ private fun QuickAddContent(
         pinned = false
         reminderDate = ""
         reminderTime = ""
-        notificationsEnabled = true
+        notificationsEnabled = false
         overrideTime = ""
         recurring = false
         recurrenceFrequency = RecurrenceFrequency.None.name
@@ -1312,7 +1318,7 @@ private fun QuickAddContent(
                                     checked = recurring,
                                     onCheckedChange = { recurring = it }
                                 )
-                                if (!isEditMode) {
+                                if (isEditMode) {
                                     Text(
                                         text = "Created date/time",
                                         style = MaterialTheme.typography.labelMedium,

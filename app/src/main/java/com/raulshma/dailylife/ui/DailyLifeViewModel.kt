@@ -48,6 +48,7 @@ import com.raulshma.dailylife.domain.inferImagePreviewUrl
 import com.raulshma.dailylife.domain.inferVideoPlaybackUrl
 import com.raulshma.dailylife.notifications.GeofenceManager
 import com.raulshma.dailylife.notifications.ReminderScheduler
+import com.raulshma.dailylife.notifications.upcomingOccurrences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.LocalDate
@@ -429,6 +430,22 @@ class DailyLifeViewModel @Inject constructor(
         val settings = state.value.notificationSettings
         reminderScheduler.sync(items = items, settings = settings)
         geofenceManager.syncGeofences(items)
+    }
+
+    suspend fun computeUpcomingReminders(
+        settings: com.raulshma.dailylife.domain.NotificationSettings,
+    ): List<com.raulshma.dailylife.ui.UpcomingReminder> {
+        val items = runCatching { repository.getAllItems() }.getOrNull() ?: return emptyList()
+        val now = java.time.LocalDateTime.now()
+        return items
+            .filter { it.notificationSettings.enabled && settings.globalEnabled }
+            .flatMap { item ->
+                item.upcomingOccurrences(settings, now, count = 5).map { dateTime ->
+                    com.raulshma.dailylife.ui.UpcomingReminder(item = item, dateTime = dateTime)
+                }
+            }
+            .sortedBy { it.dateTime }
+            .take(50)
     }
 
     fun restoreFromS3() {

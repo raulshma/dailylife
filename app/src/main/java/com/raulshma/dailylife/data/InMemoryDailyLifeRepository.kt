@@ -167,6 +167,7 @@ class InMemoryDailyLifeRepository(
                 type = draft.type,
                 title = draft.title.ifBlank { draft.type.label },
                 body = draft.body,
+                createdAt = draft.createdAt ?: existing.createdAt,
                 tags = normalizeTags(draft.tags),
                 isFavorite = draft.isFavorite,
                 isPinned = draft.isPinned,

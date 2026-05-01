@@ -1,5 +1,6 @@
 package com.raulshma.dailylife.ui
 
+import android.content.Intent
 import android.os.Build
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
@@ -92,6 +93,7 @@ fun SettingsScreen(
     isEnrichmentEnabled: Boolean = false,
     onNavigateToEnrichment: () -> Unit = {},
     onPaletteChanged: () -> Unit = {},
+    onViewUpcomingReminders: () -> Unit = {},
     onBack: () -> Unit,
 ) {
     Scaffold(
@@ -128,6 +130,7 @@ fun SettingsScreen(
                 NotificationsSection(
                     settings = notificationSettings,
                     onSave = onSaveNotifications,
+                    onViewUpcomingReminders = onViewUpcomingReminders,
                 )
             }
             item {
@@ -165,6 +168,7 @@ fun SettingsScreen(
 private fun NotificationsSection(
     settings: NotificationSettings,
     onSave: (NotificationSettings) -> Unit,
+    onViewUpcomingReminders: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -180,12 +184,26 @@ private fun NotificationsSection(
     }
     var batchNotifications by rememberSaveable(settings) { mutableStateOf(settings.batchNotifications) }
     var respectDnd by rememberSaveable(settings) { mutableStateOf(settings.respectDoNotDisturb) }
+    var gracePeriod by rememberSaveable(settings) {
+        mutableStateOf(settings.missedGracePeriodMinutes.toString())
+    }
+    var vibrationEnabled by rememberSaveable(settings) { mutableStateOf(settings.vibrationEnabled) }
     var canScheduleExactAlarms by remember { mutableStateOf(context.canScheduleExactAlarms()) }
+    var canPostNotifications by remember { mutableStateOf(checkNotificationPermission(context)) }
+
+    val ringtonePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val uri = result.data?.getParcelableExtra<android.net.Uri>(android.media.RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+        }
+    }
 
     DisposableEffect(lifecycleOwner, context) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 canScheduleExactAlarms = context.canScheduleExactAlarms()
+                canPostNotifications = checkNotificationPermission(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -225,6 +243,51 @@ private fun NotificationsSection(
 
             HorizontalDivider()
 
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !canPostNotifications) {
+                ElevatedCard(
+                    colors = CardDefaults.elevatedCardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                    ),
+                    shape = MaterialTheme.shapes.large,
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(
+                            text = "Notifications are disabled",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                        Text(
+                            text = "DailyLife needs permission to show reminder notifications. Tap below to grant access.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                        OutlinedButton(
+                            onClick = {
+                                val intent = Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                    putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                }
+                                context.startActivity(intent)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Notifications,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Open notification settings")
+                        }
+                    }
+                }
+            }
+
             ToggleRow(
                 icon = if (globalEnabled) Icons.Filled.Notifications else Icons.Filled.NotificationsOff,
                 label = "Global notifications",
@@ -261,6 +324,17 @@ private fun NotificationsSection(
                 )
             }
 
+            OutlinedTextField(
+                value = gracePeriod,
+                onValueChange = { gracePeriod = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text("Missed grace period (min)") },
+                placeholder = { Text("30") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                supportingText = { Text("Auto-mark as missed if not acted on within this time. 0 = disabled.") },
+            )
+
             ToggleRow(
                 icon = Icons.Filled.EventRepeat,
                 label = "Batch reminders",
@@ -273,6 +347,13 @@ private fun NotificationsSection(
                 label = "Respect Do Not Disturb",
                 checked = respectDnd,
                 onCheckedChange = { respectDnd = it },
+            )
+
+            ToggleRow(
+                icon = Icons.Filled.Notifications,
+                label = "Vibration",
+                checked = vibrationEnabled,
+                onCheckedChange = { vibrationEnabled = it },
             )
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -318,6 +399,16 @@ private fun NotificationsSection(
                 }
             }
 
+            OutlinedButton(
+                onClick = onViewUpcomingReminders,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Icon(Icons.Filled.EventRepeat, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("View upcoming reminders")
+            }
+
             Button(
                 onClick = {
                     onSave(
@@ -330,6 +421,10 @@ private fun NotificationsSection(
                                 ?: settings.defaultSnoozeMinutes,
                             batchNotifications = batchNotifications,
                             respectDoNotDisturb = respectDnd,
+                            missedGracePeriodMinutes = gracePeriod.toIntOrNull()?.coerceAtLeast(0)
+                                ?: settings.missedGracePeriodMinutes,
+                            notificationSoundUri = settings.notificationSoundUri,
+                            vibrationEnabled = vibrationEnabled,
                         ),
                     )
                 },
@@ -692,11 +787,20 @@ private fun AIAssistantSection(
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Bold,
                         )
-                    }
                 }
             }
         }
     }
+}
+}
+
+private fun checkNotificationPermission(context: android.content.Context): Boolean {
+    val permissionGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.POST_NOTIFICATIONS,
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    return permissionGranted && androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
 }
 
 private fun formatStorageBytes(bytes: Long): String {

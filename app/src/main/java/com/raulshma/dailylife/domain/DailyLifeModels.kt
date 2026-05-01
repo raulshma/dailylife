@@ -79,10 +79,13 @@ data class NotificationSettings(
     val defaultSnoozeMinutes: Int = 10,
     val batchNotifications: Boolean = false,
     val respectDoNotDisturb: Boolean = true,
+    val missedGracePeriodMinutes: Int = 30,
+    val notificationSoundUri: String? = null,
+    val vibrationEnabled: Boolean = true,
 )
 
 data class ItemNotificationSettings(
-    val enabled: Boolean = true,
+    val enabled: Boolean = false,
     val timeOverride: LocalTime? = null,
     val flexibleWindowMinutes: Int? = null,
     val snoozeMinutes: Int? = null,
@@ -90,6 +93,8 @@ data class ItemNotificationSettings(
     val geofenceLongitude: Double? = null,
     val geofenceRadiusMeters: Float = 200f,
     val geofenceTrigger: GeofenceTrigger = GeofenceTrigger.Arrival,
+    val notificationSoundUri: String? = null,
+    val vibrationEnabled: Boolean? = null,
 )
 
 enum class GeofenceTrigger(val label: String) {

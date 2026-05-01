@@ -43,9 +43,14 @@ import org.osmdroid.config.Configuration
 import java.io.File
 import java.io.FileOutputStream
 
+import com.raulshma.dailylife.notifications.IntentActionViewDetail
+
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
     var shareDraft by mutableStateOf<QuickAddDraft?>(null)
+        private set
+
+    var pendingDetailItemId by mutableStateOf<Long?>(null)
         private set
 
     private var isLocked by mutableStateOf(true)
@@ -62,6 +67,7 @@ class MainActivity : AppCompatActivity() {
         }
         requestNotificationPermissionIfNeeded()
         handleShareIntent(intent)
+        handleDeepLinkIntent(intent)
 
         val prefs = getSharedPreferences("dailylife_prefs", MODE_PRIVATE)
         val onboardingComplete = prefs.getBoolean("onboarding_complete", false)
@@ -137,6 +143,8 @@ class MainActivity : AppCompatActivity() {
                                     shareDraft = shareDraft,
                                     onShareDraftConsumed = { shareDraft = null },
                                     onPaletteChanged = { paletteKey++ },
+                                    pendingDetailItemId = pendingDetailItemId,
+                                    onDetailItemConsumed = { pendingDetailItemId = null },
                                 )
                             }
                         }
@@ -168,6 +176,16 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleShareIntent(intent)
+        handleDeepLinkIntent(intent)
+    }
+
+    private fun handleDeepLinkIntent(intent: Intent) {
+        if (intent.action == IntentActionViewDetail) {
+            val itemId = intent.getLongExtra("extra_item_id", -1L)
+            if (itemId > 0L) {
+                pendingDetailItemId = itemId
+            }
+        }
     }
 
     private fun handleShareIntent(intent: Intent) {

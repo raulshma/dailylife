@@ -289,6 +289,7 @@ private sealed class Screen {
     data object AIMetrics : Screen()
     data object AIReflections : Screen()
     data object AIEnrichment : Screen()
+    data object ReminderSchedule : Screen()
 }
 
 internal val LocalSharedTransitionScope = staticCompositionLocalOf<SharedTransitionScope?> { null }
@@ -306,7 +307,7 @@ data class QuickAddDraft(
     val pinned: Boolean = false,
     val reminderDate: String = "",
     val reminderTime: String = "",
-    val notificationsEnabled: Boolean = true,
+    val notificationsEnabled: Boolean = false,
     val overrideTime: String = "",
     val recurring: Boolean = false,
     val recurrenceFrequency: String = RecurrenceFrequency.None.name,
@@ -320,6 +321,8 @@ data class QuickAddDraft(
     val showReminderOptions: Boolean = false,
     val createdDate: String = "",
     val createdTime: String = "",
+    val notificationSoundUri: String? = null,
+    val notificationVibration: Boolean? = null,
 )
 
 internal val QuickAddDraftSaver = mapSaver(
@@ -347,6 +350,8 @@ internal val QuickAddDraftSaver = mapSaver(
             "showReminderOptions" to it.showReminderOptions,
             "createdDate" to it.createdDate,
             "createdTime" to it.createdTime,
+            "notificationSoundUri" to it.notificationSoundUri,
+            "notificationVibration" to it.notificationVibration,
         )
     },
     restore = {
@@ -359,7 +364,7 @@ internal val QuickAddDraftSaver = mapSaver(
             pinned = it["pinned"] as? Boolean ?: false,
             reminderDate = it["reminderDate"] as? String ?: "",
             reminderTime = it["reminderTime"] as? String ?: "",
-            notificationsEnabled = it["notificationsEnabled"] as? Boolean ?: true,
+            notificationsEnabled = it["notificationsEnabled"] as? Boolean ?: false,
             overrideTime = it["overrideTime"] as? String ?: "",
             recurring = it["recurring"] as? Boolean ?: false,
             recurrenceFrequency = it["recurrenceFrequency"] as? String ?: RecurrenceFrequency.None.name,
@@ -373,6 +378,8 @@ internal val QuickAddDraftSaver = mapSaver(
             showReminderOptions = it["showReminderOptions"] as? Boolean ?: false,
             createdDate = it["createdDate"] as? String ?: "",
             createdTime = it["createdTime"] as? String ?: "",
+            notificationSoundUri = it["notificationSoundUri"] as? String?,
+            notificationVibration = it["notificationVibration"] as? Boolean?,
         )
     },
 )
@@ -402,6 +409,8 @@ private fun saveDraftToPrefs(context: Context, draft: QuickAddDraft) {
         putString("geofenceTrigger", draft.geofenceTrigger)
         putBoolean("showAdvanced", draft.showAdvanced)
         putBoolean("showReminderOptions", draft.showReminderOptions)
+        putString("notificationSoundUri", draft.notificationSoundUri)
+        draft.notificationVibration?.let { putBoolean("notificationVibration", it) }
         apply()
     }
 }
@@ -417,7 +426,7 @@ private fun loadDraftFromPrefs(context: Context): QuickAddDraft {
         pinned = prefs.getBoolean("pinned", false),
         reminderDate = prefs.getString("reminderDate", null) ?: "",
         reminderTime = prefs.getString("reminderTime", null) ?: "",
-        notificationsEnabled = prefs.getBoolean("notificationsEnabled", true),
+        notificationsEnabled = prefs.getBoolean("notificationsEnabled", false),
         overrideTime = prefs.getString("overrideTime", null) ?: "",
         recurring = prefs.getBoolean("recurring", false),
         recurrenceFrequency = prefs.getString("recurrenceFrequency", null) ?: RecurrenceFrequency.None.name,
@@ -429,6 +438,8 @@ private fun loadDraftFromPrefs(context: Context): QuickAddDraft {
         geofenceTrigger = prefs.getString("geofenceTrigger", null) ?: "Arrival",
         showAdvanced = prefs.getBoolean("showAdvanced", false),
         showReminderOptions = prefs.getBoolean("showReminderOptions", false),
+        notificationSoundUri = prefs.getString("notificationSoundUri", null),
+        notificationVibration = if (prefs.contains("notificationVibration")) prefs.getBoolean("notificationVibration", true) else null,
     )
 }
 
@@ -443,6 +454,8 @@ fun DailyLifeApp(
     shareDraft: QuickAddDraft? = null,
     onShareDraftConsumed: () -> Unit = {},
     onPaletteChanged: () -> Unit = {},
+    pendingDetailItemId: Long? = null,
+    onDetailItemConsumed: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -496,6 +509,7 @@ fun DailyLifeApp(
     var showAIMetrics by rememberSaveable { mutableStateOf(false) }
     var showAIReflections by rememberSaveable { mutableStateOf(false) }
     var showAIEnrichment by rememberSaveable { mutableStateOf(false) }
+    var showReminderSchedule by rememberSaveable { mutableStateOf(false) }
     var isAiSearchActive by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(isAiEnabled) {
@@ -511,7 +525,16 @@ fun DailyLifeApp(
     var pendingEditSave by remember { mutableStateOf(false) }
     var preloadedDetailItem by remember { mutableStateOf<LifeItem?>(null) }
 
+    LaunchedEffect(pendingDetailItemId) {
+        if (pendingDetailItemId != null) {
+            selectedItemId = pendingDetailItemId
+            viewModel.selectItem(pendingDetailItemId)
+            onDetailItemConsumed()
+        }
+    }
+
     val screen = when {
+        showReminderSchedule -> Screen.ReminderSchedule
         isAiEnabled && showAIMetrics -> Screen.AIMetrics
         isAiEnabled && showAIChat -> Screen.AIChat(activeChatConversationId)
         isAiEnabled && showAIChatList -> Screen.AIChatList
@@ -527,8 +550,9 @@ fun DailyLifeApp(
 
     var skipStaggerAnimation by remember { mutableStateOf(false) }
 
-    BackHandler(enabled = showAIChatList || showAIChat || showAIMetrics || showAIReflections || showAIEnrichment || showAIModelManager || focusTimerItemId != null || completionHistoryItemId != null || selectedItemId != null || showSettings) {
+    BackHandler(enabled = showReminderSchedule || showAIChatList || showAIChat || showAIMetrics || showAIReflections || showAIEnrichment || showAIModelManager || focusTimerItemId != null || completionHistoryItemId != null || selectedItemId != null || showSettings) {
         when {
+            showReminderSchedule -> showReminderSchedule = false
             showAIChat -> {
                 showAIChat = false
                 activeChatConversationId = null
@@ -898,6 +922,10 @@ fun DailyLifeApp(
                                     geofenceLatitude = item.notificationSettings.geofenceLatitude?.toString() ?: "",
                                     geofenceLongitude = item.notificationSettings.geofenceLongitude?.toString() ?: "",
                                     geofenceTrigger = item.notificationSettings.geofenceTrigger.name,
+                                    notificationSoundUri = item.notificationSettings.notificationSoundUri,
+                                    notificationVibration = item.notificationSettings.vibrationEnabled,
+                                    createdDate = item.createdAt.toLocalDate().toString(),
+                                    createdTime = item.createdAt.toLocalTime().format(TimeFormatter),
                                 )
                                 showEditSheet = true
                             },
@@ -1004,7 +1032,20 @@ fun DailyLifeApp(
                             isEnrichmentEnabled = viewModel.enrichmentSettings.collectAsStateWithLifecycle().value.enabled,
                             onNavigateToEnrichment = { showSettings = false; showAIEnrichment = true },
                             onPaletteChanged = onPaletteChanged,
+                            onViewUpcomingReminders = { showSettings = false; showReminderSchedule = true },
                             onBack = { showSettings = false },
+                        )
+                    }
+
+                    is Screen.ReminderSchedule -> {
+                        ReminderScheduleScreen(
+                            viewModel = viewModel,
+                            onBack = { showReminderSchedule = false },
+                            onItemClick = { itemId ->
+                                showReminderSchedule = false
+                                selectedItemId = itemId
+                                viewModel.selectItem(itemId)
+                            },
                         )
                     }
 
