@@ -15,6 +15,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import com.raulshma.dailylife.ui.components.icon
 import com.raulshma.dailylife.ui.theme.DailyLifeDuration
 import com.raulshma.dailylife.ui.theme.DailyLifeEasing
 import com.raulshma.dailylife.ui.theme.DailyLifeSpring

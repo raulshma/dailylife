@@ -155,13 +155,13 @@ import com.raulshma.dailylife.domain.inferVideoPlaybackUrl
 import com.raulshma.dailylife.ui.LocalAnimatedVisibilityScope
 import com.raulshma.dailylife.ui.LocalSharedTransitionScope
 import com.raulshma.dailylife.ui.TimestampFormatter
-import com.raulshma.dailylife.ui.TypeBadge
+import com.raulshma.dailylife.ui.components.TypeBadge
 import com.raulshma.dailylife.ui.components.SharedElementKeys
 import com.raulshma.dailylife.ui.components.CompletionRipple
 import com.raulshma.dailylife.ui.components.ShimmerBox
-import com.raulshma.dailylife.ui.inferLocationMapTile
-import com.raulshma.dailylife.ui.inferLocationPreview
-import com.raulshma.dailylife.ui.rememberDecryptedMediaUri
+import com.raulshma.dailylife.ui.components.inferLocationMapTile
+import com.raulshma.dailylife.ui.components.inferLocationPreview
+import com.raulshma.dailylife.ui.components.rememberDecryptedMediaUri
 import com.raulshma.dailylife.data.media.AudioWaveformGenerator
 import com.raulshma.dailylife.data.media.UriFileResolver
 import com.raulshma.dailylife.ui.theme.DailyLifeDuration
@@ -1046,7 +1046,7 @@ private fun AttachmentHeroSection(
                                 .fillMaxSize()
                                 .background(Color.Black),
                         ) {
-                            com.raulshma.dailylife.ui.OpenStreetMapPreview(
+                            com.raulshma.dailylife.ui.components.OpenStreetMapPreview(
                                 latitude = location.first,
                                 longitude = location.second,
                                 mapTile = mapTile,

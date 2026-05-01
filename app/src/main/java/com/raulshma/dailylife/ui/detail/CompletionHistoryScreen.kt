@@ -65,7 +65,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.raulshma.dailylife.domain.CompletionRecord
 import com.raulshma.dailylife.domain.LifeItem
-import com.raulshma.dailylife.ui.OpenStreetMapPreview
+import com.raulshma.dailylife.ui.components.OpenStreetMapPreview
 import com.raulshma.dailylife.ui.components.StaggeredEnter
 import com.raulshma.dailylife.ui.components.rememberStaggeredVisibility
 import java.time.LocalDate
