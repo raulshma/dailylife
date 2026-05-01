@@ -134,7 +134,7 @@ fun ModelManagerScreen(
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                             Text(
-                                "AI Models",
+                                "Models",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                             )
@@ -193,13 +193,13 @@ fun ModelManagerScreen(
                             tint = MaterialTheme.colorScheme.primary,
                         )
                         Text(
-                            text = "On-Device AI",
+                            text = "On-Device Intelligence",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                         )
                     }
                     Text(
-                        text = "Download models to enable AI features. All processing happens locally on your device.",
+                        text = "Download models to enable smart features. All processing happens locally on your device.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

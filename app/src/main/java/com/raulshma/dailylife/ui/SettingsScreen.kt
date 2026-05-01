@@ -613,7 +613,7 @@ private fun AIAssistantSection(
                     tint = MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    text = "AI Assistant",
+                    text = "Assistant",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -627,7 +627,7 @@ private fun AIAssistantSection(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Enable AI features", style = MaterialTheme.typography.bodyLarge)
+                    Text("Enable smart features", style = MaterialTheme.typography.bodyLarge)
                     Text(
                         "Smart titles, tags, reflections, and more",
                         style = MaterialTheme.typography.bodySmall,
@@ -673,7 +673,7 @@ private fun AIAssistantSection(
                 ) {
                     Icon(Icons.Filled.SmartToy, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Manage AI Models")
+                    Text("Manage Models")
                 }
 
                 OutlinedButton(
@@ -683,7 +683,7 @@ private fun AIAssistantSection(
                 ) {
                     Icon(Icons.Filled.AutoFixHigh, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("AI Enrichment")
+                    Text("Enrichment")
                     if (isEnrichmentEnabled) {
                         Spacer(Modifier.width(6.dp))
                         Text(

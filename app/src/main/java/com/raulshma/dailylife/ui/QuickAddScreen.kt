@@ -640,7 +640,7 @@ private fun QuickAddContent(
                         val label = when (mode) {
                             TypeDetectMode.OFF -> "Off"
                             TypeDetectMode.LOGIC -> "Logic"
-                            TypeDetectMode.AI -> "AI"
+                            TypeDetectMode.AI -> "Smart"
                         }
                         FilterChip(
                             selected = typeDetectMode == mode,
@@ -825,7 +825,7 @@ private fun QuickAddContent(
                 ) {
                     AIGenerationBubble(
                         text = aiSmartTitle,
-                        label = "AI Title",
+                        label = "Smart Title",
                         isGenerating = false,
                         onApply = {
                             onApplyAiTitle(aiSmartTitle)
@@ -896,7 +896,7 @@ private fun QuickAddContent(
                 ) {
                     AIGenerationBubble(
                         text = aiRewrittenText,
-                        label = "AI Rewrite",
+                        label = "Smart Rewrite",
                         isGenerating = false,
                         onApply = {
                             onApplyAiRewrite(aiRewrittenText)
@@ -943,7 +943,7 @@ private fun QuickAddContent(
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            "AI Rewrite",
+                                            "Smart Rewrite",
                                             style = MaterialTheme.typography.labelMedium,
                                         )
                                     }
@@ -1112,7 +1112,7 @@ private fun QuickAddContent(
                                             CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp)
                                         }
                                         else -> {
-                                            Text("AI Tags")
+                                            Text("Smart Tags")
                                         }
                                     }
                                 },

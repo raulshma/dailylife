@@ -1365,7 +1365,7 @@ private fun MainScaffold(
                         ) {
                             if (onShowAIChat != null) {
                                 DropdownMenuItem(
-                                    text = { Text("AI Chat") },
+                                    text = { Text("Assistant") },
                                     onClick = {
                                         showDropdown.value = false
                                         onShowAIChat()
@@ -1377,7 +1377,7 @@ private fun MainScaffold(
                             }
                             if (onShowAIReflections != null) {
                                 DropdownMenuItem(
-                                    text = { Text("AI Reflection") },
+                                    text = { Text("Reflection") },
                                     onClick = {
                                         showDropdown.value = false
                                         onShowAIReflections()
@@ -1389,7 +1389,7 @@ private fun MainScaffold(
                             }
                             if (onShowAIEnrichment != null) {
                                 DropdownMenuItem(
-                                    text = { Text("AI Enrichment") },
+                                    text = { Text("Enrichment") },
                                     onClick = {
                                         showDropdown.value = false
                                         onShowAIEnrichment()

@@ -165,7 +165,7 @@ fun AIReflectionsScreen(
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                             Text(
-                                "AI Reflection",
+                                "Reflection",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                             )
@@ -399,7 +399,7 @@ fun AIReflectionsScreen(
                         } else {
                             AIEmptyState(
                                 title = "Reflect on your entries",
-                                subtitle = "Select a time range and generate an AI reflection",
+                                subtitle = "Select a time range and generate a reflection",
                             )
                         }
                     }

@@ -237,12 +237,12 @@ fun AINoModelCard(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
             )
             Text(
-                text = "No AI model installed",
+                text = "No model installed",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = "Download a model to enable AI features",
+                text = "Download a model to enable smart features",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -694,7 +694,7 @@ fun AIAvatar(
     ) {
         Icon(
             imageVector = if (isUser) Icons.Filled.Person else Icons.Filled.SmartToy,
-            contentDescription = if (isUser) "You" else "AI",
+            contentDescription = if (isUser) "You" else "Assistant",
             modifier = Modifier.size(18.dp),
             tint = iconColor,
         )

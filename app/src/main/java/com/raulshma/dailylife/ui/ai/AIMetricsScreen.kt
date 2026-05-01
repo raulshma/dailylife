@@ -205,7 +205,7 @@ fun AIMetricsScreen(
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                             Text(
-                                "AI Usage",
+                                "Usage",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                             )

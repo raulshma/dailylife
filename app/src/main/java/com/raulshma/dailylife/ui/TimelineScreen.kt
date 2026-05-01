@@ -353,7 +353,7 @@ private fun SearchBarRow(
                         IconButton(onClick = onToggleAiSearch) {
                             Icon(
                                 Icons.Filled.AutoAwesome,
-                                contentDescription = "AI Search",
+                                contentDescription = "Smart Search",
                                 tint = if (isAiSearchActive) MaterialTheme.colorScheme.primary
                                 else MaterialTheme.colorScheme.onSurfaceVariant,
                             )

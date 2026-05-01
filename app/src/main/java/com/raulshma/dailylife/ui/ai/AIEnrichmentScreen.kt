@@ -148,7 +148,7 @@ fun AIEnrichmentScreen(
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                             Text(
-                                "AI Enrichment",
+                                "Enrichment",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                             )
@@ -1121,7 +1121,7 @@ private fun EmptyStateCard() {
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = "Start processing to enrich your items with AI-generated titles, tags, and descriptions",
+                text = "Start processing to enrich your items with generated titles, tags, and descriptions",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1282,12 +1282,12 @@ private fun featureInfo(feature: EnrichmentFeature): Triple<ImageVector, String,
         EnrichmentFeature.DESCRIPTION -> Triple(
             Icons.Filled.Description,
             "Description",
-            "Generate AI summaries and descriptions",
+            "Generate summaries and descriptions",
         )
         EnrichmentFeature.PHOTO_DESCRIPTION -> Triple(
             Icons.Filled.CameraAlt,
             "Photo Description",
-            "Describe photos using vision AI",
+            "Describe photos using on-device vision",
         )
         EnrichmentFeature.AUDIO_SUMMARY -> Triple(
             Icons.Filled.Audiotrack,

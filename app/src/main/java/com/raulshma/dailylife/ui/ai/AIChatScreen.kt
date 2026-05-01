@@ -191,7 +191,7 @@ fun AIChatScreen(
                                 tint = MaterialTheme.colorScheme.primary,
                             )
                             Text(
-                                "AI Chat",
+                                "Assistant",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                             )
